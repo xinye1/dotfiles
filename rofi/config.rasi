@@ -1,0 +1,34 @@
+configuration {
+  columns:        2;
+  sidebar-mode:   true;
+  show-icons:     false;
+  /*icon-theme:     "Papirus";*/
+  font:           "Roboto Bold 13";
+  matchig:        "fuzzy";
+  opacity:        80;
+}
+
+* {
+  highlight:      bold italic;
+  scrollbar:      true;
+}
+
+#window {
+  // Default font
+  //font: "System San Francisco Display 18";
+  //fullscreen: true;
+  transparency: "background";
+
+  //Add dummy widgets on top and bottom so the sizing
+  //nicely centers hdum, independent of resolution. 
+  //children: [ dummy1, hdum, dummy2 ];
+
+  //As side bar or centre menu
+  //location:       north west;
+  //heigh:          80%;
+  //width:          500;
+  //x-offset:       8px;
+  //y-offset:       30px;
+}
+
+@import "~/.config/rofi/xl-manjaro.rasi"

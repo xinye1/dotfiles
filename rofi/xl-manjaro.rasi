@@ -1,0 +1,58 @@
+* {
+  /* Manjaro colours */
+  manjaro-main:       #2BC1A4;
+  manjaro-red:        #FF0000;
+  manjaro-white:      #FFFFFF;
+  manjaro-dark:       #252936;
+  manjaro-dark0:      argb:00252936;
+  manjaro-dark-trans: argb:aa252936;
+  manjaro-yellow:     #FFC000;
+  manjaro-purple:     #9575cd;
+  manjaro-purple0:    argb:229575cd;
+  manjaro-darkcold:   argb:00252936;
+
+  border:             @manjaro-main;
+  separator:          @manjaro-main;
+  separatorcolor:     @separator;
+
+  bg:                 @manjaro-dark;
+  bg-active:          @manjaro-dark;
+  bg-urgent:          @manjaro-dark;
+  fg:                 @manjaro-main;
+  fg-active:          @manjaro-main;
+  fg-urgent:          @manjaro-main;
+  bg-alt:             @manjaro-bg;
+  fg-alt:             @manjaro-main;
+
+
+ /*Theme colors */
+  background:                  @manjaro-dark;
+  background-color:            @background;
+  foreground:                  @manjaro-white;
+  border-color:                @border;
+  separatorcolor:              @separator;
+  scrollbar-handle:            @manjaro-purple0;
+
+  normal-background:           @manjaro-dark;
+  normal-foreground:           @manjaro-white;
+  alternate-normal-background: @normal-background;
+  alternate-normal-foreground: @normal-foreground;
+  selected-normal-background:  @manjaro-darkcold;
+  selected-normal-foreground:  @manjaro-main;
+
+  active-background:           @manjaro-dark0;
+  active-foreground:           @manjaro-main;
+  alternate-active-background: @active-background;
+  alternate-active-foreground: @active-foreground;
+  selected-active-background:  @manjaro-dark0;
+  selected-active-foreground:  @manjaro-main;
+
+  urgent-background:           @manjaro-darkcold;
+  urgent-foreground:           @manjaro-red;
+  alternate-urgent-background: @urgent-background;
+  alternate-urgent-foreground: @urgent-foreground;
+  selected-urgent-background:  @manjaro-dark0;
+  selected-urgent-foreground:  @urgent-main;
+}
+
+@import "./xl-common.rasi" 
