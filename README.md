@@ -1,6 +1,6 @@
 # Dotfile collection
 
-A small collection of config files for setting up a Linux machine, best suited for Manjaro i3 distro.
+My small collection, set up on Manjaro i3.
 
 # Dependencies
 
