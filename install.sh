@@ -2,6 +2,7 @@
 
 # HOME
 ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
+ln -fs $HOME/dotfiles/zsh/.aliases $HOME/.aliases
 ln -fs $HOME/dotfiles/vim/.vimrc $HOME/.vimrc
 
 # i3
