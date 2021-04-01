@@ -111,9 +111,7 @@ source $ZSH/oh-my-zsh.sh
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 # Load aliases
-if [[ -r ~/.aliases ]]; then
-  source ~/.aliases
-fi
+[[ -f $HOME/.aliases ]] && source $HOME/.aliases
 
 #** kitty ***
 autoload -Uz compinit

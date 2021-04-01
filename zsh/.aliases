@@ -1,5 +1,12 @@
+#!/bin/bash
+
+# nav
 alias ls='lsd'
 alias ll='lsd -l'
 alias lla='ll -Ah'
 alias lt='ls --tree'
 
+# general/programs
+alias ..='cd ..'
+alias vimrc='vim ~/.vimrc'
+alias zshrc='vim ~/.zshrc'
