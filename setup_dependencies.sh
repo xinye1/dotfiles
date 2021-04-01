@@ -20,6 +20,11 @@ sudo pacman -S --noconfirm \
   ttf-font-awesome \
   ttf-cascadia-code
 
+# utilities to make R work
+echo "Installing R package dependencies"
+sudo pacman -S --noconfirm \
+  gcc-fortran
+
 # install kitty
 echo "Installing kitty..."
 curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
