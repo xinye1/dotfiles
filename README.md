@@ -29,10 +29,16 @@ Part of the distro
 ## Setup
 
 ```sh
-# Install dependencies
+# get repo
+cd ~
+pgit clone https://github.com/xinye1/dotfiles
+cd dotfiles
+
+# install dependencies
 chmod +x setup_dependencies.sh
 ./setup_dependencies.sh
 
-# Stow dotfiles
-git clone https://github.com/xinye1/dotfiles && cd dotfiles && install.sh
+# link dotfiles
+chmod +x install.sh
+./install.sh
 ```
