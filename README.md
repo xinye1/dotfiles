@@ -31,7 +31,7 @@ Part of the distro
 ```sh
 # get repo
 cd ~
-pgit clone https://github.com/xinye1/dotfiles
+git clone https://github.com/xinye1/dotfiles
 cd dotfiles
 
 # install dependencies
