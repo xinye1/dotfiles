@@ -1,4 +1,8 @@
 configuration {
+  display-drun:   "Apps";
+  display-run:    "Packages";
+  display-window: "Windows";
+  display-ssh:	  "SSH";
   columns:        2;
   sidebar-mode:   true;
   show-icons:     false;
