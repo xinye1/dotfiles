@@ -44,6 +44,10 @@ echo "Vim packages..."
 git clone https://github.com/itchyny/lightline.vim $HOME/.vim/pack/plugins/start/lightline
 git clone https://tpope.io/vim/fugitive.git $HOME/.vim/pack/plugins/start/fugitive
 
+# i3block rofi-calendar fix
+# temporary until PR merged
+cp $HOME/dotfiles/i3/rofi-calendar $HOME/.i3/blocklets/rofi-calendar/
+
 # manual stuff
 echo "Restart system and run `git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k`"
 echo "Change $EDITOR var to /usr/bin/vim in ~/.profile"
