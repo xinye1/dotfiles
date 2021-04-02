@@ -11,7 +11,7 @@ Based on Manjaro i3, needs installing
 * xdotool
 * xbacklight
 * caffeine-ng
-* i3blocks and i3blocks-contrib 
+* i3blocks and i3blocks-contrib
 * rofi
 * zsh, oh-my-zsh and powerlevel10k
 * Roboto font
