@@ -23,6 +23,9 @@ ln -fs $HOME/dotfiles/lsd/.config/lsd/config.yaml $HOME/.config/lsd/config.yaml
 mkdir -p $HOME/.config/kitty
 ln -fs $HOME/dotfiles/kitty/.config/kitty/kitty.conf $HOME/.config/kitty/kitty.conf
 
-# other utilities
+# picom
+mkdir -p $HOME/.config/picom
 ln -fs $HOME/dotfiles/picom/.config/picom/picom.conf $HOME/.config/picom/picom.conf
+
+# dunst
 ln -fs $HOME/dotfiles/dunst/.config/dunst/dunstrc $HOME/.config/dunst/dunstrc
