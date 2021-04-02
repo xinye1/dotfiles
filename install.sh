@@ -24,5 +24,5 @@ mkdir -p $HOME/.config/kitty
 ln -fs $HOME/dotfiles/kitty/.config/kitty/kitty.conf $HOME/.config/kitty/kitty.conf
 
 # other utilities
-ln -fs $HOME/dotfiles/picom/.config/picom/picom.conf $HOME/.config/kitty/kitty.conf
+ln -fs $HOME/dotfiles/picom/.config/picom/picom.conf $HOME/.config/picom/picom.conf
 ln -fs $HOME/dotfiles/dunst/.config/dunst/dunstrc $HOME/.config/dunst/dunstrc
