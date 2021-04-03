@@ -31,7 +31,7 @@ Part of the distro
 ```sh
 # get repo
 cd ~
-git clone https://github.com/xinye1/dotfiles
+git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
 
 # make things x
@@ -39,7 +39,6 @@ chmod +x setup/*.sh
 
 # install dependencies
 ./setup/setup_dependencies.sh
-./setup/setup_gh_repos.sh
 ./setup/setup_terminal.sh
 
 # link dotfiles
