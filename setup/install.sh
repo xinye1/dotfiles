@@ -5,6 +5,9 @@ ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
 ln -fs $HOME/dotfiles/zsh/.aliases $HOME/.aliases
 ln -fs $HOME/dotfiles/vim/.vimrc $HOME/.vimrc
 
+# oh-my-zsh
+ln -fs $HOME/dotfiles/zsh/.oh-my-zsh $HOME/.oh-my-zsh/oh-my-zsh.sh
+
 # i3
 ln -fs $HOME/dotfiles/i3/.i3/config $HOME/.i3/config
 ln -fs $HOME/dotfiles/i3/.i3/i3blocks.config $HOME/.i3/i3blocks.config
