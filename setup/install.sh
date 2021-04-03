@@ -32,3 +32,6 @@ ln -fs $HOME/dotfiles/picom/.config/picom/picom.conf $HOME/.config/picom/picom.c
 
 # dunst
 ln -fs $HOME/dotfiles/dunst/.config/dunst/dunstrc $HOME/.config/dunst/dunstrc
+
+# restart i3
+i3-msg restart
