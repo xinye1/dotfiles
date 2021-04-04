@@ -35,9 +35,8 @@ Additional apps for workflow
 ## Setup
 
 ```sh
-# get repo
 cd ~
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
-./install.sh
+./setup.sh
 ```
