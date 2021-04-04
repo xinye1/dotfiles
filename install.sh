@@ -7,4 +7,4 @@
 ./setup/setup_terminal.sh
 
 # link dotfiles
-./setup/symlink.sh
+./setup/setup_symlink.sh
