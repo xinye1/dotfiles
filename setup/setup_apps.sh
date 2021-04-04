@@ -1,5 +1,9 @@
 #! /usr/bin/bash
 
+sudo pacman -Rns --noconfirm \
+  gmip \
+  palemoon
+
 pamac build --no-confirm \
   google-chrome \
   visual-studio-code-bin \
