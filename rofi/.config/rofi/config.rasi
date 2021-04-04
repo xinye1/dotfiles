@@ -36,3 +36,4 @@ configuration {
 }
 
 @import "~/.config/rofi/xl-manjaro.rasi"
+/*@import "~/.config/rofi/xl-nord.rasi"*/

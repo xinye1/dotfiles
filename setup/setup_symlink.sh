@@ -17,6 +17,7 @@ mkdir -p $HOME/.config/rofi
 ln -fs $HOME/dotfiles/rofi/.config/rofi/config.rasi $HOME/.config/rofi/config.rasi
 ln -fs $HOME/dotfiles/rofi/.config/rofi/xl-common.rasi $HOME/.config/rofi/xl-common.rasi
 ln -fs $HOME/dotfiles/rofi/.config/rofi/xl-manjaro.rasi $HOME/.config/rofi/xl-manjaro.rasi
+ln -fs $HOME/dotfiles/rofi/.config/rofi/xl-nord.rasi $HOME/.config/rofi/xl-nord.rasi
 
 # lsd
 mkdir -p $HOME/.config/lsd
