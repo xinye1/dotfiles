@@ -26,6 +26,12 @@ Part of the distro
 * i3
 * dunst
 
+Additional apps for workflow
+
+* Google Chrome
+* R and RStudio
+* Visual Studio Code
+
 ## Setup
 
 ```sh
@@ -33,14 +39,5 @@ Part of the distro
 cd ~
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
-
-# make things x
-chmod +x setup/*.sh
-
-# install dependencies
-./setup/setup_dependencies.sh
-./setup/setup_terminal.sh
-
-# link dotfiles
-./setup/install.sh
+./install.sh
 ```
