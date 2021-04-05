@@ -7,9 +7,10 @@ configuration {
   sidebar-mode:   true;
   show-icons:     false;
   /*icon-theme:     "Papirus";*/
-  font:           "Roboto Bold 13";
+  font:           "Roboto Bold 12";
   matchig:        "fuzzy";
   opacity:        80;
+  lines:          5;
 }
 
 * {
@@ -18,7 +19,7 @@ configuration {
 }
 
 #window {
-  // Default font
+  //Default font
   //font: "System San Francisco Display 18";
   //fullscreen: true;
   transparency: "background";
@@ -35,5 +36,5 @@ configuration {
   //y-offset:       30px;
 }
 
-@import "~/.config/rofi/xl-manjaro.rasi"
-/*@import "~/.config/rofi/xl-nord.rasi"*/
+/*@import "~/.config/rofi/xl-manjaro.rasi"*/
+@import "~/.config/rofi/xl-nord.rasi"
