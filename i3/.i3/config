@@ -428,8 +428,8 @@ bar {
 
         focused_workspace   $nord8    $nord8    $nord1
         active_workspace    $nord3    $nord3    $nord5
-        inactive_workspace  $nord1    $nord1    $nord14
-        binding_mode        $nord8    $nord1    $nord14
+        inactive_workspace  $nord1    $nord1    $nord8
+        binding_mode        $nord8    $nord1    $nord8
         urgent_workspace    $nord11   $nord4    $nord11
       
     }
