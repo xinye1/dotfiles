@@ -21,7 +21,7 @@
 
 #listview {
     spacing: 0;
-    scrollbar: true;
+    scrollbar: false;
     border: 0;
     margin: 0;
     dynamic: true;
@@ -42,7 +42,7 @@
 }
 
 #element {
-    padding: 10;
+    padding: 6 20 6 20;
     border: 0;
     border-color: @separatorcolor;
     background-color: @backgroundcoloralternate;

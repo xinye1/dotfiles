@@ -1,21 +1,23 @@
 configuration {
-  display-drun:   "Apps";
-  display-run:    "Packages";
-  display-window: "Windows";
+  display-drun:   "App";
+  display-run:    "Package";
+  display-window: "Window";
   display-ssh:	  "SSH";
-  columns:        2;
+  columns:        1;
   sidebar-mode:   true;
   show-icons:     false;
   /*icon-theme:     "Papirus";*/
   font:           "Roboto Bold 12";
-  matchig:        "fuzzy";
-  opacity:        80;
-  lines:          5;
+  /*matchig:        "fuzzy";*/
+  /*opacity:        80;*/
+  lines:          10;
+  combi-modi:     [window, drun, run];
+  modi:           [drun, window, run];
 }
 
 * {
   highlight:      bold italic;
-  scrollbar:      true;
+  scrollbar:      false;
 }
 
 #window {
@@ -31,9 +33,13 @@ configuration {
   //As side bar or centre menu
   //location:       north west;
   //heigh:          80%;
-  //width:          500;
+  //width:            500;
   //x-offset:       8px;
   //y-offset:       30px;
+}
+
+#element-icon {
+    size:           2.0ch ;
 }
 
 /*@import "~/.config/rofi/xl-manjaro.rasi"*/
