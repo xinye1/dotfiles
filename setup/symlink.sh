@@ -1,13 +1,6 @@
 #! /usr/bin/bash
 
-echo "\n===== oh-my-zsh plugins ====="
-git clone https://github.com/zsh-users/zsh-autosuggestions.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-
-echo "\n===== Power Level 10k ====="
-git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
-
-echo "\n====== symlinks ======"
+echo "====== symlinks ======"
 # HOME
 ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
 ln -fs $HOME/dotfiles/zsh/.aliases $HOME/.aliases
