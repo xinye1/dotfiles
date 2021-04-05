@@ -37,12 +37,12 @@
 
 #mainbox {
     border: 0;
-    padding: 0;
+    padding: 5;
     background-color: @backgroundcoloralternate;
 }
 
 #element {
-    padding: 6 20 6 20;
+    padding: 6 15 6 15;
     border: 0;
     border-color: @separatorcolor;
     background-color: @backgroundcoloralternate;

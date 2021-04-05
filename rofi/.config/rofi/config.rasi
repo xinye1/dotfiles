@@ -4,7 +4,7 @@ configuration {
   display-window: "Window";
   display-ssh:	  "SSH";
   columns:        1;
-  sidebar-mode:   true;
+  sidebar-mode:   false;
   show-icons:     false;
   /*icon-theme:     "Papirus";*/
   font:           "Roboto Bold 12";
@@ -33,7 +33,7 @@ configuration {
   //As side bar or centre menu
   //location:       north west;
   //heigh:          80%;
-  //width:            500;
+  //width:          500;
   //x-offset:       8px;
   //y-offset:       30px;
 }
