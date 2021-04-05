@@ -26,6 +26,7 @@ ln -fs $HOME/dotfiles/lsd/.config/lsd/config.yaml $HOME/.config/lsd/config.yaml
 # kitty
 mkdir -p $HOME/.config/kitty
 ln -fs $HOME/dotfiles/kitty/.config/kitty/kitty.conf $HOME/.config/kitty/kitty.conf
+ln -fs $HOME/dotfiles/kitty/.config/kitty/nord.conf $HOME/.config/kitty/nord.conf
 
 # picom
 mkdir -p $HOME/.config/picom
