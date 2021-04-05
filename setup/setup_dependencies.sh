@@ -35,3 +35,6 @@ echo "===== Vim packages ======"
 git clone https://github.com/itchyny/lightline.vim $HOME/.vim/pack/plugins/start/lightline
 git clone https://tpope.io/vim/fugitive.git $HOME/.vim/pack/plugins/start/fugitive
 git clone https://github.com/lilydjwg/colorizer.git $HOME/.vim/pack/plugins/start/colorizer
+
+echo "===== GTK theme ====="
+git clone https://github.com/EliverLara/Nordic.git $HOME/.themes/Nordic
