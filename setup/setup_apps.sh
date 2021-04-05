@@ -1,15 +1,15 @@
 #! /usr/bin/bash
 
 sudo pacman -Rns --noconfirm \
-  gmip \
-  palemoon
+  gimp \
+  palemoon-bin
+
+sudo pacman -S --noconfirm r
 
 pamac build --no-confirm \
   google-chrome \
   visual-studio-code-bin \
   rstudio-desktop-bin
-
-sudo pacman -S --noconfirm r
 
 # use Intel MKL for R
 #if
