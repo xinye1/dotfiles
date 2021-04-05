@@ -38,5 +38,6 @@ Additional apps for workflow
 cd ~
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
-./setup.sh
+./install.sh
+./symlink.sh
 ```
