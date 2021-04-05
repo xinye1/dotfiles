@@ -1,11 +1,11 @@
 #! /usr/bin/bash
 
 # system tweaks
-echo "====== Turning off the terminal beeping ====="
+echo "\n====== Turning off the terminal beeping ====="
 echo "blacklist pcspkr" | sudo tee /etc/modprobe.d/nobeep.conf
 
 # install stuff
-echo "===== Installing utils and fonts ====="
+echo "\n===== Installing utils and fonts ====="
 sudo pacman -S --noconfirm \
   xdotool \
   xorg-xbacklight xorg-xset \
@@ -21,20 +21,20 @@ sudo pacman -S --noconfirm \
   ttf-cascadia-code \
   gcc-fortran # R dependency
 
-echo "===== Make i3blocks ====="
+echo "\n===== Grabbing i3blocks-contrib ====="
+git clone https://github.com/vivien/i3blocks-contrib.git $HOME/.i3/blocklets
+
+echo "\n===== Make i3blocks ====="
 make -C $HOME/.i3/blocklets/bandwidth2/
 make -C $HOME/.i3/blocklets/cpu_usage2/
 
-echo "===== Grabbing i3blocks-contrib ====="
-git clone https://github.com/vivien/i3blocks-contrib.git $HOME/.i3/blocklets
-
-echo "===== rofi-calendar fix ====="
+echo "\n===== rofi-calendar fix ====="
 cp $HOME/dotfiles/i3/rofi-calendar $HOME/.i3/blocklets/rofi-calendar/
 
-echo "===== Vim packages ======"
+echo "\n===== Vim packages ======"
 git clone https://github.com/itchyny/lightline.vim $HOME/.vim/pack/plugins/start/lightline
 git clone https://tpope.io/vim/fugitive.git $HOME/.vim/pack/plugins/start/fugitive
 git clone https://github.com/lilydjwg/colorizer.git $HOME/.vim/pack/plugins/start/colorizer
 
-echo "===== GTK theme ====="
+echo "\n===== GTK theme ====="
 git clone https://github.com/EliverLara/Nordic.git $HOME/.themes/Nordic

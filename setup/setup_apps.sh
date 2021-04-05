@@ -1,11 +1,14 @@
 #! /usr/bin/bash
 
+echo "\n====== remove packages ======="
 sudo pacman -Rns --noconfirm \
   gimp \
   palemoon-bin
 
+echo "\n====== installing R ======"
 sudo pacman -S --noconfirm r
 
+echo "\n====== installing Chrome and stuff ======"
 pamac build --no-confirm \
   google-chrome \
   visual-studio-code-bin \
