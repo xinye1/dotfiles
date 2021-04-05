@@ -38,7 +38,7 @@ listview {
 
 element {
     border:  0;
-    padding: 8px;
+    padding: 10px;
 }
 
 element.normal.normal {
@@ -103,7 +103,7 @@ mode-switcher {
 inputbar {
     spacing:    5;
     text-color: @normal-foreground;
-    padding:    8px;
+    padding:    10px;
     children:   [ prompt, textbox-prompt-sep, entry, case-indicator ];
 }
 
