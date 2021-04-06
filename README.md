@@ -38,6 +38,8 @@ Additional apps for workflow
 cd ~
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
+
+# checkout to the correct branch
+git checkout archlabs
 ./install.sh
-./symlink.sh
 ```
