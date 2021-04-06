@@ -17,6 +17,7 @@ sudo pacman -S --noconfirm \
   lsd \
   xclip \
   unzip \
+  cmatrix \
   mousepad \
   ttf-cascadia-code \
   ttf-fira-code \
