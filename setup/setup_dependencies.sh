@@ -17,6 +17,7 @@ sudo pacman -S --noconfirm \
   lsd \
   xclip \
   unzip \
+  mousepad \
   ttf-cascadia-code \
   ttf-fira-code \
   ttf-font-awesome \
