@@ -19,6 +19,10 @@ sudo pacman -S --noconfirm \
   unzip \
   ttf-cascadia-code \
   ttf-fira-code \
+  ttf-font-awesome \
+  noto-fonts \
+  noto-fonts-cjk \
+  noto-fonts-emoji \
   gcc-fortran # R dependency
 
 baph -i nordic-theme-git nord-vim caffeine-ng
