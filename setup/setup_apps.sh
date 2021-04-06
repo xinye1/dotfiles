@@ -1,18 +1,13 @@
 #! /usr/bin/bash
 
-echo "====== remove packages ======="
-sudo pacman -Rns --noconfirm \
-  gimp \
-  palemoon-bin
-
 echo "====== installing R ======"
-sudo pacman -S --noconfirm r
+#sudo pacman -S --noconfirm r
 
 echo "====== installing Chrome and stuff ======"
 pamac build --no-confirm \
   google-chrome \
-  visual-studio-code-bin \
-  rstudio-desktop-bin
+  visual-studio-code-bin #\
+  #rstudio-desktop-bin
 
 # use Intel MKL for R
 #if

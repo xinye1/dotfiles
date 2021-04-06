@@ -117,4 +117,4 @@ source $ZSH/oh-my-zsh.sh
 autoload -Uz compinit
 compinit
 # Completion
-kitty + complete setup zsh | source /dev/stdin
+#kitty + complete setup zsh | source /dev/stdin
