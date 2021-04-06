@@ -77,5 +77,6 @@ let g:lightline = {
       \ 'component_function': {
       \   'gitbranch': 'FugitiveHead'
       \ },
+      \ 'colorscheme': 'nord'
       \ }
 

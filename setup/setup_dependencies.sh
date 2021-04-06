@@ -28,7 +28,10 @@ sudo pacman -S --noconfirm \
   noto-fonts-emoji \
   gcc-fortran # R dependency
 
-baph -inN nordic-theme-git nord-vim caffeine-ng
+baph -inN \
+  nordic-theme-git \
+  nord-vim caffeine-ng \
+  nord-vim-lightline
 
 echo "===== Grabbing i3blocks-contrib ====="
 git clone https://github.com/vivien/i3blocks-contrib.git $I3_HOME/blocklets
