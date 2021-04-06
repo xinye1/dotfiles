@@ -26,6 +26,7 @@ sudo pacman -S --noconfirm \
 
 baph -inN \
   nordic-theme-git \
+  papirus-folders-nordic \
   nord-vim caffeine-ng \
   nord-vim-lightline
 
