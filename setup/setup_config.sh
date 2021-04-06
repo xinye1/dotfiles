@@ -6,6 +6,7 @@ timedatectl set-ntp true
 #sed -i 's+export BROWSER=/usr/bin/palemoon+#export BROWSER=/usr/bin/palemmon+g' ~/.profile
 
 # ===== profile ======
+ranger --copy-config=all
 sed -i 's/set show_hidden false/set show_hidden true/g' ~/.config/ranger/rc.conf
 
 # ===== nitrogen ======
