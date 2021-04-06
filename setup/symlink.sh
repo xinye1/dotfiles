@@ -1,5 +1,7 @@
 #! /usr/bin/bash
 
+export I3_HOME="$HOME/.i3"
+
 echo "====== symlinks ======"
 # HOME
 ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
@@ -10,10 +12,10 @@ ln -fs $HOME/dotfiles/vim/.vimrc $HOME/.vimrc
 ln -fs $HOME/dotfiles/zsh/.oh-my-zsh $HOME/.oh-my-zsh/oh-my-zsh.sh
 
 # i3
-ln -fs $HOME/dotfiles/i3/.i3/config $HOME/.i3/config
-ln -fs $HOME/dotfiles/i3/.i3/i3blocks.config $HOME/.i3/i3blocks.config
+ln -fs $HOME/dotfiles/i3/.i3/config $I3_HOME/config
+ln -fs $HOME/dotfiles/i3/.i3/i3blocks.config $I3_HOME/i3blocks.config
 mkdir -p $HOME/.i3/scripts
-ln -fs $HOME/dotfiles/scripts/matrixlock.sh $HOME/.i3/scripts/matrixlock.sh
+ln -fs $HOME/dotfiles/scripts/matrixlock.sh $I3_HOME/scripts/matrixlock.sh
 
 # rofi
 mkdir -p $HOME/.config/rofi

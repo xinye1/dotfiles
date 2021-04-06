@@ -1,4 +1,5 @@
 #! /usr/bin/bash
+export I3_HOME="$HOME/.i3"
 
 # system tweaks
 echo "====== Turning off the terminal beeping ====="
@@ -22,14 +23,14 @@ sudo pacman -S --noconfirm \
   gcc-fortran # R dependency
 
 echo "===== Grabbing i3blocks-contrib ====="
-git clone https://github.com/vivien/i3blocks-contrib.git $HOME/.i3/blocklets
+git clone https://github.com/vivien/i3blocks-contrib.git $I3_HOME/blocklets
 
 echo "===== Make i3blocks ====="
-make -C $HOME/.i3/blocklets/bandwidth2/
-make -C $HOME/.i3/blocklets/cpu_usage2/
+make -C $I3_HOME/blocklets/bandwidth2/
+make -C $I3_HOME/blocklets/cpu_usage2/
 
 echo "===== rofi-calendar fix ====="
-cp $HOME/dotfiles/i3/rofi-calendar $HOME/.i3/blocklets/rofi-calendar/
+cp $HOME/dotfiles/i3/rofi-calendar $I3_HOME/blocklets/rofi-calendar/
 
 echo "===== Vim packages ======"
 git clone https://github.com/itchyny/lightline.vim $HOME/.vim/pack/plugins/start/lightline
