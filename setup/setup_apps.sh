@@ -4,7 +4,7 @@ echo "====== installing R ======"
 #sudo pacman -S --noconfirm r
 
 echo "====== installing Chrome and stuff ======"
-pamac build --no-confirm \
+baph -inN \
   google-chrome \
   visual-studio-code-bin #\
   #rstudio-desktop-bin

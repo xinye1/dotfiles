@@ -20,12 +20,13 @@ sudo pacman -S --noconfirm \
   ttf-cascadia-code \
   ttf-fira-code \
   ttf-font-awesome \
+  ttf-roboto \
   noto-fonts \
   noto-fonts-cjk \
   noto-fonts-emoji \
   gcc-fortran # R dependency
 
-baph -i nordic-theme-git nord-vim caffeine-ng
+baph -inN nordic-theme-git nord-vim caffeine-ng
 
 echo "===== Grabbing i3blocks-contrib ====="
 git clone https://github.com/vivien/i3blocks-contrib.git $I3_HOME/blocklets
