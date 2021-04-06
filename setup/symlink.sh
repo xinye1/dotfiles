@@ -28,6 +28,10 @@ ln -fs $HOME/dotfiles/rofi/.config/rofi/xl-nord.rasi $HOME/.config/rofi/xl-nord.
 mkdir -p $HOME/.config/lsd
 ln -fs $HOME/dotfiles/lsd/.config/lsd/config.yaml $HOME/.config/lsd/config.yaml
 
+# termite
+mkdir -p $HOME/.config/termite
+ln -fs $HOME/dotfiles/termite/.config/termite/config $HOME/.config/termite/config
+
 # kitty
 #mkdir -p $HOME/.config/kitty
 #ln -fs $HOME/dotfiles/kitty/.config/kitty/kitty.conf $HOME/.config/kitty/kitty.conf
