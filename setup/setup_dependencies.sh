@@ -18,14 +18,10 @@ sudo pacman -S --noconfirm \
   xclip \
   unzip \
   cmatrix \
-  mousepad \
   ttf-cascadia-code \
   ttf-fira-code \
   ttf-font-awesome \
   ttf-roboto \
-  noto-fonts \
-  noto-fonts-cjk \
-  noto-fonts-emoji \
   gcc-fortran # R dependency
 
 baph -inN \
