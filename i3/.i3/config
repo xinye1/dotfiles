@@ -123,12 +123,12 @@ bindsym $Mod+d exec --no-startup-id rofi -show drun
 
 
 # core
-#bindsym $Mod+w          exec --no-startup-id exo-open --launch WebBrowser
-bindsym $Mod+f           fullscreen toggle
-#bindsym $Mod+t          exec --no-startup-id exo-open --launch TerminalEmulator
-bindsym $Mod+Return     exec --no-startup-id exo-open --launch termite
-#bindsym Control+Shift+t exec --no-startup-id exo-open --launch TerminalEmulator
-bindsym $Mod+m bar mode toggle
+#bindsym $Mod+w           exec --no-startup-id exo-open --launch WebBrowser
+#bindsym $Mod+t           exec --no-startup-id exo-open --launch TerminalEmulator
+#bindsym Control+Shift+t  exec --no-startup-id exo-open --launch TerminalEmulator
+bindsym $Mod+Return       exec --no-startup-id termite
+bindsym $Mod+f            fullscreen toggle
+bindsym $Mod+b            bar mode toggle
 
 # logout script
 bindsym $Mod+x exec --no-startup-id rofi_run -l
