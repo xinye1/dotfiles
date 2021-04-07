@@ -153,6 +153,10 @@ bindsym XF86AudioLowerVolume exec --no-startup-id pamixer -d 2
 exec --no-startup-id start-pulseaudio-x11
 exec --no-startup-id pa-applet
 #bindsym $mod+Ctrl+m exec pavucontrol
+
+bindsym XF86AudioRaiseVolume exec amixer -q -D pulse sset Master 5%+ && pkill -RTMIN+1 i3blocks
+bindsym XF86AudioLowerVolume exec amixer -q -D pulse sset Master 5%- && pkill -RTMIN+1 i3blocks
+bindsym XF86AudioMute exec amixer -q -D pulse sset Master toggle && pkill -RTMIN+1 i3blocks
 #==================================================
 
 # backlight
