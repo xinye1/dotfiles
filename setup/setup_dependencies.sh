@@ -16,9 +16,10 @@ sudo pacman -S --noconfirm \
   rofi \
   lsd \
   xclip \
+  sbxkb \
   unzip \
   cmatrix \
-  nerd-fonts-cascadia-code \
+  pulseaudio-bluetooth \
   nerd-fonts-fira-code \
   ttf-cascadia-code \
   ttf-fira-code \
