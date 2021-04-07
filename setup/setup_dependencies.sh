@@ -23,7 +23,6 @@ sudo pacman -S --noconfirm \
   gcc-fortran # R dependency
 
 baph -inN \
-  #papirus-folders-nordic \
   papirus-nord \
   nordic-theme-git \
   nord-vim \
