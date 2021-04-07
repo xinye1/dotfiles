@@ -28,7 +28,8 @@ sudo pacman -S --noconfirm \
 baph -inN \
   #papirus-folders-nordic \
   nordic-theme-git \
-  nord-vim caffeine-ng \
+  nord-vim \
+  caffeine-ng \
   nord-vim-lightline
 
 echo "===== Grabbing i3blocks-contrib ====="
