@@ -295,7 +295,7 @@ assign [class="(?i)(?:geany)"]   → 2
 assign [class="(?i)(?:thunar)"]  → 3
 
 # Open applications on specific workspaces
-assign [class="kitty|URxvt"] $ws1
+assign [class="Termite|URxvt"] $ws1
 assign [class="Google-chrome"] $ws2
 assign [class="RStudio"] $ws3
 assign [class="Code"] $ws4
