@@ -26,7 +26,7 @@ sudo pacman -S --noconfirm \
   gcc-fortran # R dependency
 
 baph -inN \
-  nerd-fonts-fira-code \
+  #nerd-fonts-fira-code \
   nordic-theme-git \
   #papirus-folders-nordic \
   nord-vim caffeine-ng \
