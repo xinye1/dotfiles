@@ -10,18 +10,13 @@ export I3_HOME="$HOME/.config/i3"
 echo "===== Installing utils and fonts ====="
 sudo pacman -S --noconfirm \
   acpi \
-  xdotool \
-  xorg-xbacklight xorg-xset \
   i3blocks \
-  rofi \
   lsd \
-  xclip \
   sbxkb \
   unzip \
   cmatrix \
   pulseaudio-bluetooth \
   ttf-cascadia-code \
-  ttf-font-awesome \
   ttf-roboto \
   gcc-fortran # R dependency
 
