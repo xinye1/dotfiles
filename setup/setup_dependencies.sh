@@ -1,4 +1,4 @@
-#! /usr/bin/bash
+#usr/bin/bash
 
 export I3_HOME="$HOME/.config/i3"
 
@@ -28,7 +28,7 @@ sudo pacman -S --noconfirm \
 baph -inN \
   nerd-fonts-fira-code \
   nordic-theme-git \
-  papirus-folders-nordic \
+  #papirus-folders-nordic \
   nord-vim caffeine-ng \
   nord-vim-lightline
 
