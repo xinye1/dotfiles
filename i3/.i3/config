@@ -106,6 +106,7 @@ exec_always --no-startup-id sbxkb
 
 # run once
 exec --no-startup-id xfsettingsd
+exec --no-startup-id caffeine
 exec --no-startup-id xautolock -time 10 -locker ~/.i3/scripts/matrixlock.sh
 
 # needed for super to launch rofi through ksuperkey, see ~/.xprofile
