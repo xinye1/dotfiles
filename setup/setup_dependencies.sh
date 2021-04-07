@@ -28,6 +28,7 @@ sudo pacman -S --noconfirm \
 baph -inN \
   #nerd-fonts-fira-code \
   nordic-theme-git \
+  nerd-fonts-cascadia-code \
   #papirus-folders-nordic \
   nord-vim caffeine-ng \
   nord-vim-lightline
