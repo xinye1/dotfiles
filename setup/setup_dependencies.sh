@@ -20,14 +20,13 @@ sudo pacman -S --noconfirm \
   unzip \
   cmatrix \
   pulseaudio-bluetooth \
-  nerd-fonts-fira-code \
   ttf-cascadia-code \
-  ttf-fira-code \
   ttf-font-awesome \
   ttf-roboto \
   gcc-fortran # R dependency
 
 baph -inN \
+  nerd-fonts-fira-code \
   nordic-theme-git \
   papirus-folders-nordic \
   nord-vim caffeine-ng \
