@@ -122,7 +122,7 @@ bindsym $Mod+q kill
 #bindsym Mod1+F4 kill
 
 # launchers
-bindsym Control+space exec --no-startup-id rofi_run -r
+#bindsym Control+space exec --no-startup-id rofi_run -r
 bindsym $Mod+d exec --no-startup-id rofi -show drun
 
 
@@ -219,7 +219,7 @@ bindsym $Mod+Shift+c reload
 ############      Container/Window control  ############
 
 # Scratchpad, Floating
-bindsym $Mod+space floating toggle
+#bindsym $Mod+space floating toggle
 floating_modifier  Mod1
 
 bindsym $Mod+Shift+z move scratchpad
@@ -253,14 +253,18 @@ bindsym $Mod+Shift+Left  move left  10px
 bindsym $Mod+Shift+Right move right 10px
 
 # Size
-bindsym Control+Up    resize shrink height 10 px or 1 ppt
-bindsym Control+Down  resize grow   height 10 px or 1 ppt
-bindsym Control+Left  resize shrink width  10 px or 1 ppt
-bindsym Control+Right resize grow   width  10 px or 1 ppt
+bindsym Mod1+Control+Up    resize shrink height 10 px or 1 ppt
+bindsym Mod1+Control+Down  resize grow   height 10 px or 1 ppt
+bindsym Mod1+Control+Left  resize shrink width  10 px or 1 ppt
+bindsym Mod1+Control+Right resize grow   width  10 px or 1 ppt
 
 # layout toggle, keycode 23 is Tab
 bindcode Mod1+23 layout toggle tabbed split
 bindcode $Mod+23 layout toggle splitv splith
+
+#navigate workspaces next / previous
+bindsym $Mod+Ctrl+Right workspace next
+bindsym $Mod+Ctrl+Left workspace prev
 
 # switch to workspace with urgent window
 for_window [urgent="latest"] focus
