@@ -18,6 +18,8 @@ sudo pacman -S --noconfirm \
   xclip \
   unzip \
   cmatrix \
+  nerd-fonts-cascadia-code \
+  nerd-fonts-fira-code \
   ttf-cascadia-code \
   ttf-fira-code \
   ttf-font-awesome \
