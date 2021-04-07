@@ -10,18 +10,21 @@ export I3_HOME="$HOME/.config/i3"
 echo "===== Installing utils and fonts ====="
 sudo pacman -S --noconfirm \
   acpi \
+  alsa-utils \
+  alsa-oss \
+  pulseaudio-bluetooth \
   i3blocks \
   lsd \
   sbxkb \
   unzip \
   cmatrix \
-  pulseaudio-bluetooth \
   ttf-cascadia-code \
   ttf-roboto \
   gcc-fortran # R dependency
 
 baph -inN \
   #papirus-folders-nordic \
+  papirus-nord \
   nordic-theme-git \
   nord-vim \
   caffeine-ng \
