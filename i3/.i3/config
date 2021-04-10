@@ -305,9 +305,9 @@ bindsym $Mod+Control+Shift+minus gaps outer all     minus 5
 ############    application settings   ############
 
 # assign applications to specific workspace
-assign [class="(?i)(?:firefox)"] → 1
-assign [class="(?i)(?:geany)"]   → 2
-assign [class="(?i)(?:thunar)"]  → 3
+#assign [class="(?i)(?:firefox)"] → 1
+#assign [class="(?i)(?:geany)"]   → 2
+#assign [class="(?i)(?:thunar)"]  → 3
 
 # Open applications on specific workspaces
 assign [class="Termite|URxvt"] $ws1
@@ -336,6 +336,7 @@ for_window [class="Blueman-manager"] floating enable, move center
 for_window [class="Google-chrome" window_role="pop-up"] floating enable, move center
 for_window [class="Bitwarden"] floating enable, move center
 for_window [class="Gnome-calculator"] floating enable, move center
+for_window [class="(?i)xfce4"] floating enable, move center
 
 popup_during_fullscreen smart
 
