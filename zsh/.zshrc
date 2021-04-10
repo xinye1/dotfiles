@@ -113,8 +113,9 @@ source $ZSH/oh-my-zsh.sh
 # Load aliases
 [[ -f ~/.aliases ]] && source ~/.aliases
 
-#** kitty ***
 autoload -Uz compinit
 compinit
+#
+#** kitty ***
 # Completion
 #kitty + complete setup zsh | source /dev/stdin
