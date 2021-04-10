@@ -42,7 +42,7 @@ smart_borders on
 
 # font
 #font pango:monospace 11
-font pango:Roboto Condensed 11
+font pango:Roboto Condensed Regular 10
 
 # mod key used for most binds
 # Mod1 = Alt
