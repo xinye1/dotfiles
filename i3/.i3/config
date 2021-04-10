@@ -335,6 +335,7 @@ for_window [class="Xfburn"] floating enable
 for_window [class="Blueman-manager"] floating enable, move center
 for_window [class="Google-chrome" window_role="pop-up"] floating enable, move center
 for_window [class="Bitwarden"] floating enable, move center
+for_window [class="Gnome-calculator"] floating enable, move center
 
 popup_during_fullscreen smart
 
