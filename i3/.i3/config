@@ -116,8 +116,7 @@ exec --no-startup-id xautolock -time 10 -locker ~/.i3/scripts/matrixlock.sh
 #############         Bindings           ##################
 
 # kill focused window
-bindsym $Mod+q kill
-#bindsym $Mod+Shift+q kill
+bindsym $Mod+Shift+q kill
 #bindsym Mod1+q kill
 #bindsym Mod1+F4 kill
 
