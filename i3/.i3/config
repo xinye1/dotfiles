@@ -101,8 +101,8 @@ bar {
 
 # run with reload
 exec_always --no-startup-id xrdb -load ~/.Xresources
-exec_always --no-startup-id xrandr --output eDP1 --mode 2048x1152
 exec_always --no-startup-id sbxkb
+exec_always --no-startup-id xrandr --output eDP1 --mode 2048x1152
 
 # run once
 exec --no-startup-id xfsettingsd
