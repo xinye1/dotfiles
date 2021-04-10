@@ -7,6 +7,7 @@ echo "====== symlinks ======"
 ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
 ln -fs $HOME/dotfiles/zsh/.aliases $HOME/.aliases
 ln -fs $HOME/dotfiles/vim/.vimrc $HOME/.vimrc
+ln -fs $HOME/dotfiles/i3/.profile $HOME/.profile
 
 # oh-my-zsh
 ln -fs $HOME/dotfiles/zsh/.oh-my-zsh $HOME/.oh-my-zsh/oh-my-zsh.sh
