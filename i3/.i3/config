@@ -177,6 +177,8 @@ set $ws5 5
 set $ws6 6
 set $ws7 7
 set $ws8 8
+set $ws9 9
+set $ws10 "10  "
 
 # switch to workspace
 bindsym $Mod+1 workspace $ws1
@@ -187,6 +189,8 @@ bindsym $Mod+5 workspace $ws5
 bindsym $Mod+6 workspace $ws6
 bindsym $Mod+7 workspace $ws7
 bindsym $Mod+8 workspace $ws8
+bindsym $Mod+9 workspace $ws9
+bindsym $Mod+0 workspace $ws10
 
 # Move focused container to workspace
 bindsym $Mod+Ctrl+1 move container to workspace $ws1
@@ -197,6 +201,8 @@ bindsym $Mod+Ctrl+5 move container to workspace $ws5
 bindsym $Mod+Ctrl+6 move container to workspace $ws6
 bindsym $Mod+Ctrl+7 move container to workspace $ws7
 bindsym $Mod+Ctrl+8 move container to workspace $ws8
+bindsym $Mod+Ctrl+9 move container to workspace $ws9
+bindsym $Mod+Ctrl+0 move container to workspace $ws10
 
 # Move to workspace with focused container
 bindsym $Mod+Shift+1 move container to workspace $ws1; workspace $ws1
@@ -207,6 +213,8 @@ bindsym $Mod+Shift+5 move container to workspace $ws5; workspace $ws5
 bindsym $Mod+Shift+6 move container to workspace $ws6; workspace $ws6
 bindsym $Mod+Shift+7 move container to workspace $ws7; workspace $ws7
 bindsym $Mod+Shift+8 move container to workspace $ws8; workspace $ws8
+bindsym $Mod+Shift+9 move container to workspace $ws9; workspace $ws9
+bindsym $Mod+Shift+0 move container to workspace $ws10; workspace $ws10
 
 ##############     Reload configs           ################
 
@@ -237,8 +245,8 @@ bindsym $Mod+Down  focus down
 bindsym $Mod+Up    focus up
 bindsym $Mod+Right focus right
 
-bindsym $Mod+p focus parent
-bindsym $Mod+c focus child
+#bindsym $Mod+p focus parent
+#bindsym $Mod+c focus child
 
 # move focused window
 bindsym $Mod+Shift+$left  move left  10px
@@ -315,6 +323,7 @@ assign [class="Termite|URxvt"] $ws1
 assign [class="Google-chrome"] $ws2
 assign [class="RStudio"] $ws3
 assign [class="Code"] $ws4
+assign [class="Thunar"] $ws10
 
 # focus, floating, & sticky
 # Open specific applications in floating mode
@@ -329,7 +338,7 @@ for_window [class="Lxappearance"] floating enable sticky enable border normal
 for_window [class="Nitrogen"] floating enable sticky enable border normal
 for_window [class="Pavucontrol"] floating enable
 for_window [class="(?i)(?:qt5ct|pinentry)"]          floating enable, focus
-for_window [title="(?i)(?:copying|deleting|moving)"] floating enable
+for_window [title="(?i)(?:copying|deleting|moving|configuration)"] floating enable
 for_window [window_role="(?i)(?:pop-up|setup)"]      floating enable
 for_window [class="(?i)virtualbox"] floating enable border normal
 for_window [class="Xfburn"] floating enable
@@ -344,3 +353,9 @@ for_window [class="fcitx5-config-qt"] floating enable, move center
 
 popup_during_fullscreen smart
 
+
+#############    custom keyboard shortcuts   ############
+
+# flameshot
+bindsym $Mod+p                exec flameshot gui
+bindsym $Mod+Shift+p          exec flameshot full -c
