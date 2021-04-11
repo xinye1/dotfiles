@@ -20,6 +20,11 @@ sudo pacman -S --noconfirm \
   cmatrix \
   ttf-cascadia-code \
   ttf-roboto \
+  flameshot \
+  fcitx5 \
+  fcitx5-gtk \
+  fcitx5-chinese-addons \
+  fcitx5-configtool \
   gcc-fortran # R dependency
 
 baph -inN \
