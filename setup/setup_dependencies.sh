@@ -25,6 +25,7 @@ sudo pacman -S --noconfirm \
   fcitx5-gtk \
   fcitx5-chinese-addons \
   fcitx5-configtool \
+  w3m \ # image display (in ranger)
   gcc-fortran # R dependency
 
 baph -inN \
