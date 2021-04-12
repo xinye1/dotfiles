@@ -4,6 +4,7 @@ timedatectl set-ntp true
 # ===== profile ======
 ranger --copy-config=all
 sed -i 's/set show_hidden false/set show_hidden true/g' ~/.config/ranger/rc.conf
+sed -i 's/set preview_images false/set preview_images true/g' ~/.config/ranger/rc.conf
 
 # ===== picom ======
 sed -i 's/fading = false;/fading = true;/g' ~/.config/picom.conf
