@@ -346,7 +346,7 @@ for_window [class="Blueman-manager"] floating enable, move center
 for_window [class="Google-chrome" window_role="pop-up"] floating enable, move center
 for_window [class="Bitwarden"] floating enable, move center
 for_window [class="Gnome-calculator"] floating enable, move center
-for_window [class="zoom"] floating enable, move center
+for_window [class="zoom" instance="zoom"] floating enable, move center
 for_window [class="(?i)xfce4"] floating enable, move center
 for_window [class="fcitx5-config-qt"] floating enable, move center
 
