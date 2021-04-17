@@ -1,22 +1,16 @@
 #! /usr/bin/bash
 
-export I3_HOME="$HOME/.config/i3"
-
 echo "====== symlinks ======"
 # HOME
 ln -fs $HOME/dotfiles/zsh/.zshrc $HOME/.zshrc
 ln -fs $HOME/dotfiles/zsh/.aliases $HOME/.aliases
 ln -fs $HOME/dotfiles/vim/.vimrc $HOME/.vimrc
-ln -fs $HOME/dotfiles/i3/.profile $HOME/.profile
+
+# xfce
+ln -fs $HOME/dotfiles/xfce/whiskermenu-1.rc $HOME/.config/xfce4/panel/whiskermenu-1.rc
 
 # oh-my-zsh
 ln -fs $HOME/dotfiles/zsh/.oh-my-zsh $HOME/.oh-my-zsh/oh-my-zsh.sh
-
-# i3
-ln -fs $HOME/dotfiles/i3/.i3/config $I3_HOME/config
-ln -fs $HOME/dotfiles/i3/.i3/i3blocks.config $I3_HOME/i3blocks.config
-mkdir -p $I3_HOME/scripts
-ln -fs $HOME/dotfiles/scripts/matrixlock.sh $I3_HOME/scripts/matrixlock.sh
 
 # rofi
 mkdir -p $HOME/.config/rofi
@@ -33,12 +27,5 @@ ln -fs $HOME/dotfiles/lsd/.config/lsd/config.yaml $HOME/.config/lsd/config.yaml
 mkdir -p $HOME/.config/termite
 ln -fs $HOME/dotfiles/termite/.config/termite/config $HOME/.config/termite/config
 
-# picom
-#mkdir -p $HOME/.config/picom
-#ln -fs $HOME/dotfiles/picom/.config/picom/picom.conf $HOME/.config/picom.conf
-
 # dunst
 ln -fs $HOME/dotfiles/dunst/.config/dunst/dunstrc $HOME/.config/dunst/dunstrc
-
-# restart i3
-i3-msg restart

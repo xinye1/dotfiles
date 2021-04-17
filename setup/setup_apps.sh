@@ -1,13 +1,12 @@
 #! /usr/bin/bash
 
 echo "====== installing R ======"
-#sudo pacman -S --noconfirm r
+sudo pacman -S --noconfirm r code
 
 echo "====== installing Chrome and stuff ======"
 baph -inN \
   google-chrome \
-  visual-studio-code-bin #\
-  #rstudio-desktop-bin
+  rstudio-desktop-bin
 
 # use Intel MKL for R
 #if
