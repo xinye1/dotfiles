@@ -1,0 +1,30 @@
+# Starship prompt — https://starship.rs
+#
+# Stowed to ~/.config/starship.toml, which is the path starship reads by default;
+# ~/.bashrc activates it with `eval "$(starship init bash)"`. No STARSHIP_CONFIG needed.
+#
+# Only deviations from the defaults live here. Useful for working out what the
+# defaults actually are, rather than trusting the docs:
+#
+#   starship print-config    # defaults merged with this file, fully computed
+#   starship explain         # why each module is rendering in the current directory
+#   starship timings         # per-module cost (attributes start-up to the first module)
+
+"$schema" = 'https://starship.rs/config-schema.json'
+
+[python]
+# The default `detect_extensions = ['py', 'ipynb']` shows the 🐍 in any directory
+# holding a single stray script — it fired in ~/.claude on statusline.py alone.
+# Clearing the extension triggers falls back to detect_files only (pyproject.toml,
+# requirements.txt, setup.py, Pipfile, .python-version, tox.ini, __init__.py),
+# i.e. directories that are actually Python projects.
+#
+# Measured effect: still shows in services/trading-engine and services/platform-data
+# (both carry pyproject.toml + uv.lock); now hidden at the trading-platform-v2 root,
+# in scripts/, and in ~/.claude.
+detect_extensions = []
+
+# uv puts its virtualenv in ./.venv, which is not a default trigger. Adding it means
+# `uv sync` in an otherwise bare directory still surfaces the interpreter and the
+# venv name (the default format already renders `(venv)` when the module shows).
+detect_folders = ['.venv']
