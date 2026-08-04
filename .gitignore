@@ -1,0 +1,2 @@
+# Claude Code local state (machine-specific permissions, absolute paths)
+.claude/settings.local.json
