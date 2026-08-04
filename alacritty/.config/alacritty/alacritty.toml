@@ -2,3 +2,14 @@
 import = [
     "~/.config/alacritty/themes/themes/gruvbox_material_hard_dark.toml"
 ]
+
+[font.offset]
+x = 0
+y = 0
+
+[window]
+decorations = "None"
+
+[window.padding]
+x = 8
+y = 8
