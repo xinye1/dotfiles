@@ -64,18 +64,3 @@ nmap <Leader>P "+P
 " augroup END
 
 
-
-"==== Vim packages =====
-" lightline
-set laststatus=2   " always show status line
-set noshowmode
-let g:lightline = {
-      \ 'active': {
-      \   'left': [ [ 'mode', 'paste' ],
-      \             [ 'gitbranch', 'readonly', 'filename', 'modified' ] ]
-      \ },
-      \ 'component_function': {
-      \   'gitbranch': 'FugitiveHead'
-      \ },
-      \ }
-
