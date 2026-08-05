@@ -10,6 +10,14 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   where the symlink actually landed (`ls -la ~/repos/`, `ls -la ~/.config/<app>`), not by exit code.
 - Package contents are paths relative to `$HOME`: `foo/.config/foo/x.toml` → `~/.config/foo/x.toml`.
   `foo/x.toml` → `~/x.toml`. Getting this wrong is silent.
+- **Folded vs unfolded dirs.** If the target dir doesn't exist, stow links the whole directory
+  (`~/.config/waybar` → package dir) and new files in the package appear with no further action.
+  If it already exists as a real dir, stow links file-by-file and a *newly added* file needs
+  `stow -R <pkg>` — it is silently absent until then. Check with `ls -la ~/.config | grep <pkg>`:
+  a symlink means folded, a real dir means `-R` is required. To fold one that isn't:
+  `stow -D <pkg> && rmdir <the now-empty target dirs> && stow <pkg>`.
+- Don't fold a dir that a tool writes into or that holds untracked content — `~/.config/alacritty`
+  stays unfolded because the `themes` clone lives inside it, so alacritty does need `-R`.
 
 ## Verify
 
