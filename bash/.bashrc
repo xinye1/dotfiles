@@ -26,17 +26,10 @@ alias ll='ls -alh --color=auto'
 alias grep='grep --color=auto'
 
 # Carried over from the old zsh package (dropped in 3c3cfc0):
-alias ..='cd ..'
 alias mkd='mkdir -pv'
 alias pm='sudo pacman'
 alias vimrc='vim ~/.vimrc'
 alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
-
-# Also from the old .aliases, but they need `lsd`, which is not installed:
-# alias ls='lsd'
-# alias ll='lsd -l'
-# alias lla='ll -Ah'
-# alias lt='ls --tree'
 
 # --- mise: per-project tool versions ---------------------------------------
 # Applies a repo's .mise.toml pins on cd (trading-platform-v2 pins python 3.12,
