@@ -132,6 +132,14 @@ scheme with a `#242933` background and warm yellow/green accents. **Nord** is `#
 blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml` and
 `nord_light.toml` — three of those are wrong for this setup.
 
+**Two exceptions where "Nordic" is nonetheless correct**, and both will look like mistakes later:
+
+- The **GTK theme** is genuinely named `Nordic` (AUR `nordic-theme`). It implements Nord. There is
+  no GTK theme called "Nord".
+- **papirus-folders** calls its Nord folder colour `nordic`, and rejects `nord` outright with
+  *"Unable to find 'nord' color"*. The icons really are Nord — `folder-nordic.svg` is drawn in
+  `#5E81AC` (nord10), `#81A1C1` (nord9) and `#ECEFF4` (nord6). Use `-C nordic`.
+
 ---
 
 ## 4. Package manifest
@@ -160,7 +168,7 @@ blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml`
 |---|---|---|
 | `nordic-theme` | **AUR** | The GTK2/3/4 Nord theme. `/usr/share/themes/Nordic`. Nothing in the base install provides a Nord GTK theme. |
 | `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
-| `papirus-folders` | **AUR** | Recolours Papirus folder icons to Nord. Needs `papirus-folders -C nord -t Papirus-Dark` run once |
+| `papirus-folders` | **AUR** | Recolours Papirus folder icons to Nord. Needs `sudo papirus-folders -C nordic -t Papirus-Dark` run once |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `kanshi` | repo | Display hotplug profiles |
 
@@ -364,7 +372,7 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 
 ```sh
 # Nord-tint the Papirus folder icons (one-off, writes into /usr/share/icons)
-papirus-folders -C nord -t Papirus-Dark
+sudo papirus-folders -C nordic -t Papirus-Dark
 
 # alacritty colour schemes — an untracked clone; alacritty.toml imports nord.toml from it
 git clone https://github.com/alacritty/alacritty-theme ~/.config/alacritty/themes

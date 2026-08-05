@@ -104,7 +104,7 @@ EndeavourOS Sway Community Edition already installs:
 ```sh
 sudo pacman -S --needed ttf-jetbrains-mono-nerd kanshi papirus-icon-theme
 yay -S nordic-theme papirus-folders
-papirus-folders -C nord -t Papirus-Dark   # one-off, recolours the folder icons
+sudo papirus-folders -C nordic -t Papirus-Dark   # one-off, recolours the folder icons
 ```
 
 * `nordic-theme` — the Nord GTK2/3/4 theme. Nothing in the base install provides one.

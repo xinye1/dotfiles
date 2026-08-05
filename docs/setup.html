@@ -518,7 +518,14 @@ footer a{color:var(--accent)}
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="p">❯</span> papirus-folders -C nord -t Papirus-Dark</pre>
+<pre><span class="p">❯</span> sudo papirus-folders -C nordic -t Papirus-Dark</pre>
+        </div>
+        <div class="callout">
+          <p><strong>Yes, <code>nordic</code> — not <code>nord</code>.</strong> papirus-folders
+          rejects <code>nord</code> outright. Despite the name the icons are genuine Nord:
+          <code>folder-nordic.svg</code> is drawn in <code>#5E81AC</code>, <code>#81A1C1</code> and
+          <code>#ECEFF4</code>. The GTK theme is likewise named <code>Nordic</code>. Run
+          <code>papirus-folders -l</code> to see the list.</p>
         </div>
       </div>
 
