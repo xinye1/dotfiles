@@ -10,6 +10,7 @@ set tabstop=2       " number of visual spaces per TAB
 set softtabstop=2   " number of spaces in tab when editing
 set shiftwidth=2    " Number of spaces to use for each step of (auto)indent.
 set expandtab       " tabs are spaces
+set laststatus=2    " let lightline status bar show up https://github.com/itchyny/lightline.vim 
 "
 ""==== UI config ====
 filetype plugin on	" enable plugin for filetypes

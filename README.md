@@ -65,3 +65,7 @@ so the package works on a machine where neither is installed yet.
   `~/.config/alacritty/themes` — `alacritty.toml` imports
   `themes/themes/nordic.toml` from it. Without it alacritty still starts, but logs
   a config error and falls back to the default colours.
+* [lightline](https://github.com/itchyny/lightline.vim) - vim' status bar.
+  Run `git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline`
+  to clone it.
+
