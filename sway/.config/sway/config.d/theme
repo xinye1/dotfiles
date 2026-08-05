@@ -1,20 +1,45 @@
 # Apply gtk theming
 exec_always ~/.config/sway/scripts/import-gsettings
 
-# Set inner/outer gaps
-gaps inner 2
-gaps outer 0
+# ==========================================================================
+# TUNING — the four knobs worth playing with. Edit, then $mod+Shift+c.
+# ==========================================================================
+#
+# gaps inner   space BETWEEN adjacent windows.        try 4 (tight) .. 16 (airy)
+# gaps outer   space around the edge of the workspace, on top of inner.
+#              Negative values are legal and pull windows back toward the edge.
+# default_border pixel N   border thickness in px. 1 is nearly invisible on a
+#              HiDPI panel at scale 2; 2 is the sweet spot; 3+ starts to shout.
+# smart_borders   see below.
+#
+# Live experiments without editing the file (they reset on reload):
+#   swaymsg gaps inner all set 12
+#   swaymsg gaps outer all set 6
+#   swaymsg border pixel 3          # focused window only
+#
+# Colours are further down, in the `client.*` block.
 
-# Hide titlebar on windows:
-default_border pixel 1
+gaps inner 8
+gaps outer 4
+
+# Border thickness. `pixel N` means "N px border, no titlebar" — using
+# `normal` instead would bring back a titlebar with the window title in it.
+default_border pixel 2
+default_floating_border pixel 2
+
+# smart_borders on = hide borders when a workspace holds only ONE window.
+# That is exactly the case in the screenshot that prompted this: a single
+# terminal, no border, and the bar and the window melting into each other
+# because both are nord0. Turned off so a window is always outlined.
+#   on       hide when only one window
+#   no_gaps  hide only when gaps are also zero
+#   off      always draw          <- current
+smart_borders off
 
 # Default Font. The Nerd Font variant, not plain "JetBrains Mono" — sway renders
 # window titles and the resize/mode indicator with this, and both can carry the
 # same glyphs waybar uses.
 font pango:JetBrainsMono Nerd Font 10
-
-# Thin borders:
-smart_borders on
 
 # Background: solid nord0.
 #
@@ -31,27 +56,48 @@ smart_borders on
 # when used. A swaybg instance will paint over this — `pkill swaybg` to undo.
 output * bg #2E3440 solid_color
 
+# Optional: a desktop slightly darker than the window background turns the gaps
+# into visible channels between tiles, instead of dead space the same colour as
+# everything else. Off by default because #272B33 is a darkened nord0 rather
+# than a real Nord value. Swap the line above for this one to try it:
+# output * bg #272B33 solid_color
+
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"
 for_window [shell="x_wayland"] title_format "%class - %title"
 
-# Nord. Replaces the stock EndeavourOS Dracula palette (#6272A4 / #282A36 /
-# #F8F8F2). Convention used across every config in this repo:
-#   nord8  #88C0D0  focus / active accent
-#   nord3  #4C566A  inactive but not idle
-#   nord1  #3B4252  unfocused chrome
-#   nord11 #BF616A  urgent / critical
-#   nord0  #2E3440  background      nord4 #D8DEE9  foreground
+# Window borders.
 #
-# Backgrounds are nord0 rather than matching the border colour: the stock config
-# set bground == border, which paints the whole titlebar area in the accent.
+# Only TWO of the five columns actually do anything here, because
+# `default_border pixel` means there is no titlebar to paint:
+#
+#   border        the thin outline around the window   <- this one
+#   bground       titlebar fill      (unused: no titlebar)
+#   text          titlebar text      (unused: no titlebar)
+#   indicator     edge showing where the NEXT split will open
+#   child_border  the outline around a container's children   <- and this one
+#
+# So to change what you see, change columns 1 and 5 together. The others are
+# left in place because sway's syntax requires all five.
+#
+# The brightness ladder, faint -> bright:
+#   unfocused         nord3  #4C566A   present but quiet
+#   focused_inactive  nord10 #5E81AC   focused on another output/container
+#   focused           nord8  #88C0D0   the one you're typing into
+#
+# unfocused was nord1 #3B4252, only one step off the nord0 background — which
+# is why inactive windows appeared to have no border at all. nord3 is the
+# faintest Nord value that still reads against nord0.
+#
+# To make inactive borders fainter still, step it down to #434C5E (nord2);
+# to make the active one louder, #8FBCBB (nord7) or #ECEFF4 (nord6).
 #
 # class                 border  bground text    indicator child_border
 client.focused          #88C0D0 #2E3440 #ECEFF4 #8FBCBB   #88C0D0
-client.focused_inactive #4C566A #2E3440 #D8DEE9 #4C566A   #4C566A
-client.unfocused        #3B4252 #2E3440 #4C566A #3B4252   #3B4252
+client.focused_inactive #5E81AC #2E3440 #D8DEE9 #5E81AC   #5E81AC
+client.unfocused        #4C566A #2E3440 #4C566A #4C566A   #4C566A
 client.urgent           #BF616A #BF616A #ECEFF4 #BF616A   #BF616A
-client.placeholder      #3B4252 #2E3440 #D8DEE9 #3B4252   #3B4252
+client.placeholder      #4C566A #2E3440 #D8DEE9 #4C566A   #4C566A
 client.background       #2E3440
 
 #

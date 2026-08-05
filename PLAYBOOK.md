@@ -463,6 +463,40 @@ inside a commented-out layout-toggle example in `config.d/input`. The module sti
 30-second `interval`, so this is latent rather than broken. If you ever enable layout switching,
 uncomment that example and the module becomes instant.
 
+### 9.8 Border and gap changes do not fully apply on reload
+
+Three separate surprises, all hit while tuning the borders:
+
+- **`default_border` only affects windows created after the reload.** Existing windows keep the
+  width they were born with, so a reload looks like it did nothing. Fix them in place:
+  ```sh
+  swaymsg '[title=".*"] border pixel 2'
+  ```
+- **Runtime `gaps` changes survive `swaymsg reload`.** Once you run `swaymsg gaps inner all set 20`,
+  that value sticks for existing workspaces; the config line only sets the default for new ones.
+  Reloading will *not* put it back. Reset explicitly:
+  ```sh
+  swaymsg gaps inner all set 8 && swaymsg gaps outer all set 4
+  ```
+  This makes live experimentation safe *and* confusing — you can end up convinced the config file
+  is being ignored.
+- **`smart_borders on` hides borders when a workspace holds one window** — which is precisely when
+  a maximised window and the bar most need distinguishing. Set to `off`.
+
+For a single window on a workspace, the visible margin is `outer + inner` (with `outer 4 inner 8`,
+measured 12 px on all sides).
+
+### 9.9 GTK apps need restarting after a theme change
+
+GTK3 apps read `settings.ini` at startup. A long-running app keeps its old theme indefinitely — a
+Thunar started before the retheme was still rendering light a day later, while a freshly launched
+GTK3 app picked up Nordic correctly. Diagnose by launching a *different* GTK3 app that was not
+already running; if the new one looks right, nothing is broken:
+
+```sh
+thunar -q && thunar &        # Thunar runs as a daemon; -q is the way to stop it
+```
+
 ---
 
 ## 10. Troubleshooting
@@ -483,6 +517,10 @@ uncomment that example and the module becomes instant.
 | Screen share / file picker misbehaves | Portal backend | `systemctl --user show-environment \| grep XDG_CURRENT`; §6.4 |
 | Background reverted to an image | azote | §9.3 |
 | Notification icons missing | mako `icon-path` | Must be a directory that exists |
+| Border width change ignored | Applies to new windows only | `swaymsg '[title=".*"] border pixel 2'`; §9.8 |
+| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 8`; §9.8 |
+| A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
+| One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
 | `$mod+Return` does nothing | `foot --server` not running | `pgrep -a foot` |
 
 ### Verification sweep
