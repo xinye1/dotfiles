@@ -10,6 +10,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bash`      | `~/.bashrc`                           |
 | `vim`       | `~/.vimrc`                            |
 | `alacritty` | `~/.config/alacritty/alacritty.toml`  |
+| `foot`      | `~/.config/foot/foot.ini`             |
 | `starship`  | `~/.config/starship.toml`             |
 | `waybar`    | `~/.config/waybar/config`             |
 
@@ -18,7 +19,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 ```sh
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
-stow bash vim alacritty starship      # or one package at a time: stow vim
+stow bash vim alacritty foot starship  # or one package at a time: stow vim
 ```
 
 `.stowrc` in this repo sets `--target=~`, so stow links into `$HOME` regardless of
@@ -66,6 +67,12 @@ so the package works on a machine where neither is installed yet.
   `~/.config/alacritty/themes` — `alacritty.toml` imports
   `themes/themes/nordic.toml` from it. Without it alacritty still starts, but logs
   a config error and falls back to the default colours.
+* [foot](https://codeberg.org/dnkl/foot) — the terminal sway launches on
+  `mod+Return`. `~/.config/sway/config.d/default` sets `$term footclient` and
+  `autostart_applications` execs `foot --server`, so the daemon must be running
+  for the binding to work. `sudo pacman -S foot`. The `foot` package here is
+  self-contained — unlike `alacritty`, the Nordic palette is inlined rather than
+  imported from an untracked clone. Wayland-only, hence keeping `alacritty`.
 * [lightline](https://github.com/itchyny/lightline.vim) - vim' status bar.
   Run `git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline`
   to clone it.

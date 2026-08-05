@@ -18,7 +18,11 @@ export VISUAL="vim"
 # The AUR google-chrome package ships /usr/bin/google-chrome-stable only — there is
 # no bare `google-chrome`, so the old i3/.profile value would not resolve today.
 export BROWSER="google-chrome-stable"
-export TERMINAL="alacritty"
+# Matches what sway actually launches on mod+Return (`set $term footclient` in
+# ~/.config/sway/config.d/default). This said "alacritty" until the two were
+# reconciled; anything reading $TERMINAL was opening a different terminal to the
+# keybinding. alacritty stays installed for machines where foot can't run.
+export TERMINAL="foot"
 
 # --- Aliases ----------------------------------------------------------------
 alias ls='ls --color=auto'
