@@ -18,6 +18,27 @@ for_window [title="waybar_nmtui"] floating enable
 for_window [title="Save File"] floating enable
 for_window [app_id="firefox" title="Firefox — Sharing Indicator"] kill
 
+# Dropdown terminal, toggled by $mod+grave (see config.d/default). Launched as
+# `footclient --app-id dropdown`; parked in the scratchpad on creation so the
+# first press of the binding leaves it hidden until pressed again.
+for_window [app_id="dropdown"] floating enable, resize set width 80 ppt height 50 ppt, move position center, move scratchpad, scratchpad show
+
 # Inhibit idle
 for_window [app_id="firefox"] inhibit_idle fullscreen
 for_window [app_id="Chromium"] inhibit_idle fullscreen
+
+# Application placement
+#
+# `assign` acts at window creation and, unlike `for_window ... move to workspace`,
+# does not briefly flash the window on the current workspace first.
+#
+# Deliberately partial: only apps with a fixed home are listed. Pinning
+# everything makes the layout rigid and fights the scratchpad.
+assign [app_id="firefox"]        workspace number 2
+assign [app_id="google-chrome"]  workspace number 2
+assign [app_id="thunar"]         workspace number 4
+assign [app_id="pavucontrol"]    workspace number 5
+
+# app_id is Wayland-native; X11 apps under XWayland expose `class` instead.
+assign [class="Google-chrome"]   workspace number 2
+assign [class="Thunar"]          workspace number 4

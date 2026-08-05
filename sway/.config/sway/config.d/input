@@ -12,6 +12,15 @@ input type:touchpad {
 # Enable numlock by default
 input type:keyboard xkb_numlock enabled
 
+# Lid switch. The machine has a 0:5:Lid_Switch input that stock left unhandled,
+# so closing the lid left the internal panel enabled and rendering.
+#
+# --locked so it still works while gtklock is up; --reload so the binding
+# survives a config reload. Closing the lid with an external display attached
+# moves everything to that display rather than suspending.
+bindswitch --reload --locked lid:on  output eDP-1 disable
+bindswitch --reload --locked lid:off output eDP-1 enable
+
 # Set keyboard layout and variant based on current system settings
 exec_always {
     'swaymsg input type:keyboard xkb_layout "$(localectl status | grep "X11 Layout" | sed -e "s/^.*X11 Layout://")"'

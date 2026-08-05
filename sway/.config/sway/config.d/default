@@ -114,6 +114,24 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # Note: workspaces can have any name you want, not just numbers.
     # We just use 1-10 as the default.
 
+    # Pressing the current workspace's key again returns to the previous one,
+    # which makes $mod+<n> a toggle rather than a no-op.
+    workspace_auto_back_and_forth yes
+
+    # Jump back to the last workspace, regardless of number.
+    bindsym $mod+Tab workspace back_and_forth
+
+    # Move the whole workspace to another output.
+    #
+    # $mod+Ctrl+<vim key> is already taken by the resize bindings further down,
+    # hence the extra Shift here.
+    bindsym {
+        $mod+Ctrl+Shift+$left  move workspace to output left
+        $mod+Ctrl+Shift+$down  move workspace to output down
+        $mod+Ctrl+Shift+$up    move workspace to output up
+        $mod+Ctrl+Shift+$right move workspace to output right
+    }
+
 #
 # Layout stuff:
 #
@@ -153,6 +171,21 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # If there are multiple scratchpad windows, this command cycles through them.
     bindsym $mod+minus scratchpad show
 
+    # Dropdown terminal on $mod+`. A dedicated footclient with a known title,
+    # caught by the for_window rule in config.d/application_defaults and parked in
+    # the scratchpad. First press creates it, subsequent presses toggle it.
+    #
+    # `scratchpad show` on a title that does not exist yet is a no-op, so the
+    # `|| exec` fallback is what creates it the first time.
+    bindsym $mod+grave exec swaymsg '[app_id="dropdown"] scratchpad show' || footclient --app-id dropdown
+
+#
+# Gaps:
+#
+    # Toggle a roomier layout for screen sharing or screenshots. Toggling back
+    # returns to the `gaps inner 2` set in config.d/theme.
+    bindsym $mod+g gaps inner current toggle 12
+
 #
 # Resizing containers:
 #
@@ -168,6 +201,27 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
         $mod+ctrl+$down resize shrink height 10 px
         $mod+ctrl+$left resize grow width 10 px
     }
+
+    # A modal resize mode, for when the $mod+ctrl chords above get tiring.
+    # Escape or Return leaves the mode; the indicator is rendered by waybar's
+    # sway/mode module.
+    mode "resize" {
+        bindsym {
+            $left  resize shrink width  10 px
+            $down  resize grow   height 10 px
+            $up    resize shrink height 10 px
+            $right resize grow   width  10 px
+
+            Left   resize shrink width  10 px
+            Down   resize grow   height 10 px
+            Up     resize shrink height 10 px
+            Right  resize grow   width  10 px
+
+            Return mode "default"
+            Escape mode "default"
+        }
+    }
+    bindsym $mod+r mode "resize"
 
     # Resize floating windows with mouse scroll:
     bindsym --whole-window --border {
@@ -218,6 +272,9 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
 #
     # Snip a selection and pipe to swappy
     bindsym print exec grim -g "$(slurp)" - | swappy -f -
+    # Snip a selection straight to the clipboard, skipping the swappy editor —
+    # for when the screenshot is going immediately into a chat window.
+    bindsym Ctrl+Shift+Print exec grim -g "$(slurp)" - | wl-copy
     # Screenshot a window and pipe to swappy
     bindsym Ctrl+Print exec ~/.config/sway/scripts/screenshot_window.sh
     # Screenshot the current display and pipe to swappy

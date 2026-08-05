@@ -16,10 +16,20 @@ font pango:JetBrainsMono Nerd Font 10
 # Thin borders:
 smart_borders on
 
-# Set wallpaper. Replaces ~/.azotebg, which was an untracked loose script.
-# Note azote (the GUI wallpaper picker) rewrites ~/.azotebg when used, so if the
-# background ever reverts to an image, that is why.
-exec ~/.config/sway/scripts/wallpaper.sh
+# Background: solid nord0.
+#
+# Stock ran `exec ~/.azotebg`, an untracked loose script that pkill'd and
+# respawned swaybg pointing at a 3.3M png inside ~/.config/sway.
+#
+# sway implements `output bg` by spawning and owning a swaybg itself — so there
+# is still exactly one swaybg process, but sway replaces it on reload instead of
+# stacking duplicates, and there is no loose script or tracked binary involved.
+#
+# For an image instead:  output * bg ~/Pictures/wallpapers/<file> fill
+#
+# Note azote (the GUI wallpaper picker) rewrites ~/.azotebg and starts swaybg
+# when used. A swaybg instance will paint over this — `pkill swaybg` to undo.
+output * bg #2E3440 solid_color
 
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"

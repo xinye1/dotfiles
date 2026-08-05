@@ -1,0 +1,34 @@
+# kanshi — display arrangement profiles, applied on hotplug.
+#
+# Started from sway's config.d/autostart_applications. kanshi watches for output
+# changes and applies the first profile whose output list matches exactly what is
+# currently connected, so profiles are matched on the set of displays, not on a
+# name you pick.
+#
+# Identify a display with:
+#   swaymsg -t get_outputs | grep -E '"name"|"make"|"model"|"serial"'
+#
+# NOTE: only the laptop panel has been tested — it is the only display attached
+# to this machine so far. The docked profiles below are templates: the criteria
+# are wildcards, which will match any external display but cannot set a sensible
+# position or scale for one nobody has measured. Replace the wildcard with the
+# real make/model/serial once a monitor is actually plugged in.
+
+# Undocked: laptop panel only. This is the verified profile.
+profile laptop {
+    output eDP-1 enable scale 2 position 0,0
+}
+
+# Docked, external to the right of the laptop panel.
+# 1920 is the *logical* width of eDP-1 (3840 physical at scale 2) — kanshi
+# positions in logical pixels, so getting this wrong overlaps the two outputs.
+profile docked-right {
+    output eDP-1 enable scale 2 position 0,0
+    output "*" enable position 1920,0
+}
+
+# Docked with the lid shut: external only.
+# profile docked-closed {
+#     output eDP-1 disable
+#     output "*" enable position 0,0
+# }

@@ -8,9 +8,49 @@ exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CU
 exec hash dbus-update-activation-environment 2>/dev/null && \
      dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
 
+# XDG_CURRENT_DESKTOP is empty in this session — greetd does not set it and the
+# stock config never did, so the two lines above have been importing an empty
+# value. xdg-desktop-portal chooses its backend from this variable, and with
+# xdg-desktop-portal-{gtk,wlr} both installed the choice was arbitrary; screen
+# sharing and file pickers worked by luck rather than by configuration.
+#
+# It is set explicitly rather than exported: `exec export FOO=bar` would run in a
+# throwaway subshell and change nothing. Portals are dbus-activated, so the dbus
+# activation environment is the one that actually decides the backend.
+#
+# This does NOT put the variable in sway's own environment, so plain children
+# like waybar still will not see it. The complete fix belongs at session start —
+# launch sway as `env XDG_CURRENT_DESKTOP=sway sway` from greetd. See PLAYBOOK.md.
+# exec_always rather than exec: setting an environment variable is idempotent, and
+# exec would only run at sway startup, leaving a reload unable to repair it.
+exec_always systemctl --user set-environment XDG_CURRENT_DESKTOP=sway
+exec_always dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP=sway
+
 # Idle configuration
-exec swayidle idlehint 1
-exec_always swayidle -w before-sleep "gtklock -d"
+#
+# Two fixes over stock. First, `exec_always swayidle ...` re-ran on every
+# `swaymsg reload` without killing the previous instance — this had accumulated
+# roughly forty live swayidle processes, every one of them racing to lock the
+# screen. The pkill makes the exec_always idempotent. Check with:
+#   pgrep -xc swayidle     # must be 1
+#
+# Second, stock had `before-sleep` only: no timeout clauses at all, so the screen
+# never locked or blanked on idle no matter how long the machine sat unattended.
+#   300s  lock
+#   600s  screen off (and back on when input resumes)
+#
+# idlehint is folded into this single invocation rather than left as the separate
+# `exec swayidle idlehint 1` stock used: pkill -x swayidle would otherwise kill
+# that process too on every reload and never bring it back.
+exec_always pkill -x swayidle; swayidle -w idlehint 300 \
+    timeout 300 'gtklock -d' \
+    timeout 600 'swaymsg "output * dpms off"' \
+        resume 'swaymsg "output * dpms on"' \
+    before-sleep 'gtklock -d'
+
+# Output hotplug. kanshi applies the profile in ~/.config/kanshi/config that
+# matches the currently connected displays. Same pkill reasoning as swayidle.
+exec_always pkill -x kanshi; kanshi
 
 # Desktop notifications
 exec mako
