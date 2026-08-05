@@ -28,7 +28,13 @@
         "disable-scroll": true,
         "all-outputs": true,
         "format": "{icon}",
+        // 1 and 2 were missing, so they fell through {icon} to the raw workspace
+        // name while 3-10 rendered from this map. Identical output either way for
+        // numeric workspaces, but the inconsistency bites the moment a workspace
+        // gets a non-numeric name.
         "format-icons": {
+            "1": "1",
+            "2": "2",
             "3": "3",
             "4": "4",
             "5": "5",
@@ -36,7 +42,8 @@
             "7": "7",
             "8": "8",
             "9": "9",
-            "10": "10"
+            "10": "10",
+            "default": "󰝤"
         }
     },
 
@@ -171,12 +178,15 @@
         "tooltip-format": " {:%A %d/%m}\n\n<tt>{calendar}</tt>",
         "calendar": {
             "on-scroll": 1,
+            // Nord. These were a pastel/pink one-off (#ffead3, #ecc6d9, #99ffdd,
+            // #ffcc66, #ff6699) unrelated to anything else on the desktop — the
+            // tooltip was the single loudest palette break in the whole setup.
             "format": {
-                "months":     "<span color='#ffead3'><b>{}</b></span>",
-                "days":       "<span color='#ecc6d9'><b>{}</b></span>",
-                "weeks":      "<span color='#99ffdd'><b>W{}</b></span>",
-                "weekdays":   "<span color='#ffcc66'><b>{}</b></span>",
-                "today":      "<span color='#ff6699'><b><u>{}</u></b></span>"
+                "months":     "<span color='#88C0D0'><b>{}</b></span>",
+                "days":       "<span color='#D8DEE9'><b>{}</b></span>",
+                "weeks":      "<span color='#4C566A'><b>W{}</b></span>",
+                "weekdays":   "<span color='#81A1C1'><b>{}</b></span>",
+                "today":      "<span color='#EBCB8B'><b><u>{}</u></b></span>"
             },
         },
         "actions": {

@@ -1,13 +1,21 @@
+/* nwg-drawer — the application grid on $mod+Shift+d.
+ *
+ * Nord. The stock sheet was already half-Nord (#eceff4, #2e3440, #3b4252) with a
+ * purple body — rgba(38,18,57,.9) — and a purple hover, rgba(127,63,191,.4).
+ * Those two purples are gone; everything below is on-palette. */
+
 window {
-    background-color: rgba (38, 18, 57, 0.9);
-    color: #eceff4;
+    background-color: rgba (46, 52, 64, 0.9);   /* nord0 */
+    color: #eceff4;                             /* nord6 */
     border-radius: 30px
 }
 
 /* search entry */
 entry {
     box-shadow: 0 0 6px 5px #2e3440;
-    background-color: rgba (0, 0, 0, 0.5)
+    background-color: rgba (59, 66, 82, 0.6);   /* nord1 */
+    color: #eceff4;
+    border: 1px solid #4c566a
 }
 
 button, image {
@@ -18,8 +26,8 @@ button, image {
 }
 
 button:hover {
-    background-color: rgba (127, 63, 191, .4);
-    box-shadow: 0 0 6px 5px #190C26
+    background-color: rgba (136, 192, 208, .3); /* nord8 */
+    box-shadow: 0 0 6px 5px #2e3440
 }
 
 /* in case you wanted to give category buttons a different look */
@@ -29,10 +37,10 @@ button:hover {
 
 #pinned-box {
     padding-bottom: 1px;
-    border-bottom: 1px solid gray
+    border-bottom: 1px solid #4c566a           /* nord3, was `gray` */
 }
 
 #files-box {
     padding: 1px;
-    border: 1px solid gray
+    border: 1px solid #4c566a
 }

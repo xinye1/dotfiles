@@ -7,31 +7,58 @@
  * =========================================================================== */
 
 /* -----------------------------------------------------------------------------
+ * Nord palette
+ *
+ * The full 16 colours are defined even where unused, so that adding a module
+ * later means picking an existing name rather than inventing another hex. The
+ * previous @highlight #685878 / @base1 #19191e were one-offs that matched
+ * nothing else on the desktop.
+ *
+ * Role convention, shared with sway's config.d/theme and every other config here:
+ *   nord8  focus / active accent      nord3  inactive
+ *   nord13 warning                    nord11 critical / urgent
+ * -------------------------------------------------------------------------- */
+
+@define-color nord0  #2E3440;   /* background          */
+@define-color nord1  #3B4252;   /* elevated background */
+@define-color nord2  #434C5E;   /* selection          */
+@define-color nord3  #4C566A;   /* inactive / muted   */
+@define-color nord4  #D8DEE9;   /* foreground         */
+@define-color nord5  #E5E9F0;
+@define-color nord6  #ECEFF4;   /* bright foreground  */
+@define-color nord7  #8FBCBB;
+@define-color nord8  #88C0D0;   /* primary accent     */
+@define-color nord9  #81A1C1;
+@define-color nord10 #5E81AC;
+@define-color nord11 #BF616A;   /* critical / urgent  */
+@define-color nord12 #D08770;
+@define-color nord13 #EBCB8B;   /* warning            */
+@define-color nord14 #A3BE8C;
+@define-color nord15 #B48EAD;
+
+/* -----------------------------------------------------------------------------
  * Keyframes
  * -------------------------------------------------------------------------- */
 
-@define-color highlight #685878 ;
-@define-color base1  #19191e ;
-
 @keyframes blink-warning {
     70% {
-        color: white;
+        color: @nord6;
     }
 
     to {
-        color: white;
-        background-color: orange;
+        color: @nord0;
+        background-color: @nord13;
     }
 }
 
 @keyframes blink-critical {
     70% {
-      color: white;
+      color: @nord6;
     }
 
     to {
-        color: white;
-        background-color: red;
+        color: @nord6;
+        background-color: @nord11;
     }
 }
 
@@ -48,9 +75,12 @@
 /* The whole bar */
 #waybar {
     background: transparent;
-    color: #e3e3ea;
-    background-color: @base1;
-    font-family: JetBrainsMono;
+    color: @nord4;
+    background-color: @nord0;
+    /* The Nerd Font family, not plain "JetBrainsMono". Every icon in config is a
+       Nerd Font glyph; with the unpatched family they render only via a
+       fontconfig fallback to Symbols Nerd Font, which works until it doesn't. */
+    font-family: "JetBrainsMono Nerd Font";
     font-size: 12px;
     /* Avoid rounded borders under each workspace name */
     border: none;
@@ -82,6 +112,7 @@
     margin-right:5px;
     margin-top:8px;
     margin-bottom:5px;
+    color: @nord8;
 }
 
 /* #workspaces {
@@ -90,25 +121,32 @@
 
 #workspaces button {
     border-radius: 5px;
-    color: #eceff4;
+    color: @nord3;
     padding: 1px 6px;
     margin-right: 2px;
     margin-left: 2px;
 }
 
+/* Occupied but not focused: readable, still clearly not the active one */
+#workspaces button.visible,
+#workspaces button.persistent {
+    color: @nord4;
+}
+
 #workspaces button.focused {
-    border: 1px solid #d8dee9;
+    border: 1px solid @nord8;
+    color: @nord8;
 }
 
 #workspaces button.urgent {
-    border-color: #c9545d;
-    color: #c9545d;
+    border-color: @nord11;
+    color: @nord11;
 }
 
 #mode {
-    background: @highlight;
+    background: @nord10;
     border-bottom: 3px transparent;
-    color:white;
+    color: @nord6;
     /* Equal side margins, or the module sits off-centre in the vertical bar */
     margin-left: 5px;
     margin-right: 5px;
@@ -119,17 +157,21 @@
     font-weight: bold;
 }
 
+#idle_inhibitor.activated {
+    color: @nord13;
+}
+
 /* Class comes from the JSON that scripts/netspeed.sh prints */
 #custom-network.disconnected {
-    color: orange;
+    color: @nord11;
 }
 
 #cpu.warning {
-    color: orange;
+    color: @nord13;
 }
 
 #cpu.critical {
-    color: red;
+    color: @nord11;
 }
 
 #memory {
@@ -139,11 +181,11 @@
 }
 
 #memory.warning {
-    color: orange;
+    color: @nord13;
  }
 
 #memory.critical {
-    color: red;
+    color: @nord11;
     animation-name: blink-critical;
     animation-duration: 2s;
     padding-left:5px;
@@ -157,7 +199,7 @@
 }
 
 #pulseaudio.muted {
-    color: @highlight;
+    color: @nord3;
 }
 
 #battery {
@@ -166,12 +208,16 @@
     animation-direction: alternate;
 }
 
+#battery.charging {
+    color: @nord14;
+}
+
 #battery.warning {
-    color: orange;
+    color: @nord13;
 }
 
 #battery.critical {
-    color: red;
+    color: @nord11;
 }
 
 #battery.warning.discharging {
@@ -191,4 +237,5 @@
     margin-right:5px;
     margin-bottom:5px;
     font-size:15px;
+    color: @nord11;
 }

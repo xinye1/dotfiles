@@ -8,26 +8,41 @@ gaps outer 0
 # Hide titlebar on windows:
 default_border pixel 1
 
-# Default Font
-font pango:Noto Sans Regular 10
+# Default Font. The Nerd Font variant, not plain "JetBrains Mono" — sway renders
+# window titles and the resize/mode indicator with this, and both can carry the
+# same glyphs waybar uses.
+font pango:JetBrainsMono Nerd Font 10
 
 # Thin borders:
 smart_borders on
 
-# Set wallpaper:
-exec ~/.azotebg
+# Set wallpaper. Replaces ~/.azotebg, which was an untracked loose script.
+# Note azote (the GUI wallpaper picker) rewrites ~/.azotebg when used, so if the
+# background ever reverts to an image, that is why.
+exec ~/.config/sway/scripts/wallpaper.sh
 
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"
 for_window [shell="x_wayland"] title_format "%class - %title"
 
+# Nord. Replaces the stock EndeavourOS Dracula palette (#6272A4 / #282A36 /
+# #F8F8F2). Convention used across every config in this repo:
+#   nord8  #88C0D0  focus / active accent
+#   nord3  #4C566A  inactive but not idle
+#   nord1  #3B4252  unfocused chrome
+#   nord11 #BF616A  urgent / critical
+#   nord0  #2E3440  background      nord4 #D8DEE9  foreground
+#
+# Backgrounds are nord0 rather than matching the border colour: the stock config
+# set bground == border, which paints the whole titlebar area in the accent.
+#
 # class                 border  bground text    indicator child_border
-client.focused          #6272A4 #6272A4 #F8F8F2 #6272A4   #6272A4
-client.focused_inactive #44475A #44475A #F8F8F2 #44475A   #44475A
-client.unfocused        #282A36 #282A36 #BFBFBF #282A36   #282A36
-client.urgent           #44475A #FF5555 #F8F8F2 #FF5555   #FF5555
-client.placeholder      #282A36 #282A36 #F8F8F2 #282A36   #282A36
-client.background       #F8F8F2
+client.focused          #88C0D0 #2E3440 #ECEFF4 #8FBCBB   #88C0D0
+client.focused_inactive #4C566A #2E3440 #D8DEE9 #4C566A   #4C566A
+client.unfocused        #3B4252 #2E3440 #4C566A #3B4252   #3B4252
+client.urgent           #BF616A #BF616A #ECEFF4 #BF616A   #BF616A
+client.placeholder      #3B4252 #2E3440 #D8DEE9 #3B4252   #3B4252
+client.background       #2E3440
 
 #
 # Status Bar:

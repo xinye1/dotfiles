@@ -13,3 +13,14 @@ gsettings set "$gnome_schema" gtk-theme "$gtk_theme"
 gsettings set "$gnome_schema" icon-theme "$icon_theme"
 gsettings set "$gnome_schema" cursor-theme "$cursor_theme"
 gsettings set "$gnome_schema" font-name "$font_name"
+
+# Added to the stock EndeavourOS script. libadwaita (GTK4) apps ignore gtk-theme
+# entirely and decide light vs dark from this key alone — without it they render
+# light against the Nord desktop no matter what settings.ini says. Derived from
+# gtk-application-prefer-dark-theme so the two can never disagree.
+prefer_dark="$(grep 'gtk-application-prefer-dark-theme' "$config" | cut -d'=' -f2)"
+if [ "$prefer_dark" = "1" ]; then
+    gsettings set "$gnome_schema" color-scheme "prefer-dark"
+else
+    gsettings set "$gnome_schema" color-scheme "default"
+fi

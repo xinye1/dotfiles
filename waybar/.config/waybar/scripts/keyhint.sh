@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Set the font
-font="JetBrainsMono"
+font="JetBrainsMono Nerd Font"
+# Nord nord8 for section headers (was a neutral #808080)
+header="#88C0D0"
 
 cheat=(
     --title="EndeavourOS Sway keybindings:"
@@ -17,10 +19,10 @@ cheat=(
     --column="<span font='$font Bold 18'>Binding</span>"
     --column-align=ccccc
     --header-align=ccccc
-    "<span font='$font 16' foreground='#808080'>GENERAL</span>"
+    "<span font='$font 16' foreground='$header'>GENERAL</span>"
     ""
     ""
-    "<span font='$font 16' foreground='#808080'>LAUNCHERS AND MENUS</span>"
+    "<span font='$font 16' foreground='$header'>LAUNCHERS AND MENUS</span>"
     ""    
     "<span font='$font 14'>Mod key (Super/Meta//󰘳)</span>"
     "<span font='$font 18'></span>"
@@ -45,7 +47,7 @@ cheat=(
     "<span font='$font 14'>Move a window</span>"
     "<span font='$font 14'> + Shift + </span><span font='$font 18'>󰜳 󰜰 󰜹 󰜶</span>"
     ""
-    "<span font='$font 16' foreground='#808080'>SCREENSHOTS</span>"
+    "<span font='$font 16' foreground='$header'>SCREENSHOTS</span>"
     ""
     "<span font='$font 14'>Move window with mouse</span>"
     "<span font='$font 14'> + 󰍽</span>"
@@ -65,7 +67,7 @@ cheat=(
     "<span font='$font 14'>Change workspace</span>"
     "<span font='$font 14'> + </span><span font='$font 18'>󰎦 󰎩 󰎬 󰎮</span><span font='$font 14'> ...</span>"
     ""
-    "<span font='$font 16' foreground='#808080'>CLIPBOARD MANAGER</span>"
+    "<span font='$font 16' foreground='$header'>CLIPBOARD MANAGER</span>"
     ""
     "<span font='$font 14'>Send window to workspace</span>"
     "<span font='$font 14'> + Shift + </span><span font='$font 18'>󰎦 󰎩 󰎬 󰎮</span><span font='$font 14'> ...</span>"
@@ -80,9 +82,9 @@ cheat=(
     "<span font='$font 14'>Toggle fullscreen</span>"
     "<span font='$font 14'> + </span><span font='$font 18'>󰯺</span>"
     ""
-    "<span font='$font 16' foreground='#808080'>APPLICATION SHORTCUTS</span>"
+    "<span font='$font 16' foreground='$header'>APPLICATION SHORTCUTS</span>"
     ""
-    "<span font='$font 16' foreground='#808080'>SCRATCHPAD</span>"
+    "<span font='$font 16' foreground='$header'>SCRATCHPAD</span>"
     ""
     ""
     "<span font='$font 14'>Launch the terminal</span>"

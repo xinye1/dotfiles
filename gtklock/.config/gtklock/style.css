@@ -1,43 +1,60 @@
+/* gtklock — the lock screen ($mod+f1, and on idle/before-sleep).
+ *
+ * Nord. Two changes from stock beyond the palette:
+ *
+ * 1. The background was url("EndeavourOS_Astronaut_SpaceWalk.png"), a 22M image
+ *    sitting in this config dir. It has been moved to ~/Pictures/wallpapers and
+ *    replaced with solid nord0 — matching the desktop background, and keeping a
+ *    22M binary out of the dotfiles repo.
+ * 2. The purple accents rgba(127,63,191,*) are replaced with nord8/nord10. */
+
 * {
   border: none;
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8)
 }
 window {
-  background-image: url("EndeavourOS_Astronaut_SpaceWalk.png");
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-color: black;
+  background-image: none;
+  background-color: #2e3440;
 }
 #clock-label {
-  font-family: JetBrainsMono;
+  font-family: "JetBrainsMono Nerd Font";
   font-size: 64.0px;
+  color: #eceff4;
 }
 #unlock-button {
   background: none;
-  background-color: rgba(127, 63, 191, 0.4);
-  border: 2px solid rgba(127, 63, 191, 0.5);
+  background-color: rgba(94, 129, 172, 0.4);   /* nord10 */
+  border: 2px solid rgba(136, 192, 208, 0.5);  /* nord8  */
+  border-radius: 10px;
+  color: #eceff4;
   padding: 4px;
 }
 #unlock-button:hover {
-  background-color: rgba(127, 63, 191, 0.9);
+  background-color: rgba(136, 192, 208, 0.9);
+  color: #2e3440;
 }
 #input-field {
   border-radius: 10px;
-  background-color: rgba(127, 127, 255, 0.1);
-  border: 2px solid rgba(127, 63, 191, 0.5);
+  background-color: rgba(59, 66, 82, 0.6);     /* nord1 */
+  border: 2px solid rgba(136, 192, 208, 0.5);
+  color: #eceff4;
   padding-top: 5px;
   padding-bottom: 5px;
 }
+#input-field:focus {
+  border: 2px solid #88c0d0;
+}
 #powerbar-box button {
   background: none;
-  background-color: rgba(127, 63, 191, 0.4);
-  border: 2px solid rgba(127, 63, 191, 0.5);
+  background-color: rgba(94, 129, 172, 0.4);
+  border: 2px solid rgba(136, 192, 208, 0.5);
   border-radius: 10px;
+  color: #eceff4;
   padding: 4px;
 }
 #powerbar-box button:hover {
-  background-color: rgba(127, 63, 191, 0.9);
+  background-color: rgba(136, 192, 208, 0.9);
+  color: #2e3440;
 }
 #input-label {
   font-size: 0px;
