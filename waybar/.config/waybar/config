@@ -1,0 +1,198 @@
+{
+    "layer": "top", // Waybar at top layer
+    "position": "left", // Waybar position (top|bottom|left|right)
+    // "height": 30, // Full screen height when commented (vertical bar)
+    // Vertical bar: `width` is only a *minimum* - GTK never shrinks the bar
+    // below the natural width of its widest module. Keep every module narrow
+    // (stacked "\n" formats, or "rotate": 270 for long text) or thi2 is ignored.
+    "width": 45,
+    "spacing": 0, // Gaps between modules (in px)
+    // See `man waybar` for more configuration options
+
+// Configuration - modules-left
+
+    "modules-left": [
+        "custom/launcher",
+        "sway/workspaces",
+        "sway/mode"//,
+        //"sway/window"
+    ],
+
+    "custom/launcher": {
+        "format":"<span size='x-large'></span>",
+        "on-click": "exec nwg-drawer",
+        "tooltip": false
+    },
+
+    "sway/workspaces": {
+        "disable-scroll": true,
+        "all-outputs": true,
+        "format": "{icon}",
+        "format-icons": {
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10"
+        }
+    },
+
+    "sway/mode": {
+        "format": "<span style=\"italic\">{}</span>",
+        "rotate": 270, // Text runs along the bar instead of across it
+        "tooltip": false
+    },
+
+//   "sway/window": {
+//      "format": "{}",
+//      //"all-outputs": true, // Active window shows only on active display when commented
+//      "rotate": 270, // Text runs along the bar instead of across it
+//      "max-length": 45 // Caps how far down the bar the title reaches
+//  },
+
+// Configuration - modules-center (empty: the vertical bar puts everything at
+// the top and bottom edges, so anything here just floats mid-screen)
+
+    "modules-center": [],
+
+// Configuration - modules-right
+
+    "modules-right": [
+        "custom/keyboard-layout",
+        "idle_inhibitor",
+        "cpu",
+        "memory",
+        "backlight",
+        "pulseaudio",
+        "battery",
+        "custom/network",
+        "clock",
+        "tray",
+        "custom/power"
+    ],
+
+    "custom/keyboard-layout": {
+      	"exec": "i=$(swaymsg -t get_inputs); echo \"\"; echo \"$i\" | grep -m1 'xkb_active_layout_name' | cut -d '\"' -f4",
+        "format": "",
+        // Interval set only as a fallback; use signal to update the module more immediately
+        "interval": 30,
+        // See example config for sending signal to Waybar in ~/.config/sway/config.d/input
+        "signal": 1,
+        "on-click": "~/.config/waybar/scripts/keyhint.sh"
+    },
+
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "",
+            "deactivated": ""
+        },
+        "tooltip-format-activated": "Idle Inhibitor Activated",
+        "tooltip-format-deactivated": "Idle Inhibitor Deactivated"
+    },
+
+    "cpu": {
+        "interval": 5,
+        "format": "\n{usage}%",
+        "justify": "center",
+        "states": {
+            "warning": 70,
+            "critical": 90,
+        },
+        "on-click": "footclient -T waybar_htop -e htop"
+    },
+    
+    "memory": {
+        "interval": 5,
+        "format": "\n{}%",
+        "justify": "center",
+        "on-click": "footclient -T waybar_htop -e htop",
+        "states": {
+            "warning": 70,
+            "critical": 90
+        }
+    },
+
+    "backlight": {
+        "format": "{icon}\n{percent}%",
+        "justify": "center",
+        "format-icons": ["󰄰", "󰪞", "󰪟", "󰪠", "󰪡", "󰪢", "󰪣", "󰪤", "󰪥"],
+        "tooltip-format": "Backlight (Scroll): {percent:}%",
+        "on-scroll-down": "brightnessctl -c backlight set 5%-",
+        "on-scroll-up": "brightnessctl -c backlight set +5%"
+    },
+
+    "pulseaudio": {
+        "scroll-step": 2,
+        "format": "{icon}\n{volume}%",
+        "justify": "center",
+        "format-muted":"󰝟",
+        "format-icons": {
+            "headphones": "",
+            "handsfree": "",
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
+            "default": ["󰕿", "󰖀", "󰕾"]
+        },
+        "on-click": "pavucontrol"
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon}\n{capacity}%",
+        "justify": "center",
+        "format-icons": ["", "", "", "", ""]
+    },
+
+    // Stands in for the built-in `network` module: same interval and click
+    // action, but the speeds are formatted to at most 4 characters so the
+    // module is never wider than the date. See scripts/netspeed.sh.
+    "custom/network": {
+        "exec": "~/.config/waybar/scripts/netspeed.sh",
+        "return-type": "json",
+        "interval": 2,
+        "format": "{}",
+        "justify": "center",
+        "on-click": "footclient -T waybar_nmtui -e nmtui"
+    },
+
+    "clock": {
+        "format": "󰅐\n{:%a\n%d/%m\n%H:%M}",
+        "justify": "center",
+        "format-alt": "󰅐\n{:%OI\n%M\n%p}",
+        "tooltip-format": " {:%A %d/%m}\n\n<tt>{calendar}</tt>",
+        "calendar": {
+            "on-scroll": 1,
+            "format": {
+                "months":     "<span color='#ffead3'><b>{}</b></span>",
+                "days":       "<span color='#ecc6d9'><b>{}</b></span>",
+                "weeks":      "<span color='#99ffdd'><b>W{}</b></span>",
+                "weekdays":   "<span color='#ffcc66'><b>{}</b></span>",
+                "today":      "<span color='#ff6699'><b><u>{}</u></b></span>"
+            },
+        },
+        "actions": {
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
+        },
+    },
+
+    "tray": {
+        "icon-size": 16,
+        "spacing":10
+     },
+
+    "custom/power": {
+        "format":"⏻",
+        "on-click": "exec ~/.config/sway/scripts/power_menu.sh",
+        "tooltip": false
+    },
+}

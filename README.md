@@ -11,6 +11,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `vim`       | `~/.vimrc`                            |
 | `alacritty` | `~/.config/alacritty/alacritty.toml`  |
 | `starship`  | `~/.config/starship.toml`             |
+| `waybar`    | `~/.config/waybar/config`             |
 
 ## Setup
 
