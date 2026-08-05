@@ -103,7 +103,7 @@ EndeavourOS Sway Community Edition already installs:
 
 ```sh
 sudo pacman -S --needed ttf-jetbrains-mono-nerd kanshi papirus-icon-theme
-yay -S nordic-theme papirus-folders-nord
+yay -S nordic-theme papirus-folders
 papirus-folders -C nord -t Papirus-Dark   # one-off, recolours the folder icons
 ```
 
@@ -111,6 +111,6 @@ papirus-folders -C nord -t Papirus-Dark   # one-off, recolours the folder icons
 * `ttf-jetbrains-mono-nerd` — the *patched* font. The base install ships only
   `ttf-nerd-fonts-symbols`, so waybar's icons render via a fontconfig fallback rather than by
   configuration. `fc-match "JetBrainsMono Nerd Font"` must not return NotoSansMono.
-* `papirus-icon-theme` + `papirus-folders-nord` — icons for mako, fuzzel and GTK.
+* `papirus-icon-theme` + `papirus-folders` — icons for mako, fuzzel and GTK.
 * `kanshi` — display hotplug profiles (`kanshi` package in this repo).
 

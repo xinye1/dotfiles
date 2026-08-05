@@ -160,7 +160,7 @@ blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml`
 |---|---|---|
 | `nordic-theme` | **AUR** | The GTK2/3/4 Nord theme. `/usr/share/themes/Nordic`. Nothing in the base install provides a Nord GTK theme. |
 | `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
-| `papirus-folders-nord` | **AUR** | Recolours Papirus folder icons to Nord. Needs `papirus-folders -C nord -t Papirus-Dark` run once |
+| `papirus-folders` | **AUR** | Recolours Papirus folder icons to Nord. Needs `papirus-folders -C nord -t Papirus-Dark` run once |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `kanshi` | repo | Display hotplug profiles |
 
