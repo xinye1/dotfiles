@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sway + Nord — setup</title>
+<style>
+/* ---------------------------------------------------------------------------
+   Nord. The palette is the subject of this page, so it is also its design
+   system: Polar Night grounds the dark theme, Snow Storm the light one.
+   Accent shifts nord8 -> nord10 on light ground, where the paler frost blue
+   would not hold contrast against near-white.
+   ------------------------------------------------------------------------ */
+:root {
+  --nord0:#2E3440; --nord1:#3B4252; --nord2:#434C5E; --nord3:#4C566A;
+  --nord4:#D8DEE9; --nord5:#E5E9F0; --nord6:#ECEFF4;
+  --nord7:#8FBCBB; --nord8:#88C0D0; --nord9:#81A1C1; --nord10:#5E81AC;
+  --nord11:#BF616A; --nord12:#D08770; --nord13:#EBCB8B; --nord14:#A3BE8C; --nord15:#B48EAD;
+
+  --bg:var(--nord0);
+  --surface:var(--nord1);
+  --surface-2:var(--nord2);
+  --line:var(--nord3);
+  --text:var(--nord4);
+  --text-bright:var(--nord6);
+  --text-dim:#8791a3;
+  --accent:var(--nord8);
+  --accent-ink:var(--nord0);
+  --ok:var(--nord14);
+  --warn:var(--nord13);
+  --bad:var(--nord11);
+
+  --mono:"JetBrains Mono","JetBrainsMono Nerd Font",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,"Noto Sans","Segoe UI",Roboto,sans-serif;
+
+  --step:clamp(.9rem,.85rem + .2vw,1rem);
+  --rail:16rem;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:var(--nord6);
+    --surface:#fff;
+    --surface-2:var(--nord5);
+    --line:#c6cedb;
+    --text:var(--nord1);
+    --text-bright:var(--nord0);
+    --text-dim:#697585;
+    --accent:var(--nord10);
+    --accent-ink:var(--nord6);
+    --ok:#4f7a3f; --warn:#9a7524; --bad:#a4474f;
+    color-scheme:light;
+  }
+}
+/* The viewer's toggle must win over the OS preference, in both directions. */
+:root[data-theme="light"] {
+  --bg:var(--nord6); --surface:#fff; --surface-2:var(--nord5); --line:#c6cedb;
+  --text:var(--nord1); --text-bright:var(--nord0); --text-dim:#697585;
+  --accent:var(--nord10); --accent-ink:var(--nord6);
+  --ok:#4f7a3f; --warn:#9a7524; --bad:#a4474f;
+  color-scheme:light;
+}
+:root[data-theme="dark"] {
+  --bg:var(--nord0); --surface:var(--nord1); --surface-2:var(--nord2); --line:var(--nord3);
+  --text:var(--nord4); --text-bright:var(--nord6); --text-dim:#8791a3;
+  --accent:var(--nord8); --accent-ink:var(--nord0);
+  --ok:var(--nord14); --warn:var(--nord13); --bad:var(--nord11);
+  color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:var(--step);line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- shell ---------- */
+.shell{max-width:80rem;margin:0 auto;padding:0 1.25rem 6rem;
+  display:grid;grid-template-columns:var(--rail) minmax(0,1fr);gap:3rem;align-items:start}
+@media (max-width:60rem){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0}
+  .rail{position:static !important;max-height:none !important;margin-bottom:2rem}
+}
+
+/* ---------- masthead ---------- */
+.masthead{grid-column:1/-1;padding:3.5rem 0 2rem;border-bottom:1px solid var(--line);margin-bottom:2.5rem}
+.eyebrow{
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 .9rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;
+}
+.eyebrow::before{content:"";width:1.75rem;height:1px;background:var(--accent);flex:none}
+h1{
+  font-family:var(--mono);font-weight:700;font-size:clamp(1.9rem,1.3rem + 2.6vw,3.2rem);
+  line-height:1.05;letter-spacing:-.03em;margin:0 0 .9rem;color:var(--text-bright);text-wrap:balance;
+}
+h1 .dim{color:var(--text-dim);font-weight:400}
+.lede{max-width:62ch;margin:0;color:var(--text);font-size:1.02rem}
+.lede a{color:var(--accent)}
+
+/* ---------- rail ---------- */
+.rail{position:sticky;top:1.5rem;max-height:calc(100vh - 3rem);overflow-y:auto;
+  font-family:var(--mono);font-size:.78rem}
+.rail h2{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);
+  margin:0 0 1rem;font-weight:500}
+.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.15rem}
+.rail a{
+  display:grid;grid-template-columns:1.25rem 1fr auto;gap:.6rem;align-items:center;
+  padding:.42rem .55rem;border-radius:4px;text-decoration:none;color:var(--text-dim);
+  border-left:2px solid transparent;transition:background .15s,color .15s;
+}
+.rail a:hover{background:var(--surface);color:var(--text)}
+.rail a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail a.done{color:var(--text)}
+.rail a.done .dot{background:var(--ok);border-color:var(--ok)}
+.rail a.active{border-left-color:var(--accent);color:var(--text-bright);background:var(--surface)}
+.dot{width:.5rem;height:.5rem;border-radius:50%;border:1px solid var(--line);
+  justify-self:center;transition:background .2s,border-color .2s}
+.rail .count{font-size:.68rem;color:var(--text-dim);font-variant-numeric:tabular-nums}
+
+.progress-wrap{margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--line)}
+.bar{height:3px;background:var(--surface-2);border-radius:2px;overflow:hidden}
+.bar span{display:block;height:100%;width:0;background:var(--accent);transition:width .35s ease}
+.progress-meta{display:flex;justify-content:space-between;align-items:baseline;
+  margin-top:.6rem;font-size:.72rem;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.reset{background:none;border:none;color:var(--text-dim);font-family:var(--mono);font-size:.7rem;
+  cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
+.reset:hover{color:var(--bad)}
+.reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- phases ---------- */
+.phase{margin-bottom:3.25rem;scroll-margin-top:1.5rem}
+.phase-head{display:flex;gap:.9rem;align-items:baseline;margin-bottom:.4rem}
+.phase-num{font-family:var(--mono);font-size:.78rem;color:var(--accent);
+  font-variant-numeric:tabular-nums;flex:none;padding-top:.15rem}
+h2.phase-title{font-family:var(--mono);font-size:1.3rem;font-weight:700;letter-spacing:-.02em;
+  margin:0;color:var(--text-bright);text-wrap:balance}
+.phase-note{margin:0 0 1.5rem 2.4rem;color:var(--text-dim);max-width:62ch;font-size:.94rem}
+@media (max-width:40rem){.phase-note{margin-left:0}}
+
+/* ---------- steps ---------- */
+.step{background:var(--surface);border:1px solid var(--line);border-radius:6px;
+  padding:1.1rem 1.25rem;margin-bottom:.85rem;transition:border-color .2s,opacity .2s}
+.step:has(input:checked){border-color:color-mix(in srgb,var(--ok) 45%,var(--line));opacity:.72}
+.step-top{display:grid;grid-template-columns:auto 1fr;gap:.8rem;align-items:start}
+.step label{display:contents;cursor:pointer}
+.step input{
+  appearance:none;width:1.05rem;height:1.05rem;margin:.28rem 0 0;flex:none;cursor:pointer;
+  border:1.5px solid var(--line);border-radius:3px;background:var(--bg);
+  display:grid;place-content:center;transition:background .15s,border-color .15s;
+}
+.step input:checked{background:var(--ok);border-color:var(--ok)}
+.step input:checked::after{
+  content:"";width:.55rem;height:.3rem;border:2px solid var(--bg);border-top:0;border-right:0;
+  transform:rotate(-45deg) translate(1px,-1px);
+}
+.step input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.step-title{font-weight:600;color:var(--text-bright);line-height:1.45}
+.step:has(input:checked) .step-title{text-decoration:line-through;text-decoration-color:var(--text-dim)}
+.step-body{grid-column:2;margin:.5rem 0 0;color:var(--text);font-size:.93rem;max-width:62ch}
+.step-body p{margin:0 0 .6rem}
+.step-body p:last-child{margin-bottom:0}
+.step-body code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);
+  padding:.1em .35em;border-radius:3px}
+.step-body a{color:var(--accent)}
+
+/* ---------- command blocks ---------- */
+.cmd{grid-column:2;margin-top:.75rem;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;overflow:hidden}
+.cmd-bar{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  padding:.35rem .5rem .35rem .75rem;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.cmd-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-dim)}
+.copy{
+  font-family:var(--mono);font-size:.7rem;background:transparent;color:var(--text-dim);
+  border:1px solid var(--line);border-radius:3px;padding:.2rem .55rem;cursor:pointer;
+  transition:color .15s,border-color .15s,background .15s;flex:none;
+}
+.copy:hover{color:var(--accent);border-color:var(--accent)}
+.copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.copy.copied{color:var(--accent-ink);background:var(--ok);border-color:var(--ok)}
+.cmd pre{margin:0;padding:.75rem .85rem;overflow-x:auto;font-family:var(--mono);
+  font-size:.82rem;line-height:1.7;color:var(--text-bright)}
+/* The prompt glyph matches the one fuzzel actually renders. */
+.cmd pre .p{color:var(--accent);user-select:none}
+.cmd pre .c{color:var(--text-dim)}
+
+/* ---------- verification ---------- */
+.verify{grid-column:2;margin-top:.75rem;border-left:2px solid var(--accent);
+  background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:0 5px 5px 0;
+  padding:.7rem .9rem}
+.verify-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 .45rem}
+.verify table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
+.verify td{padding:.22rem 0;vertical-align:top}
+.verify td:first-child{padding-right:1.25rem;color:var(--text-bright);white-space:nowrap}
+.verify td:last-child{color:var(--ok);text-align:right;font-variant-numeric:tabular-nums}
+.verify .scroll{overflow-x:auto}
+
+.callout{grid-column:2;margin-top:.75rem;padding:.7rem .9rem;border-radius:5px;font-size:.88rem;
+  border-left:2px solid var(--warn);background:color-mix(in srgb,var(--warn) 9%,transparent)}
+.callout.bad{border-left-color:var(--bad);background:color-mix(in srgb,var(--bad) 9%,transparent)}
+.callout strong{color:var(--text-bright)}
+.callout p{margin:0}
+.callout code{font-family:var(--mono);font-size:.86em}
+
+.tag{font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:.15rem .45rem;border-radius:3px;border:1px solid var(--line);color:var(--text-dim);
+  vertical-align:middle;margin-left:.5rem;white-space:nowrap}
+.tag.opt{border-color:color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--warn)}
+.tag.root{border-color:color-mix(in srgb,var(--bad) 50%,var(--line));color:var(--bad)}
+
+/* ---------- palette ---------- */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr));gap:.5rem;margin:0}
+.sw{border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--surface)}
+.sw .chip{height:3rem}
+.sw .meta{padding:.45rem .6rem;font-family:var(--mono);font-size:.7rem;line-height:1.5}
+.sw .name{color:var(--text-bright);display:block}
+.sw .hex{color:var(--text-dim);text-transform:uppercase;font-variant-numeric:tabular-nums}
+.sw .role{color:var(--accent);font-size:.65rem;display:block;margin-top:.15rem}
+
+/* ---------- reference table ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table.ref{width:100%;border-collapse:collapse;font-size:.86rem}
+table.ref th,table.ref td{padding:.55rem .8rem;text-align:left;border-bottom:1px solid var(--line);
+  vertical-align:top}
+table.ref tr:last-child td{border-bottom:0}
+table.ref th{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-dim);font-weight:500;white-space:nowrap}
+table.ref td:first-child{font-family:var(--mono);color:var(--text-bright);white-space:nowrap}
+table.ref td code{font-family:var(--mono);font-size:.9em}
+
+footer{grid-column:1/-1;margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:.74rem;color:var(--text-dim);
+  display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">EndeavourOS Sway CE <span>·</span> repeatable setup</p>
+    <h1>Sway&nbsp;+&nbsp;Nord<br><span class="dim">from a fresh install</span></h1>
+    <p class="lede">
+      Every step needed to rebuild this desktop on another machine, in order, with the checks that
+      prove each one worked. Progress is saved in this browser — close the tab, reboot, come back.
+      The reasoning behind each choice lives in <a href="../PLAYBOOK.md">PLAYBOOK.md</a>.
+    </p>
+  </header>
+
+  <nav class="rail" aria-label="Setup progress">
+    <h2>Sequence</h2>
+    <ol id="rail-list"></ol>
+    <div class="progress-wrap">
+      <div class="bar"><span id="bar-fill"></span></div>
+      <div class="progress-meta">
+        <span id="progress-text">0 of 0 done</span>
+        <button class="reset" id="reset-btn" type="button">reset</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- ============ 0 ============ -->
+    <section class="phase" id="p0" data-title="Prerequisites">
+      <div class="phase-head"><span class="phase-num">00</span><h2 class="phase-title">Prerequisites</h2></div>
+      <p class="phase-note">
+        This setup is a diff against EndeavourOS <strong>Sway Community Edition</strong>, not against
+        bare upstream sway. Starting anywhere else means the "what stock does" reasoning in the
+        playbook won't line up.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p0-install">
+            <span class="step-title">EndeavourOS Sway CE installed and booting to greetd</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p>You should be able to log in and get a bar, a terminal on <code>$mod+Return</code>, and a
+          launcher on <code>$mod+d</code> before changing anything.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p0-check">
+            <span class="step-title">Confirm what you're starting from</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> pgrep -x sway &amp;&amp; echo "sway running"
+<span class="p">❯</span> pgrep -xc swayidle          <span class="c"># stock leaks these — see phase 05</span>
+<span class="p">❯</span> ls /usr/share/themes</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 1 ============ -->
+    <section class="phase" id="p1" data-title="Packages">
+      <div class="phase-head"><span class="phase-num">01</span><h2 class="phase-title">Packages</h2></div>
+      <p class="phase-note">
+        Five additions over the CE base. The Nerd Font is the one people skip — everything appears to
+        work without it because fontconfig silently falls back.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p1-repo">
+            <span class="step-title">Install from the Arch repos<span class="tag root">sudo</span></span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> sudo pacman -S --needed ttf-jetbrains-mono-nerd kanshi papirus-icon-theme</pre>
+        </div>
+        <div class="step-body">
+          <p><code>ttf-jetbrains-mono-nerd</code> — the patched font. <code>kanshi</code> — display
+          hotplug profiles. <code>papirus-icon-theme</code> — icons for mako, fuzzel and GTK.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p1-aur">
+            <span class="step-title">Install from the AUR</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> yay -S nordic-theme papirus-folders-nord</pre>
+        </div>
+        <div class="step-body">
+          <p>Nothing in the base install provides a Nord GTK theme. <code>papirus-folders-nord</code>
+          supplies the recolouring script used in phase 05.</p>
+        </div>
+      </div>
+
+      <div class="verify">
+        <p class="verify-label">Check</p>
+        <div class="scroll">
+        <table>
+          <tr><td>fc-match "JetBrainsMono Nerd Font"</td><td>not NotoSansMono</td></tr>
+          <tr><td>ls /usr/share/themes/Nordic</td><td>exists</td></tr>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 2 ============ -->
+    <section class="phase" id="p2" data-title="Clone">
+      <div class="phase-head"><span class="phase-num">02</span><h2 class="phase-title">Clone the repo</h2></div>
+      <p class="phase-note">
+        Location matters. <code>.stowrc</code> pins <code>--target=~</code> precisely because the repo
+        does <em>not</em> live in <code>$HOME</code> — stow would otherwise link into the repo's parent.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p2-clone">
+            <span class="step-title">Clone to <code>~/repos/dotfiles</code></span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> mkdir -p ~/repos &amp;&amp; cd ~/repos
+<span class="p">❯</span> git clone https://github.com/xinye1/dotfiles.git
+<span class="p">❯</span> cd dotfiles</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p2-stow">
+            <span class="step-title">Install stow if it isn't already<span class="tag root">sudo</span></span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> sudo pacman -S --needed stow</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 3 ============ -->
+    <section class="phase" id="p3" data-title="Clear conflicts">
+      <div class="phase-head"><span class="phase-num">03</span><h2 class="phase-title">Clear the conflicts</h2></div>
+      <p class="phase-note">
+        Stow will not replace a real file with a symlink. A fresh install already has all of these,
+        so they must move aside first — this is the step that fails if you skip it.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p3-backup">
+            <span class="step-title">Move the stock configs aside</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="c"># ~/.bashrc comes from /etc/skel on every Arch install</span>
+<span class="p">❯</span> mv ~/.bashrc ~/.bashrc.bak
+
+<span class="c"># Folded packages need the whole directory gone, not just its files</span>
+<span class="p">❯</span> for d in sway waybar mako fuzzel nwg-drawer gtklock foot; do
+<span class="p">❯</span>     mv ~/.config/$d ~/.config/$d.bak 2&gt;/dev/null
+<span class="p">❯</span> done
+
+<span class="c"># gtk is tracked file-by-file, so move only the tracked files</span>
+<span class="p">❯</span> mv ~/.gtkrc-2.0 ~/.gtkrc-2.0.bak 2&gt;/dev/null
+<span class="p">❯</span> rm -f ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
+<span class="p">❯</span> rm -f ~/.config/gtk-4.0/gtk.css ~/.config/gtk-4.0/gtk-dark.css</pre>
+        </div>
+        <div class="step-body">
+          <p>The two <code>gtk-4.0</code> symlinks point into <code>/usr/share/themes/Arc-Dark</code>.
+          They must go, or stow can't place the libadwaita overrides.</p>
+        </div>
+      </div>
+
+      <div class="callout bad">
+        <p><strong>Two large images live inside stock config dirs</strong> — a 3.3 MB wallpaper in
+        <code>~/.config/sway</code> and a 22 MB lock screen background in <code>~/.config/gtklock</code>.
+        Neither belongs in a dotfiles repo. Move them to <code>~/Pictures/wallpapers</code> if you want
+        to keep them; this setup uses a solid Nord background instead.</p>
+      </div>
+    </section>
+
+    <!-- ============ 4 ============ -->
+    <section class="phase" id="p4" data-title="Stow">
+      <div class="phase-head"><span class="phase-num">04</span><h2 class="phase-title">Stow the packages</h2></div>
+      <p class="phase-note">
+        Always dry-run first. Stow exits <code>0</code> even when it links to the wrong place, so the
+        exit code proves nothing — the dry run's output is the real check.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p4-dry">
+            <span class="step-title">Dry run</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> cd ~/repos/dotfiles
+<span class="p">❯</span> stow -n -v bash vim starship alacritty foot waybar \
+        sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
+        </div>
+        <div class="step-body">
+          <p>Every <code>LINK:</code> line must point at <code>../repos/dotfiles/…</code>. Any
+          <code>CONFLICT</code> means phase 03 was incomplete.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p4-stow">
+            <span class="step-title">Apply</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> stow bash vim starship alacritty foot waybar \
+        sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
+        </div>
+      </div>
+
+      <div class="verify">
+        <p class="verify-label">Check — every path must resolve inside the repo</p>
+        <div class="scroll">
+        <table>
+          <tr><td>readlink -f ~/.config/sway</td><td>~/repos/dotfiles/…</td></tr>
+          <tr><td>readlink -f ~/.config/waybar</td><td>~/repos/dotfiles/…</td></tr>
+          <tr><td>readlink -f ~/.gtkrc-2.0</td><td>~/repos/dotfiles/…</td></tr>
+          <tr><td>ls -la ~/.config | grep gtk-3.0</td><td>real dir, not a link</td></tr>
+        </table>
+        </div>
+      </div>
+
+      <div class="callout">
+        <p><strong>Folded vs unfolded.</strong> <code>gtk</code> and <code>alacritty</code> are
+        deliberately <em>not</em> folded — nwg-look writes into the GTK dirs, and alacritty's
+        <code>themes/</code> clone lives inside its own. For those two, a newly added file is silently
+        absent until you run <code>stow -R &lt;pkg&gt;</code>.</p>
+      </div>
+    </section>
+
+    <!-- ============ 5 ============ -->
+    <section class="phase" id="p5" data-title="Post-install">
+      <div class="phase-head"><span class="phase-num">05</span><h2 class="phase-title">Steps that can't be stowed</h2></div>
+      <p class="phase-note">
+        Untracked clones and things that write outside <code>$HOME</code>.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p5-folders">
+            <span class="step-title">Nord-tint the Papirus folders</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> papirus-folders -C nord -t Papirus-Dark</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p5-clones">
+            <span class="step-title">Clone the two untracked dependencies</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="c"># alacritty.toml imports themes/themes/nord.toml from this clone</span>
+<span class="p">❯</span> git clone https://github.com/alacritty/alacritty-theme \
+        ~/.config/alacritty/themes
+
+<span class="c"># vim status bar</span>
+<span class="p">❯</span> git clone https://github.com/itchyny/lightline.vim \
+        ~/.vim/pack/plugins/start/lightline</pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p5-greetd">
+            <span class="step-title">Set the session desktop name<span class="tag opt">optional</span><span class="tag root">root</span></span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p><code>XDG_CURRENT_DESKTOP</code> is empty in a stock session, and
+          <code>xdg-desktop-portal</code> picks its backend from it. The sway config repairs this for
+          systemd and dbus — which is what portals actually read — but only greetd can put it in
+          sway's own environment. In <code>/etc/greetd/config.toml</code>:</p>
+        </div>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">/etc/greetd/config.toml</span><button class="copy" type="button">copy</button></div>
+<pre>command = "env XDG_CURRENT_DESKTOP=sway sway"</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 6 ============ -->
+    <section class="phase" id="p6" data-title="Apply">
+      <div class="phase-head"><span class="phase-num">06</span><h2 class="phase-title">Apply and verify</h2></div>
+      <p class="phase-note">
+        Validate before reloading — a bad config on reload leaves you with a half-applied session.
+      </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p6-reload">
+            <span class="step-title">Validate, then reload</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> sway --validate -c ~/.config/sway/config
+<span class="p">❯</span> swaymsg reload</pre>
+        </div>
+        <div class="step-body">
+          <p>Log out and back in once afterwards, so the <code>exec</code>-only startup commands run.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p6-verify">
+            <span class="step-title">Run the verification sweep</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> pgrep -xc swayidle
+<span class="p">❯</span> fc-match "JetBrainsMono Nerd Font"
+<span class="p">❯</span> swaymsg -t get_outputs | grep -E '"name"|"scale"'
+<span class="p">❯</span> gsettings get org.gnome.desktop.interface color-scheme
+<span class="p">❯</span> systemctl --user show-environment | grep XDG_CURRENT</pre>
+        </div>
+        <div class="verify">
+          <p class="verify-label">Expected</p>
+          <div class="scroll">
+          <table>
+            <tr><td>pgrep -xc swayidle</td><td>1</td></tr>
+            <tr><td>fc-match …</td><td>JetBrainsMonoNerdFont</td></tr>
+            <tr><td>scale</td><td>2.0</td></tr>
+            <tr><td>color-scheme</td><td>'prefer-dark'</td></tr>
+            <tr><td>XDG_CURRENT_DESKTOP</td><td>sway</td></tr>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p6-eyes">
+            <span class="step-title">Look at each themed surface</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p><code>$mod+d</code> launcher · <code>notify-send test</code> · <code>$mod+Shift+d</code>
+          drawer · the waybar clock tooltip · <code>$mod+f1</code> lock · thunar for GTK3 · any
+          libadwaita app · <code>$mod+Return</code> terminal.</p>
+          <p>A libadwaita app rendering light is the tell that
+          <code>~/.config/gtk-4.0/gtk.css</code> didn't land.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 7 ============ -->
+    <section class="phase" id="p7" data-title="Traps">
+      <div class="phase-head"><span class="phase-num">07</span><h2 class="phase-title">Traps worth knowing</h2></div>
+      <p class="phase-note">
+        Each of these produced a real bug in this setup. Full detail in
+        <a href="../PLAYBOOK.md">PLAYBOOK.md</a> §9.
+      </p>
+
+      <div class="tablewrap">
+        <table class="ref">
+          <thead><tr><th>Trap</th><th>What happens</th><th>Guard</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>nwg-look</td>
+              <td>Rewrites every tracked GTK file on Apply; may replace stow symlinks outright</td>
+              <td><code>git status</code> after using it, then <code>stow -R gtk</code></td>
+            </tr>
+            <tr>
+              <td>exec_always</td>
+              <td>Spawns another daemon on every reload — this is what leaked 40 swayidle processes</td>
+              <td>Prefix with <code>pkill -x &lt;name&gt;;</code></td>
+            </tr>
+            <tr>
+              <td>exec</td>
+              <td>Runs only at startup, so a reload can't repair it — the fix looks broken</td>
+              <td>Use <code>exec_always</code> for anything idempotent</td>
+            </tr>
+            <tr>
+              <td>exec export</td>
+              <td>Silently does nothing; the subshell exits with the variable</td>
+              <td><code>systemctl --user set-environment</code></td>
+            </tr>
+            <tr>
+              <td>Font names</td>
+              <td><code>fc-match</code> returns something for any string, so a wrong name looks fine</td>
+              <td>Family name has a space; Nerd Font is a distinct family</td>
+            </tr>
+            <tr>
+              <td>stow exit code</td>
+              <td><code>0</code> even when it linked somewhere wrong</td>
+              <td><code>readlink -f</code>, never <code>$?</code></td>
+            </tr>
+            <tr>
+              <td>azote</td>
+              <td>Rewrites <code>~/.azotebg</code> and starts a swaybg over sway's background</td>
+              <td><code>pkill swaybg</code> and reload</td>
+            </tr>
+            <tr>
+              <td>config.d order</td>
+              <td>Read alphabetically; <code>theme</code> sorts last and wins</td>
+              <td>Name overrides <code>zz-local</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ palette ============ -->
+    <section class="phase" id="p8" data-title="Palette">
+      <div class="phase-head"><span class="phase-num">08</span><h2 class="phase-title">The palette</h2></div>
+      <p class="phase-note">
+        Adding anything new means picking a role from this table. The desktop drifted into four
+        incompatible palettes because each config was themed on its own. Note that <em>Nord</em> and
+        <em>Nordic</em> are different schemes — <code>alacritty-theme</code> ships both.
+      </p>
+      <div class="swatches" id="swatches"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>~/repos/dotfiles — GNU Stow</span>
+    <span><a href="../PLAYBOOK.md">PLAYBOOK.md</a> · <a href="../README.md">README.md</a></span>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- palette ------------------------------------------------------- */
+  var NORD = [
+    ["nord0","#2E3440","background"],   ["nord1","#3B4252","raised surface"],
+    ["nord2","#434C5E","selection"],    ["nord3","#4C566A","inactive"],
+    ["nord4","#D8DEE9","foreground"],   ["nord5","#E5E9F0",""],
+    ["nord6","#ECEFF4","bright text"],  ["nord7","#8FBCBB",""],
+    ["nord8","#88C0D0","focus / accent"],["nord9","#81A1C1","secondary"],
+    ["nord10","#5E81AC","secondary"],   ["nord11","#BF616A","urgent"],
+    ["nord12","#D08770",""],            ["nord13","#EBCB8B","warning"],
+    ["nord14","#A3BE8C","success"],     ["nord15","#B48EAD",""]
+  ];
+  var sw = document.getElementById("swatches");
+  NORD.forEach(function (c) {
+    var d = document.createElement("div");
+    d.className = "sw";
+    var chip = document.createElement("div");
+    chip.className = "chip";
+    chip.style.background = c[1];
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    var n = document.createElement("span"); n.className = "name"; n.textContent = c[0];
+    var h = document.createElement("span"); h.className = "hex"; h.textContent = c[1];
+    meta.appendChild(n); meta.appendChild(h);
+    if (c[2]) {
+      var r = document.createElement("span"); r.className = "role"; r.textContent = c[2];
+      meta.appendChild(r);
+    }
+    d.appendChild(chip); d.appendChild(meta);
+    sw.appendChild(d);
+  });
+
+  /* ---- copy buttons -------------------------------------------------- */
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = btn.closest(".cmd").querySelector("pre");
+      // Strip the prompt glyphs so the clipboard holds runnable commands.
+      var text = Array.prototype.map.call(pre.childNodes, function (n) {
+        if (n.nodeType === 1 && n.classList.contains("p")) return "";
+        return n.textContent;
+      }).join("").split("\n").map(function (l) { return l.replace(/^\s/, ""); })
+        .join("\n").trim();
+
+      var done = function () {
+        btn.textContent = "copied";
+        btn.classList.add("copied");
+        setTimeout(function () {
+          btn.textContent = "copy";
+          btn.classList.remove("copied");
+        }, 1400);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+      } else {
+        fallback(text, done);
+      }
+    });
+  });
+
+  function fallback(text, done) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* clipboard unavailable */ }
+    document.body.removeChild(ta);
+  }
+
+  /* ---- progress ------------------------------------------------------ */
+  var KEY = "sway-nord-setup-v1";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".step input[type=checkbox]"));
+  var phases = Array.prototype.slice.call(document.querySelectorAll(".phase"));
+  var railList = document.getElementById("rail-list");
+  var fill = document.getElementById("bar-fill");
+  var ptext = document.getElementById("progress-text");
+
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { saved = {}; }
+
+  // Build the rail from the sections themselves, so it can never drift.
+  var links = {};
+  phases.forEach(function (ph, i) {
+    var total = ph.querySelectorAll(".step input[type=checkbox]").length;
+    var li = document.createElement("li");
+    var a = document.createElement("a");
+    a.href = "#" + ph.id;
+    var dot = document.createElement("span"); dot.className = "dot";
+    var label = document.createElement("span"); label.textContent = ph.dataset.title;
+    var count = document.createElement("span"); count.className = "count";
+    a.appendChild(dot); a.appendChild(label); a.appendChild(count);
+    li.appendChild(a);
+    railList.appendChild(li);
+    links[ph.id] = { a: a, count: count, total: total, section: ph };
+    if (i === 0) a.classList.add("active");
+  });
+
+  function save() {
+    var out = {};
+    boxes.forEach(function (b) { if (b.checked) out[b.dataset.id] = 1; });
+    try { localStorage.setItem(KEY, JSON.stringify(out)); } catch (e) { /* private mode */ }
+  }
+
+  function render() {
+    var done = 0;
+    boxes.forEach(function (b) { if (b.checked) done++; });
+    var pct = boxes.length ? (done / boxes.length) * 100 : 0;
+    fill.style.width = pct + "%";
+    ptext.textContent = done + " of " + boxes.length + " done";
+
+    phases.forEach(function (ph) {
+      var L = links[ph.id];
+      if (!L.total) { L.count.textContent = ""; return; }
+      var d = ph.querySelectorAll(".step input:checked").length;
+      L.count.textContent = d + "/" + L.total;
+      L.a.classList.toggle("done", d === L.total);
+    });
+  }
+
+  boxes.forEach(function (b) {
+    if (saved[b.dataset.id]) b.checked = true;
+    b.addEventListener("change", function () { save(); render(); });
+  });
+  render();
+
+  document.getElementById("reset-btn").addEventListener("click", function () {
+    boxes.forEach(function (b) { b.checked = false; });
+    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    render();
+  });
+
+  /* ---- active section in the rail ------------------------------------ */
+  if ("IntersectionObserver" in window) {
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        Object.keys(links).forEach(function (k) { links[k].a.classList.remove("active"); });
+        var L = links[en.target.id];
+        if (L) L.a.classList.add("active");
+      });
+    }, { rootMargin: "-10% 0px -75% 0px" });
+    phases.forEach(function (ph) { obs.observe(ph); });
+  }
+})();
+</script>
+</body>
+</html>
