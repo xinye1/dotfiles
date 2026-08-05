@@ -85,12 +85,10 @@
     /* Avoid rounded borders under each workspace name */
     border: none;
     border-radius: 0;
-    /* The bar and the windows are both nord0, so without this the bar's inner
-       edge is invisible and a maximised terminal appears to flow straight into
-       it. One faint rule is enough — the window borders do the rest.
-       This is a vertical bar on the left, so it's the RIGHT edge that matters;
-       switch to border-bottom if the bar is ever moved to the top. */
-    border-right: 1px solid @nord3;
+    /* No edge rule needed: the desktop background (set in sway's config.d/theme)
+       is a shade darker than this bar, so the boundary reads on its own. If the
+       background is ever set back to nord0 the bar will merge into a maximised
+       window again — `border-right: 1px solid @nord3;` is the fix. */
 }
 
 /* Every modules */

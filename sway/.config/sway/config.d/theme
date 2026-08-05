@@ -19,22 +19,24 @@ exec_always ~/.config/sway/scripts/import-gsettings
 #
 # Colours are further down, in the `client.*` block.
 
-gaps inner 8
-gaps outer 4
+gaps inner 3
+gaps outer 0
 
 # Border thickness. `pixel N` means "N px border, no titlebar" — using
 # `normal` instead would bring back a titlebar with the window title in it.
-default_border pixel 2
+# Floating windows get a thicker border: they overlap other windows rather than
+# sitting in the grid, so they need more to separate them from what's beneath.
+default_border pixel 1
 default_floating_border pixel 2
 
 # smart_borders on = hide borders when a workspace holds only ONE window.
-# That is exactly the case in the screenshot that prompted this: a single
-# terminal, no border, and the bar and the window melting into each other
-# because both are nord0. Turned off so a window is always outlined.
-#   on       hide when only one window
+# Safe here because the desktop background is darker than the window background,
+# so a lone window still has a visible edge without a border. Set this to `off`
+# if the background ever goes back to nord0.
+#   on       hide when only one window   <- current
 #   no_gaps  hide only when gaps are also zero
-#   off      always draw          <- current
-smart_borders off
+#   off      always draw
+smart_borders on
 
 # Default Font. The Nerd Font variant, not plain "JetBrains Mono" — sway renders
 # window titles and the resize/mode indicator with this, and both can carry the
@@ -54,13 +56,19 @@ font pango:JetBrainsMono Nerd Font 10
 #
 # Note azote (the GUI wallpaper picker) rewrites ~/.azotebg and starts swaybg
 # when used. A swaybg instance will paint over this — `pkill swaybg` to undo.
-output * bg #2E3440 solid_color
-
-# Optional: a desktop slightly darker than the window background turns the gaps
-# into visible channels between tiles, instead of dead space the same colour as
-# everything else. Off by default because #272B33 is a darkened nord0 rather
-# than a real Nord value. Swap the line above for this one to try it:
-# output * bg #272B33 solid_color
+#
+# The desktop is deliberately one shade DARKER than the window background
+# (nord0 #2E3440). That single difference does a lot of work: the gaps become
+# visible channels between tiles rather than dead space, the waybar reads as a
+# distinct surface without needing an edge rule of its own, and a lone window
+# stays legible even with smart_borders on.
+#
+# #272B33 is a darkened nord0, not a canonical Nord value — the one deliberate
+# exception to the "pick a role from the palette" rule, and it earns its place.
+#
+# For a plain Nord desktop instead:  output * bg #2E3440 solid_color
+# For an image:                      output * bg ~/Pictures/wallpapers/<f> fill
+output * bg #272B33 solid_color
 
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"
