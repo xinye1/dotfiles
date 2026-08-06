@@ -1,3 +1,10 @@
+# Palette. `colors.conf` is a symlink to colors-nord.conf or
+# colors-gruvbox.conf; ~/.local/bin/theme flips it. The path is relative to
+# THIS file's directory (config.d/), so `../` reaches ~/.config/sway/.
+#
+# This must come before anything that uses $accent and friends.
+include ../colors.conf
+
 # Apply gtk theming
 exec_always ~/.config/sway/scripts/import-gsettings
 
@@ -63,12 +70,13 @@ font pango:JetBrainsMono Nerd Font 10
 # distinct surface without needing an edge rule of its own, and a lone window
 # stays legible even with smart_borders on.
 #
-# #272B33 is a darkened nord0, not a canonical Nord value — the one deliberate
-# exception to the "pick a role from the palette" rule, and it earns its place.
+# $desktop (#272B33 for Nord) is a darkened nord0, not a canonical Nord value —
+# the one deliberate exception to the "pick a role from the palette" rule, and
+# it earns its place.
 #
 # For a plain Nord desktop instead:  output * bg #2E3440 solid_color
 # For an image:                      output * bg ~/Pictures/wallpapers/<f> fill
-output * bg #272B33 solid_color
+output * bg $desktop solid_color
 
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"
@@ -89,9 +97,9 @@ for_window [shell="x_wayland"] title_format "%class - %title"
 # left in place because sway's syntax requires all five.
 #
 # The brightness ladder, faint -> bright:
-#   unfocused         nord3  #4C566A   present but quiet
-#   focused_inactive  nord10 #5E81AC   focused on another output/container
-#   focused           nord8  #88C0D0   the one you're typing into
+#   unfocused         $muted    (nord3  #4C566A for Nord)   present but quiet
+#   focused_inactive  $accent2  (nord10 #5E81AC for Nord)   focused on another output/container
+#   focused           $accent   (nord8  #88C0D0 for Nord)   the one you're typing into
 #
 # unfocused was nord1 #3B4252, only one step off the nord0 background — which
 # is why inactive windows appeared to have no border at all. nord3 is the
@@ -100,13 +108,13 @@ for_window [shell="x_wayland"] title_format "%class - %title"
 # To make inactive borders fainter still, step it down to #434C5E (nord2);
 # to make the active one louder, #8FBCBB (nord7) or #ECEFF4 (nord6).
 #
-# class                 border  bground text    indicator child_border
-client.focused          #88C0D0 #2E3440 #ECEFF4 #8FBCBB   #88C0D0
-client.focused_inactive #5E81AC #2E3440 #D8DEE9 #5E81AC   #5E81AC
-client.unfocused        #4C566A #2E3440 #4C566A #4C566A   #4C566A
-client.urgent           #BF616A #BF616A #ECEFF4 #BF616A   #BF616A
-client.placeholder      #4C566A #2E3440 #D8DEE9 #4C566A   #4C566A
-client.background       #2E3440
+# class                 border     bground    text       indicator   child_border
+client.focused          $accent    $bg        $fg_bright $indicator  $accent
+client.focused_inactive $accent2   $bg        $fg        $accent2    $accent2
+client.unfocused        $muted     $bg        $muted     $muted      $muted
+client.urgent           $critical  $critical  $fg_bright $critical   $critical
+client.placeholder      $muted     $bg        $fg        $muted      $muted
+client.background       $bg
 
 #
 # Status Bar:
