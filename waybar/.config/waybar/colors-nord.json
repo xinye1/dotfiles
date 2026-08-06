@@ -13,6 +13,10 @@
                 "weekdays": "<span color='#8FBCBB'><b>{}</b></span>",
                 "today":    "<span color='#EBCB8B'><b><u>{}</u></b></span>"
             }
+        },
+        "actions": {
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
         }
     }
 }
