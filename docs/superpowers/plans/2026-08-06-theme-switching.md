@@ -620,10 +620,15 @@ Expected: `Switched 2 symlinks: nord -> gruvbox`, then `colors-gruvbox.conf` and
 - [ ] **Step 4: Confirm folding survived the switch — the core claim of the design**
 
 ```bash
-ls -la ~/.config | grep -E ' (sway|waybar|foot|mako|fuzzel|gtklock|nwg-drawer)$'
+for p in sway waybar foot mako fuzzel gtklock nwg-drawer; do
+  printf '%-12s ' "$p"
+  if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+done
 ```
 
-Expected: every one of them is still a symlink (`->`), not a real directory. If any is now a real directory, stop — something has written into the target tree from outside its package.
+Expected: seven lines, every one `folded (symlink)`. Any `UNFOLDED (real dir)` means something has written into the target tree from outside its package — stop and investigate.
+
+Do **not** test this with `ls -la ~/.config | grep -E ' (pkg)$'`. `ls -la` renders a symlink as `name -> target`, so a `$` anchor matches only the unfolded case: the command prints nothing when folding is healthy, which reads as a pass but proves nothing. Test the link type directly with `[ -L ]`, as above.
 
 - [ ] **Step 5: Switch back, and confirm idempotence**
 
@@ -1985,10 +1990,13 @@ Every command quoted in the docs must be one that was actually run during this p
 cd ~/repos/dotfiles
 theme            # nord
 theme gruvbox && theme nord
-ls -la ~/.config | grep -E ' (sway|waybar|foot|mako|fuzzel|gtklock|nwg-drawer)$'
+for p in sway waybar foot mako fuzzel gtklock nwg-drawer; do
+  printf '%-12s ' "$p"
+  if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+done
 ```
 
-Expected: all seven still symlinks — folding intact, which is the claim §5.2 now makes.
+Expected: seven lines, every one `folded (symlink)` — folding intact, which is the claim §5.2 now makes.
 
 - [ ] **Step 6: Commit**
 
