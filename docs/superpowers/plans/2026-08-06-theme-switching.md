@@ -813,10 +813,20 @@ waybar's `include` gives precedence to the **including** file, so `clock` must b
                 "weekdays": "<span color='#8FBCBB'><b>{}</b></span>",
                 "today":    "<span color='#EBCB8B'><b><u>{}</u></b></span>"
             }
+        },
+        "actions": {
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
         }
     }
 }
 ```
+
+**The `actions` block is not optional.** It is what makes scrolling on the clock
+shift the calendar month. Because the whole module moves, anything left behind
+is silently lost — JSON stays valid, the CSS parse still passes, and nothing
+reports an error. Diff the extracted module against the pre-change `config`
+key by key before committing.
 
 The whole module lives here, not just its colours, because JSON has no variables and waybar's include cannot merge into an object the including file already defines. The non-colour keys are therefore duplicated between the two fragments — keep them in step.
 
