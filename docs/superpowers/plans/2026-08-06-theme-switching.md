@@ -1593,12 +1593,38 @@ gtk-xft-rgba="rgb"
 
 - [ ] **Step 6: Track xsettingsd**
 
-```bash
-cp ~/.config/xsettingsd/xsettingsd.conf ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
-cat ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
+**The file on disk is STALE — do not copy it verbatim.** It currently reads:
+
+```
+Net/ThemeName "Arc-Dark"
+Net/IconThemeName "Qogir-Dark"
+Gtk/CursorThemeName "Qogir-dark"
+Net/EnableEventSounds 1
+EnableInputFeedbackSounds 0
+Xft/Antialias 1
+Xft/Hinting 1
+Xft/HintStyle "hintslight"
+Xft/RGBA "rgb"
 ```
 
-Read what it contains, then create `xsettingsd-gruvbox.conf` with the same keys and the Gruvbox theme name substituted for `Nordic`. Add a header comment to both noting they are switched by `theme`, and that xsettingsd serves XWayland clients (PLAYBOOK §2.2).
+`Arc-Dark` and `Qogir-Dark` predate the Nord retheme and disagree with
+`gtk-3.0/settings.ini`, which says `Nordic` / `Papirus-Dark`. This was one of the
+gaps this plan set out to close — the file was never tracked, so nothing kept it
+in step. **xsettingsd is also not running**, which is why the drift went unnoticed:
+XWayland clients have been getting no XSettings at all.
+
+So the Nord variant must be *corrected*, not copied:
+
+- `Net/ThemeName "Nordic"`, `Net/IconThemeName "Papirus-Dark"` — matching settings.ini
+- `Gtk/CursorThemeName "Qogir-dark"` — correct already, and theme-independent
+- the `Net/EnableEventSounds`, `EnableInputFeedbackSounds` and four `Xft/*` lines carry over unchanged
+
+`xsettingsd-gruvbox.conf` is the same with `Net/ThemeName "Colloid-Yellow-Dark-Gruvbox"`.
+
+Add a header comment to both noting they are switched by `theme`, that xsettingsd
+serves XWayland clients (PLAYBOOK §2.2), and that the daemon is not currently
+running — tracking the file makes it correct if it is ever started, but starting
+it is out of scope here.
 
 - [ ] **Step 7: Replace the originals with symlinks**
 
