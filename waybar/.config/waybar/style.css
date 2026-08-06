@@ -7,34 +7,17 @@
  * =========================================================================== */
 
 /* -----------------------------------------------------------------------------
- * Nord palette
+ * Palette
  *
- * The full 16 colours are defined even where unused, so that adding a module
- * later means picking an existing name rather than inventing another hex. The
- * previous @highlight #685878 / @base1 #19191e were one-offs that matched
- * nothing else on the desktop.
+ * `colors.css` is a symlink to colors-nord.css or colors-gruvbox.css;
+ * ~/.local/bin/theme flips it. Never write a hex below — use a role.
  *
- * Role convention, shared with sway's config.d/theme and every other config here:
- *   nord8  focus / active accent      nord3  inactive
- *   nord13 warning                    nord11 critical / urgent
+ * Role convention, shared with sway's colors.conf and every other config here:
+ *   accent   focus / active        muted     inactive
+ *   warning  warning               critical  urgent
  * -------------------------------------------------------------------------- */
 
-@define-color nord0  #2E3440;   /* background          */
-@define-color nord1  #3B4252;   /* elevated background */
-@define-color nord2  #434C5E;   /* selection          */
-@define-color nord3  #4C566A;   /* inactive / muted   */
-@define-color nord4  #D8DEE9;   /* foreground         */
-@define-color nord5  #E5E9F0;
-@define-color nord6  #ECEFF4;   /* bright foreground  */
-@define-color nord7  #8FBCBB;
-@define-color nord8  #88C0D0;   /* primary accent     */
-@define-color nord9  #81A1C1;
-@define-color nord10 #5E81AC;
-@define-color nord11 #BF616A;   /* critical / urgent  */
-@define-color nord12 #D08770;
-@define-color nord13 #EBCB8B;   /* warning            */
-@define-color nord14 #A3BE8C;
-@define-color nord15 #B48EAD;
+@import url("colors.css");
 
 /* -----------------------------------------------------------------------------
  * Keyframes
@@ -42,23 +25,23 @@
 
 @keyframes blink-warning {
     70% {
-        color: @nord6;
+        color: @fg_bright;
     }
 
     to {
-        color: @nord0;
-        background-color: @nord13;
+        color: @bg;
+        background-color: @warning;
     }
 }
 
 @keyframes blink-critical {
     70% {
-      color: @nord6;
+      color: @fg_bright;
     }
 
     to {
-        color: @nord6;
-        background-color: @nord11;
+        color: @fg_bright;
+        background-color: @critical;
     }
 }
 
@@ -75,8 +58,8 @@
 /* The whole bar */
 #waybar {
     background: transparent;
-    color: @nord4;
-    background-color: @nord0;
+    color: @fg;
+    background-color: @bg;
     /* The Nerd Font family, not plain "JetBrainsMono". Every icon in config is a
        Nerd Font glyph; with the unpatched family they render only via a
        fontconfig fallback to Symbols Nerd Font, which works until it doesn't. */
@@ -87,8 +70,8 @@
     border-radius: 0;
     /* No edge rule needed: the desktop background (set in sway's config.d/theme)
        is a shade darker than this bar, so the boundary reads on its own. If the
-       background is ever set back to nord0 the bar will merge into a maximised
-       window again — `border-right: 1px solid @nord3;` is the fix. */
+       background is ever set back to @bg the bar will merge into a maximised
+       window again — `border-right: 1px solid @muted;` is the fix. */
 }
 
 /* Every modules */
@@ -116,7 +99,7 @@
     margin-right:5px;
     margin-top:8px;
     margin-bottom:5px;
-    color: @nord8;
+    color: @accent;
 }
 
 /* #workspaces {
@@ -125,7 +108,7 @@
 
 #workspaces button {
     border-radius: 5px;
-    color: @nord3;
+    color: @muted;
     padding: 1px 6px;
     margin-right: 2px;
     margin-left: 2px;
@@ -134,23 +117,23 @@
 /* Occupied but not focused: readable, still clearly not the active one */
 #workspaces button.visible,
 #workspaces button.persistent {
-    color: @nord4;
+    color: @fg;
 }
 
 #workspaces button.focused {
-    border: 1px solid @nord8;
-    color: @nord8;
+    border: 1px solid @accent;
+    color: @accent;
 }
 
 #workspaces button.urgent {
-    border-color: @nord11;
-    color: @nord11;
+    border-color: @critical;
+    color: @critical;
 }
 
 #mode {
-    background: @nord10;
+    background: @accent2;
     border-bottom: 3px transparent;
-    color: @nord6;
+    color: @fg_bright;
     /* Equal side margins, or the module sits off-centre in the vertical bar */
     margin-left: 5px;
     margin-right: 5px;
@@ -162,20 +145,20 @@
 }
 
 #idle_inhibitor.activated {
-    color: @nord13;
+    color: @warning;
 }
 
 /* Class comes from the JSON that scripts/netspeed.sh prints */
 #custom-network.disconnected {
-    color: @nord11;
+    color: @critical;
 }
 
 #cpu.warning {
-    color: @nord13;
+    color: @warning;
 }
 
 #cpu.critical {
-    color: @nord11;
+    color: @critical;
 }
 
 #memory {
@@ -185,11 +168,11 @@
 }
 
 #memory.warning {
-    color: @nord13;
+    color: @warning;
  }
 
 #memory.critical {
-    color: @nord11;
+    color: @critical;
     animation-name: blink-critical;
     animation-duration: 2s;
     padding-left:5px;
@@ -203,7 +186,7 @@
 }
 
 #pulseaudio.muted {
-    color: @nord3;
+    color: @muted;
 }
 
 #battery {
@@ -213,15 +196,15 @@
 }
 
 #battery.charging {
-    color: @nord14;
+    color: @success;
 }
 
 #battery.warning {
-    color: @nord13;
+    color: @warning;
 }
 
 #battery.critical {
-    color: @nord11;
+    color: @critical;
 }
 
 #battery.warning.discharging {
@@ -241,5 +224,5 @@
     margin-right:5px;
     margin-bottom:5px;
     font-size:15px;
-    color: @nord11;
+    color: @critical;
 }

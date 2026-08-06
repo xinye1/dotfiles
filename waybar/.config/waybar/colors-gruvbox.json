@@ -1,0 +1,18 @@
+{
+    "clock": {
+        "format": "󰅐\n{:%a\n%d/%m\n%H:%M}",
+        "justify": "center",
+        "format-alt": "󰅐\n{:%OI\n%M\n%p}",
+        "tooltip-format": " {:%A %d/%m}\n\n<tt>{calendar}</tt>",
+        "calendar": {
+            "on-scroll": 1,
+            "format": {
+                "months":   "<span color='#FABD2F'><b>{}</b></span>",
+                "days":     "<span color='#EBDBB2'><b>{}</b></span>",
+                "weeks":    "<span color='#7C6F64'><b>W{}</b></span>",
+                "weekdays": "<span color='#8EC07C'><b>{}</b></span>",
+                "today":    "<span color='#FE8019'><b><u>{}</u></b></span>"
+            }
+        }
+    }
+}
