@@ -1959,6 +1959,10 @@ git commit -m "Apply the cursor theme outside GTK, and theme the slurp selection
 
 Add `bin` to the package table. Rewrite the theming paragraph around the two palettes and the `theme` command, linking to the playbook's new switching section.
 
+**Required, not optional** — `CLAUDE.md` mandates that a new package is added to the README table *and* to `PLAYBOOK.md` §5.2 with its fold decision and the reason. `bin` is the new package this plan introduces, and it was flagged in review as missing both. Its §5.2 row is:
+
+| `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), plus mise/starship shims. Folding would pull all of it into the repo. A newly added file therefore needs `stow -R bin`. |
+
 - [ ] **Step 3: Update `CLAUDE.md`**
 
 Under Conventions, add:
