@@ -1,0 +1,23 @@
+/* Nord — the thirteen theme roles as GTK named colours.
+ *
+ * Imported by gtklock's style.css via a `colors.css` symlink that
+ * ~/.local/bin/theme flips. The same thirteen names are defined by waybar's
+ * and nwg-drawer's fragments, so a rule can be moved between them unchanged.
+ *
+ * All thirteen are defined even where gtklock does not use them, so that
+ * adding a rule later means picking an existing role rather than inventing a
+ * hex. Roles are documented in PLAYBOOK.md §3.1. */
+
+@define-color bg        #2E3440;
+@define-color surface   #3B4252;
+@define-color sel       #434C5E;
+@define-color muted     #4C566A;
+@define-color fg        #D8DEE9;
+@define-color fg_bright #ECEFF4;
+@define-color accent    #88C0D0;
+@define-color accent2   #5E81AC;
+@define-color indicator #8FBCBB;
+@define-color critical  #BF616A;
+@define-color warning   #EBCB8B;
+@define-color success   #A3BE8C;
+@define-color desktop   #272B33;
