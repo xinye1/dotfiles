@@ -1,2 +1,5 @@
 # Claude Code local state (machine-specific permissions, absolute paths)
 .claude/settings.local.json
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/

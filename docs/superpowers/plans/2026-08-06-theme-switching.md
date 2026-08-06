@@ -85,6 +85,20 @@ Establishes both palettes in the one format every later task can read, and the n
 **Interfaces:**
 - Produces: thirteen shell variables — `BG SURFACE SEL MUTED FG FG_BRIGHT ACCENT ACCENT2 INDICATOR CRITICAL WARNING SUCCESS DESKTOP` — each a `#RRGGBB` string, plus `PAPIRUS_FOLDER` and `GTK_THEME_NAME`. Sourced by `sway/scripts/screenshot_*.sh`, `waybar/scripts/keyhint.sh` and `bin/theme` in later tasks.
 
+- [ ] **Step 0: Install the Gruvbox GTK theme and read its real directory name**
+
+Done here, not in Task 8, so that no placeholder value is ever committed. The AUR package installs one or more directories whose exact names are not knowable in advance; every later reference must use the string verbatim.
+
+```bash
+yay -S gruvbox-gtk-theme-git
+ls /usr/share/themes/
+GRUVBOX_GTK=$(ls /usr/share/themes/ | grep -i '^Gruvbox.*Dark' | head -1)
+echo "GRUVBOX_GTK=$GRUVBOX_GTK"
+test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "has gtk-3.0 ✓"
+```
+
+If nothing matches the grep, list `/usr/share/themes/` and choose the dark variant by hand. **Do not guess.** Report the chosen value in your task report — Task 8 depends on it.
+
 - [ ] **Step 1: Write the Nord palette**
 
 `sway/.config/sway/theme-nord.env`:
@@ -158,8 +172,9 @@ DESKTOP=#1D2021
 # palette's signature accent.
 PAPIRUS_FOLDER=yellow
 
-# Set in Task 8, after reading the real directory name off /usr/share/themes.
-GTK_THEME_NAME=PLACEHOLDER_SET_IN_TASK_8
+# /usr/share/themes/<name>, from the AUR package `gruvbox-gtk-theme-git`.
+# The exact value comes from Step 0 below — do not guess it.
+GTK_THEME_NAME=<the value read in Step 0>
 ```
 
 - [ ] **Step 3: Create the symlink and verify both parse**
@@ -1390,35 +1405,23 @@ The only task that installs a package, and the only one where a value must be re
 - Create: `gtk/.gtkrc-2.0-{nord,gruvbox}`
 - Create: `gtk/.config/xsettingsd/xsettingsd-{nord,gruvbox}.conf`
 - Replace with symlinks: `gtk/.config/gtk-3.0/settings.ini`, `gtk-3.0/gtk.css`, `gtk-4.0/settings.ini`, `gtk-4.0/gtk.css`, `.gtkrc-2.0`, `xsettingsd/xsettingsd.conf`
-- Modify: `sway/.config/sway/theme-gruvbox.env` — replace `GTK_THEME_NAME=PLACEHOLDER_SET_IN_TASK_8`
 
-- [ ] **Step 1: Install the Gruvbox GTK theme and read its real name**
+**Interfaces:**
+- Consumes: `GTK_THEME_NAME` from `sway/.config/sway/theme-gruvbox.env`, set in Task 1 Step 0 by reading the real directory name off `/usr/share/themes`. Referred to below as `<GRUVBOX_GTK>`. Do not invent a value for it.
 
-```bash
-yay -S gruvbox-gtk-theme-git
-ls /usr/share/themes/
-```
+- [ ] **Step 1: Recover the Gruvbox GTK theme name**
 
-The package installs one or more directories whose exact names are not knowable in advance. Pick the **dark** variant (something of the form `Gruvbox-Dark…`) and use that string verbatim everywhere below. Record it:
+Installed and recorded in Task 1 Step 0. Read it back rather than re-deriving it, and confirm it still matches what `theme-gruvbox.env` says:
 
 ```bash
-GRUVBOX_GTK=$(ls /usr/share/themes/ | grep -i '^Gruvbox.*Dark' | head -1)
-echo "$GRUVBOX_GTK"
-test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "has gtk-3.0 ✓"
+grep GTK_THEME_NAME ~/repos/dotfiles/sway/.config/sway/theme-gruvbox.env
+GRUVBOX_GTK=$(grep -oP '(?<=^GTK_THEME_NAME=).*' ~/repos/dotfiles/sway/.config/sway/theme-gruvbox.env)
+test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "theme present: $GRUVBOX_GTK"
 ```
 
-If nothing matches, list `/usr/share/themes/` and choose by hand. Do not guess.
+Expected: the directory exists. If it does not, the Task 1 value was wrong — stop and report rather than guessing a replacement.
 
-- [ ] **Step 2: Set `GTK_THEME_NAME` in the Gruvbox palette**
-
-In `sway/.config/sway/theme-gruvbox.env`, replace the placeholder line with the real value, e.g.:
-
-```sh
-# /usr/share/themes/<name>, from the AUR package `gruvbox-gtk-theme-git`.
-GTK_THEME_NAME=Gruvbox-Dark
-```
-
-- [ ] **Step 3: Split the GTK3 settings**
+- [ ] **Step 2: Split the GTK3 settings**
 
 `gtk/.config/gtk-3.0/settings-nord.ini` — the current `settings.ini` content verbatim, with this header:
 
@@ -1451,7 +1454,7 @@ gtk-application-prefer-dark-theme=1
 
 `settings-gruvbox.ini`: identical except `gtk-theme-name=<GRUVBOX_GTK from Step 1>`.
 
-- [ ] **Step 4: Split the GTK3 user CSS**
+- [ ] **Step 3: Split the GTK3 user CSS**
 
 `gtk/.config/gtk-3.0/gtk-nord.css` — the current `gtk.css` verbatim. `gtk-gruvbox.css`:
 
@@ -1470,7 +1473,7 @@ selection {
 }
 ```
 
-- [ ] **Step 5: Split the GTK4 settings and libadwaita CSS**
+- [ ] **Step 4: Split the GTK4 settings and libadwaita CSS**
 
 `gtk-4.0/settings-nord.ini` and `settings-gruvbox.ini`: current `gtk-4.0/settings.ini` with the respective `gtk-theme-name`.
 
@@ -1529,7 +1532,7 @@ selection {
 @define-color theme_selected_fg_color #282828;
 ```
 
-- [ ] **Step 6: Split GTK2 and drop the dangling include**
+- [ ] **Step 5: Split GTK2 and drop the dangling include**
 
 `gtk/.gtkrc-2.0-nord` — the current `.gtkrc-2.0`, **with the `include "/home/xinye/.gtkrc-2.0.mine"` line deleted** (that file does not exist; the include has always been dangling) and this header:
 
@@ -1558,7 +1561,7 @@ gtk-xft-rgba="rgb"
 
 `.gtkrc-2.0-gruvbox`: identical with `gtk-theme-name="<GRUVBOX_GTK>"`.
 
-- [ ] **Step 7: Track xsettingsd**
+- [ ] **Step 6: Track xsettingsd**
 
 ```bash
 cp ~/.config/xsettingsd/xsettingsd.conf ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
@@ -1567,7 +1570,7 @@ cat ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
 
 Read what it contains, then create `xsettingsd-gruvbox.conf` with the same keys and the Gruvbox theme name substituted for `Nordic`. Add a header comment to both noting they are switched by `theme`, and that xsettingsd serves XWayland clients (PLAYBOOK §2.2).
 
-- [ ] **Step 8: Replace the originals with symlinks**
+- [ ] **Step 7: Replace the originals with symlinks**
 
 ```bash
 cd ~/repos/dotfiles/gtk
@@ -1579,7 +1582,7 @@ ln -sfn .gtkrc-2.0-nord .gtkrc-2.0
 ( cd .config/xsettingsd && ln -sfn xsettingsd-nord.conf xsettingsd.conf )
 ```
 
-- [ ] **Step 9: Deploy — `gtk` is unfolded, so `-R` is mandatory**
+- [ ] **Step 8: Deploy — `gtk` is unfolded, so `-R` is mandatory**
 
 ```bash
 cd ~/repos/dotfiles
@@ -1591,7 +1594,7 @@ cat ~/.config/gtk-3.0/settings.ini | head -3      # must resolve through two sym
 
 Expected: `gtk-theme-name=Nordic` printed, proving the chained symlink resolves.
 
-- [ ] **Step 10: Confirm gsettings still gets the right values**
+- [ ] **Step 9: Confirm gsettings still gets the right values**
 
 ```bash
 swaymsg reload
@@ -1599,7 +1602,7 @@ gsettings get org.gnome.desktop.interface gtk-theme       # 'Nordic'
 gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 ```
 
-- [ ] **Step 11: Switch and verify GTK follows**
+- [ ] **Step 10: Switch and verify GTK follows**
 
 ```bash
 theme gruvbox
@@ -1609,11 +1612,11 @@ thunar -q; thunar &                                        # a GTK3 app, freshly
 
 Per PLAYBOOK §9.9, only *newly started* GTK apps pick up the change. Launch a GTK4/libadwaita app too and confirm it is gruvbox rather than stock Adwaita dark.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 cd ~/repos/dotfiles
-git add gtk sway/.config/sway/theme-gruvbox.env
+git add gtk
 git commit -m "Switch the whole GTK stack per theme, and track xsettingsd"
 ```
 
