@@ -220,7 +220,7 @@ stow -R sway
 ls -la ~/.config | grep ' sway'
 ```
 
-Expected: `sway -> ../../repos/dotfiles/sway/.config/sway` — still a symlink, i.e. still folded.
+Expected: `sway -> ../repos/dotfiles/sway/.config/sway` — still a symlink, i.e. still folded. What matters is the arrow, not the exact number of `../` segments.
 
 - [ ] **Step 6: Commit**
 
