@@ -85,19 +85,33 @@ Establishes both palettes in the one format every later task can read, and the n
 **Interfaces:**
 - Produces: thirteen shell variables — `BG SURFACE SEL MUTED FG FG_BRIGHT ACCENT ACCENT2 INDICATOR CRITICAL WARNING SUCCESS DESKTOP` — each a `#RRGGBB` string, plus `PAPIRUS_FOLDER` and `GTK_THEME_NAME`. Sourced by `sway/scripts/screenshot_*.sh`, `waybar/scripts/keyhint.sh` and `bin/theme` in later tasks.
 
-- [ ] **Step 0: Install the Gruvbox GTK theme and read its real directory name**
+- [ ] **Step 0: Confirm the Gruvbox GTK theme is present**
 
-Done here, not in Task 8, so that no placeholder value is ever committed. The AUR package installs one or more directories whose exact names are not knowable in advance; every later reference must use the string verbatim.
+**Already installed — do not install anything.** The theme name is
+`Colloid-Yellow-Dark-Gruvbox`, in `~/.themes/`. Verify and move on:
 
 ```bash
-yay -S gruvbox-gtk-theme-git
-ls /usr/share/themes/
-GRUVBOX_GTK=$(ls /usr/share/themes/ | grep -i '^Gruvbox.*Dark' | head -1)
-echo "GRUVBOX_GTK=$GRUVBOX_GTK"
-test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "has gtk-3.0 ✓"
+test -d ~/.themes/Colloid-Yellow-Dark-Gruvbox/gtk-3.0 && echo "theme present ✓"
 ```
 
-If nothing matches the grep, list `/usr/share/themes/` and choose the dark variant by hand. **Do not guess.** Report the chosen value in your task report — Task 8 depends on it.
+If that fails, stop and report — do not substitute another theme name.
+
+Background, for the docs task later. This replaced the AUR route the design
+assumed. `gruvbox-gtk-theme-git` depends on `gtk-engine-murrine`, which pulls a
+from-source **gtk2** build; gtk2 is not installed on this machine and nothing
+here uses it. Colloid ships an installer that places exactly one variant into a
+user directory with no root at all, which is also how `alacritty-theme` and
+`lightline` are already handled (PLAYBOOK §8). It was installed with:
+
+```bash
+git clone --depth 1 https://github.com/vinceliuice/Colloid-gtk-theme
+cd Colloid-gtk-theme
+./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
+```
+
+**Never pass `-l`/`--libadwaita` to that installer.** It writes a theme into
+`~/.config/gtk-4.0/`, destroying the stow-managed `gtk.css` there — the same
+failure mode PLAYBOOK §9.1 documents for nwg-look.
 
 - [ ] **Step 1: Write the Nord palette**
 
@@ -172,9 +186,8 @@ DESKTOP=#1D2021
 # palette's signature accent.
 PAPIRUS_FOLDER=yellow
 
-# /usr/share/themes/<name>, from the AUR package `gruvbox-gtk-theme-git`.
-# The exact value comes from Step 0 below — do not guess it.
-GTK_THEME_NAME=<the value read in Step 0>
+# ~/.themes/<name>, installed from vinceliuice/Colloid-gtk-theme. See Step 0.
+GTK_THEME_NAME=Colloid-Yellow-Dark-Gruvbox
 ```
 
 - [ ] **Step 3: Create the symlink and verify both parse**
@@ -1407,17 +1420,19 @@ The only task that installs a package, and the only one where a value must be re
 - Replace with symlinks: `gtk/.config/gtk-3.0/settings.ini`, `gtk-3.0/gtk.css`, `gtk-4.0/settings.ini`, `gtk-4.0/gtk.css`, `.gtkrc-2.0`, `xsettingsd/xsettingsd.conf`
 
 **Interfaces:**
-- Consumes: `GTK_THEME_NAME` from `sway/.config/sway/theme-gruvbox.env`, set in Task 1 Step 0 by reading the real directory name off `/usr/share/themes`. Referred to below as `<GRUVBOX_GTK>`. Do not invent a value for it.
+- Consumes: `GTK_THEME_NAME` from `sway/.config/sway/theme-gruvbox.env` — `Colloid-Yellow-Dark-Gruvbox`, in `~/.themes/`. Referred to below as `<GRUVBOX_GTK>`. Do not invent a value for it.
 
 - [ ] **Step 1: Recover the Gruvbox GTK theme name**
 
 Installed and recorded in Task 1 Step 0. Read it back rather than re-deriving it, and confirm it still matches what `theme-gruvbox.env` says:
 
 ```bash
-grep GTK_THEME_NAME ~/repos/dotfiles/sway/.config/sway/theme-gruvbox.env
 GRUVBOX_GTK=$(grep -oP '(?<=^GTK_THEME_NAME=).*' ~/repos/dotfiles/sway/.config/sway/theme-gruvbox.env)
-test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "theme present: $GRUVBOX_GTK"
+test -d "$HOME/.themes/$GRUVBOX_GTK/gtk-3.0" && echo "theme present: $GRUVBOX_GTK"
 ```
+
+Note it lives in `~/.themes`, not `/usr/share/themes` — GTK searches both, but
+anything you write about paths must say the right one.
 
 Expected: the directory exists. If it does not, the Task 1 value was wrong — stop and report rather than guessing a replacement.
 
