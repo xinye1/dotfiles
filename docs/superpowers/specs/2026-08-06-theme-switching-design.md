@@ -86,7 +86,7 @@ committed; `theme` prints a reminder.
 ## 3. The palettes and the role table
 
 PLAYBOOK §3.1's role table becomes the contract between the two palettes. Both fragments define
-the **same eleven role names**; no config refers to `nord8` or `yellow` directly.
+the **same thirteen role names**; no config refers to `nord8` or `yellow` directly.
 
 | Role | Nord | Gruvbox Dark |
 |---|---|---|
@@ -101,6 +101,7 @@ the **same eleven role names**; no config refers to `nord8` or `yellow` directly
 | **Urgent / critical** | `nord11` `#BF616A` | `red` `#FB4934` |
 | Warning | `nord13` `#EBCB8B` | `orange` `#FE8019` |
 | Success | `nord14` `#A3BE8C` | `green` `#B8BB26` |
+| Split indicator | `nord7` `#8FBCBB` | `aqua` `#8EC07C` |
 | Desktop background | `#272B33` (darkened nord0) | `bg0_h` `#1D2021` |
 
 Two notes:
@@ -159,7 +160,7 @@ noted.
 
 ### 4.1 Shell-readable palette
 
-Scripts cannot parse CSS. `sway/.config/sway/theme-<theme>.env` exports the eleven roles as
+Scripts cannot parse CSS. `sway/.config/sway/theme-<theme>.env` exports the thirteen roles as
 shell variables, symlinked to `theme.env`, and is sourced by:
 
 - `sway/scripts/screenshot_*.sh` — for slurp's selection colours
@@ -304,5 +305,5 @@ Then trigger each themed surface by hand, as PLAYBOOK §10 already prescribes: `
 
 **The specific regression to watch for:** a role name referenced by a config but defined in only
 one of the two fragments. GTK CSS silently renders an undefined `@name` as black. Both fragments
-must define all eleven roles; a `theme` self-check comparing the defined names across the two
+must define all thirteen roles; a `theme` self-check comparing the defined names across the two
 files is cheap insurance and is step 2 of the switcher (§6).
