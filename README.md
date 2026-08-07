@@ -20,6 +20,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `fuzzel`     | `~/.config/fuzzel/fuzzel.ini`                                   |
 | `nwg-drawer` | `~/.config/nwg-drawer/drawer.css`                               |
 | `gtklock`    | `~/.config/gtklock/`                                            |
+| `htop`       | `~/.config/htop/htoprc`                                         |
 
 The desktop is themed with [Nord](https://www.nordtheme.com/) throughout.
 

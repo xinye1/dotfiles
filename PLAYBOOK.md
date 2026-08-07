@@ -207,8 +207,12 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
+| `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.10. |
 
-The rule: **never fold a directory that a tool writes into, or that holds untracked content.**
+The rule: **never fold a directory that a tool writes into, or that holds untracked content** —
+*unless* the tool replaces the file by rename, in which case folding is the only thing that
+survives it (`htop`). What breaks folding is untracked content appearing inside the directory, not
+writes to a tracked file.
 Check which a directory is with `ls -la ~/.config | grep <pkg>` — a symlink means folded, a real
 directory means `-R` is required after adding files.
 
@@ -497,6 +501,50 @@ already running; if the new one looks right, nothing is broken:
 thunar -q && thunar &        # Thunar runs as a daemon; -q is the way to stop it
 ```
 
+### 9.10 htop can rewrite `htoprc` on quit, and does it by rename
+
+Two distinct hazards from one behaviour. The trigger is narrow, the blast radius is not: htop saves
+only on a **clean quit** (`q` or **F10**) **and** only if something changed during the session — but
+when it does save, it writes the **whole file** from memory.
+
+What counts as "changed" is wider than the F2 setup screen: toggling tree view with `t` or changing
+the sort column both mark the settings dirty. A command-line `-d 2` does **not** — but its value
+sits in memory, so any *other* change drags it to disk with everything else. That is how a `delay`
+of 15 silently becomes 2.
+
+**A hand-edit is only clobbered if that instance changed something.** An untouched htop never
+writes, so an external edit survives it. But you cannot see from outside whether an instance is
+dirty, so before hand-editing `htoprc`, kill any running htop with `pkill -9 htop`. With several
+instances open it is whichever *saves* last that wins.
+
+Only a clean quit saves — `q` **or F10**, which is the labelled Quit key in the function bar and so
+the more discoverable of the two. **No signal saves.** SIGTERM (plain `pkill`) and SIGHUP discard
+pending changes exactly as SIGKILL does; `-9` is the advice because it is unconditional, not because
+the others would write.
+
+**The write is `mkstemp` + `rename()`, not an in-place update.** `rename()` onto a path that is a
+symlink replaces the symlink. This is why the `htop` package is folded (§5.2) — if `~/.config/htop`
+were a real directory containing a symlinked `htoprc`, the first save would turn that symlink into a
+regular file and every later change would go to `~/.config`, leaving the repo copy stale with no
+error anywhere. Verify the fold is intact with:
+
+```sh
+ls -ld ~/.config/htop                       # must be a symlink into the repo
+readlink -f ~/.config/htop/htoprc           # must resolve inside ~/repos/dotfiles
+```
+
+Because the repo file *is* the live file, any save shows up as a dirty working tree. That is
+intended — it is how layout changes get captured — but a save rewrites everything, so the diff can
+carry incidental settings you never meant to keep alongside the one you did. Read it before
+committing rather than assuming it is only the change you set out to make.
+
+**Layout keys.** The header meters live in `column_meters_N` / `column_meter_modes_N`, one pair per
+column, with `header_layout` setting the column count and split. Modes: `1` bar, `2` text, `3` graph,
+`4` LED. A column emptied in the UI is written as `!`, and every meter can end up piled into
+`column_meters_0` — which renders as the right-hand CPUs appearing *below* the left ones rather than
+beside them. Resetting `header_layout` back to `two_50_50` does not fix that; the meters themselves
+have to be moved back.
+
 ---
 
 ## 10. Troubleshooting
@@ -519,6 +567,9 @@ thunar -q && thunar &        # Thunar runs as a daemon; -q is the way to stop it
 | Notification icons missing | mako `icon-path` | Must be a directory that exists |
 | Border width change ignored | Applies to new windows only | `swaymsg '[title=".*"] border pixel 2'`; §9.8 |
 | Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 8`; §9.8 |
+| `htoprc` edit reverted | A running htop flushed its in-memory settings on quit | `pkill -9 htop`, then edit; §9.10 |
+| htop changes stopped reaching the repo | `rename()` replaced the symlink | `ls -ld ~/.config/htop` must be a symlink; §9.10 |
+| htop right-hand CPUs render below the left | All meters piled into `column_meters_0` | §9.10 |
 | A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
 | One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
 | `$mod+Return` does nothing | `foot --server` not running | `pgrep -a foot` |

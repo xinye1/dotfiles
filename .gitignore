@@ -1,2 +1,6 @@
 # Claude Code local state (machine-specific permissions, absolute paths)
 .claude/settings.local.json
+
+# htop writes htoprc via mkstemp+rename inside the folded package dir; a killed
+# htop can leave the temp file behind
+htop/.config/htop/htoprc.tmp.*
