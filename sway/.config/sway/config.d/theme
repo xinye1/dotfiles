@@ -26,7 +26,7 @@ exec_always ~/.config/sway/scripts/import-gsettings
 #
 # Colours are further down, in the `client.*` block.
 
-gaps inner 0
+gaps inner 5
 gaps outer 0
 
 # Border thickness. `pixel N` means "N px border, no titlebar" — using
