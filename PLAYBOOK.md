@@ -264,6 +264,59 @@ Everything else — sway, waybar, mako, gsettings/libadwaita, nwg-drawer, fuzzel
 terminals, new vim sessions — is live by the time the command returns. `theme` runs
 `sway --validate` before `swaymsg reload` and refuses to reload an invalid config.
 
+### 3.4 Switching, as a procedure
+
+The reference above is the mechanism. This is what you actually do.
+
+**Day to day: press `$mod+Shift+t`.** That is the whole interface. No terminal, no repo. Everything
+in the table above changes at once; the three laggards are the same three every time.
+
+**When you want the laggards caught up as well:**
+
+```sh
+theme gruvbox                       # runs papirus-folders itself if a tty is there to take the sudo prompt
+theme gruvbox --restart-terminals   # ALSO closes every open terminal — there is no gentler option
+```
+
+Run the `sudo papirus-folders …` line the switcher prints if it said it skipped it — that happens
+over ssh, from a keybinding, or under `--no-icons`, none of which have a terminal to prompt on.
+
+**Then check it landed**, using the §10 sweep under the new palette. Three failures look distinct
+and each points somewhere specific:
+
+| What you see | What it means |
+|---|---|
+| A **black** widget | A role referenced but not defined in this palette. GTK CSS renders an undefined `@name` as black with no error (§9.10) |
+| A surface still in the **old** palette | Its fragment is not named to the `-nord`/`-gruvbox` pattern, so the switcher never saw it |
+| A libadwaita app rendering **light** | `~/.config/gtk-4.0/gtk.css` is not linked — check §9.1, nwg-look |
+| Terminals unchanged | Expected. foot has no reload signal (§9.11) |
+
+**If a switch ever looks half-applied**, it was not the switcher. Every fragment is checked to exist
+*before* any symlink moves, so a missing one aborts having changed nothing and names what is
+missing. Diagnose and recover:
+
+```sh
+theme                                    # what it believes is active, read from the symlink itself
+git -C ~/repos/dotfiles status --short   # exactly 17 lines, or 0 — never a number in between
+theme nord --no-icons && theme gruvbox --no-icons   # re-flip all 17 from a known state
+```
+
+A count other than 17 or 0 means something outside `theme` edited a symlink.
+
+**Adding a themed application** takes two fragments and a symlink, and no code:
+
+```sh
+cd ~/repos/dotfiles/<pkg>/.config/<app>
+# write colors-nord.<ext> and colors-gruvbox.<ext>, defining the SAME role names
+ln -sfn colors-nord.<ext> colors.<ext>       # relative and bare, never an absolute path
+# point the application's own config at colors.<ext> via its include directive
+theme gruvbox --no-icons                     # the count must go up by one
+```
+
+The count is the confirmation. If it does not rise, the filename does not match the pattern and that
+file is **silently** pinned to one palette forever — see §3.3. If the package is unfolded
+(`alacritty`, `gtk`, `vim`, `bin`), the new files need `stow -R <pkg>` before they exist in `~`.
+
 ---
 
 ## 4. Package manifest

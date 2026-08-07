@@ -858,8 +858,24 @@ footer a{color:var(--accent)}
       <div class="step">
         <label>
           <div class="step-top">
+            <input type="checkbox" data-id="p8-key">
+            <span class="step-title">Switch with the keybinding</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p>Press <code>$mod+Shift+t</code>. That is the whole day-to-day interface — it runs
+          <code>theme toggle</code>. The bar, window borders, desktop, notifications, launcher, app
+          grid and every GTK app change together; the three exceptions are listed below.</p>
+          <p>Nothing needs a terminal, and nothing needs the repo. The rest of this phase is for
+          when you want to see what it did, or when something looks wrong.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
             <input type="checkbox" data-id="p8-switch">
-            <span class="step-title">Switch, and switch back</span>
+            <span class="step-title">Switch from the shell</span>
           </div>
         </label>
         <div class="cmd">
@@ -880,6 +896,49 @@ footer a{color:var(--accent)}
       <div class="step">
         <label>
           <div class="step-top">
+            <input type="checkbox" data-id="p8-finish">
+            <span class="step-title">Finish the two parts that lag</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> sudo papirus-folders -C yellow -t Papirus-Dark   <span class="c"># gruvbox; -C nordic for nord</span>
+<span class="p">❯</span> theme --restart-terminals                        <span class="c"># or just log out</span></pre>
+        </div>
+        <div class="step-body">
+          <p>Only needed if the switcher said it skipped them. It runs papirus-folders itself when a
+          terminal is there to take the <code>sudo</code> prompt, and prints the exact line to run
+          when there isn't — over ssh, from a keybinding, or under <code>--no-icons</code>.</p>
+          <p><code>--restart-terminals</code> <strong>closes every open terminal</strong>. foot has no
+          config-reload signal at all, so there is no gentler option; skip it and new terminals are
+          right while old ones stay as they were until you log out.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-eyes">
+            <span class="step-title">Check it reached everywhere</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p>Same sweep as phase 06, now under the other palette: <code>$mod+d</code> launcher ·
+          <code>notify-send test</code> · <code>$mod+Shift+d</code> drawer · the waybar clock
+          tooltip, and <em>scroll</em> on it · <code>$mod+f1</code> lock · thunar for GTK3 · any
+          libadwaita app · <code>$mod+Return</code> terminal · <code>Print</code> · <code>vim</code>
+          · <code>ls</code>.</p>
+          <p>What each failure looks like: a <strong>black</strong> widget means a role the palette
+          doesn't define — GTK CSS renders an undefined <code>@name</code> as black with no error. A
+          surface still in the <em>old</em> palette means its fragment isn't named to the pattern and
+          was never switched. A libadwaita app rendering light means
+          <code>~/.config/gtk-4.0/gtk.css</code> isn't linked.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
             <input type="checkbox" data-id="p8-commit">
             <span class="step-title">Commit the flipped symlinks</span>
           </div>
@@ -892,6 +951,55 @@ footer a{color:var(--accent)}
           <p>The symlinks are tracked, so the active palette is part of the repo's state. From a
           clean tree a switch produces exactly 17 modified paths and nothing else. Commit them or
           <code>git checkout .</code> — leaving them dirty makes every later diff noisy.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-recover">
+            <span class="step-title">If a switch looks half-applied</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> theme                                    <span class="c"># what does it think is active?</span>
+<span class="p">❯</span> cd ~/repos/dotfiles &amp;&amp; git status --short  <span class="c"># 17 lines, or 0 — never between</span>
+<span class="p">❯</span> theme nord --no-icons &amp;&amp; theme gruvbox --no-icons</pre>
+        </div>
+        <div class="step-body">
+          <p>A switch is all-or-nothing by construction: every fragment is checked to exist
+          <em>before</em> any symlink moves, so a missing one aborts having changed nothing and names
+          what's missing. If the tree shows some number other than 17 or 0 modified paths, something
+          outside the switcher edited a symlink.</p>
+          <p>Switching away and back re-flips all 17 from a known state. It is safe to run at any
+          time and cannot half-apply.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-add">
+            <span class="step-title">Add a themed application</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> cd ~/repos/dotfiles/&lt;pkg&gt;/.config/&lt;app&gt;
+<span class="p">❯</span> <span class="c"># write colors-nord.ext and colors-gruvbox.ext — same role names in both</span>
+<span class="p">❯</span> ln -sfn colors-nord.ext colors.ext       <span class="c"># relative and bare, never a path</span>
+<span class="p">❯</span> <span class="c"># point the app's config at colors.ext with its own include directive</span>
+<span class="p">❯</span> theme gruvbox --no-icons                 <span class="c"># must now say 18</span></pre>
+        </div>
+        <div class="step-body">
+          <p>No code changes — the switcher finds its work by filename. The count going up by one is
+          the confirmation; if it doesn't, the name doesn't match
+          <code>&lt;base&gt;-nord.&lt;ext&gt;</code> / <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code>
+          and the file will be <strong>silently</strong> left on one palette forever.</p>
+          <p>If the package is unfolded — <code>alacritty</code>, <code>gtk</code>, <code>vim</code>,
+          <code>bin</code> — the new files need <code>stow -R &lt;pkg&gt;</code> before they exist in
+          <code>~</code> at all.</p>
         </div>
       </div>
 
