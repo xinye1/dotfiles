@@ -604,17 +604,38 @@ immediately, taking the variable with it. Use `systemctl --user set-environment`
 
 ```
 exec_always nwg-drawer -r -c 7 -is 90 …      # single instance in practice
-exec_always --no-startup-id foot --server    # NOT proven single — see below
+exec_always --no-startup-id foot --server    # single: a 2nd server cannot bind the socket
 ```
 
 `nwg-drawer -r` is resident mode and stays at one process across reloads (`pgrep -xc nwg-drawer`
-→ `1` after 15 hours and many reloads). `foot --server` is a weaker claim than it looks: two were
-alive at the time of writing, an old one and a newer one that owns
-`$XDG_RUNTIME_DIR/foot-wayland-1.sock`. So this is a **latent leak of the same shape as the swayidle
-one** — smaller, because the orphan holds no socket and does nothing, but it is not the reload-safe
-line it appears to be. Check with `pgrep -a foot`; more than one `foot --server` means orphans.
-Do not add `pkill -x foot` to the line without thinking: it also kills every open terminal, which is
-exactly why `theme --restart-terminals` is opt-in.
+→ `1` after 15 hours and many reloads).
+
+`foot --server` is safe for a different and stronger reason: **it cannot double-start.** The second
+instance fails to bind the socket and exits immediately:
+
+```
+$ foot --server
+ err: server.c:589: /run/user/1000/foot-wayland-1.sock is already accepting connections;
+      is 'foot --server' already running
+```
+
+So a reload spawns a process that dies on the spot. This is not the swayidle shape.
+
+**Two `foot --server` processes can nonetheless be alive at once, and that is not a leak.**
+`pkill -x foot` — which `theme --restart-terminals` runs — makes the old server release its
+listening socket, but it stays up serving the windows already attached to it and exits when the last
+one closes. A replacement server then takes the socket. During that overlap `pgrep -a foot` shows
+two, the older one holding real memory and an open `foot-wayland-shm-buffer-pool`. It is draining,
+not orphaned. Distinguish them by which owns the socket:
+
+```sh
+pgrep -a foot                                  # more than one --server?
+ls -l $XDG_RUNTIME_DIR/foot-wayland-1.sock     # its mtime marks the live one
+```
+
+**Do not add `pkill -x foot` to the `exec_always` line.** It is unnecessary — nothing leaks — and it
+would kill every open terminal on every `swaymsg reload`. That destructiveness is precisely why
+`theme --restart-terminals` is opt-in.
 
 ### 9.3 azote rewrites `~/.azotebg`
 
