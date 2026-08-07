@@ -16,7 +16,7 @@ set laststatus=2    " let lightline status bar show up https://github.com/itchyn
 filetype plugin on	" enable plugin for filetypes
 filetype indent on 	" load filetype-specific indent files
 set number 		    " show line numbers
-set relativenumber
+"set relativenumber
 "set cursorline 	" highlight current line
 set showcmd 		" show command in bottom bar
 set wildmenu 		" visual autocomplete for command menu
