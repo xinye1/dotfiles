@@ -7,25 +7,46 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 
 | Package      | Links to                                                        |
 |--------------|-----------------------------------------------------------------|
-| `bash`       | `~/.bashrc`                                                     |
-| `vim`        | `~/.vimrc`                                                      |
+| `bash`       | `~/.bashrc`, `~/.config/dircolors`                              |
+| `vim`        | `~/.vimrc`, `~/.vim/colorscheme*.vim`                           |
+| `bin`        | `~/.local/bin/theme` — the palette switcher                     |
 | `alacritty`  | `~/.config/alacritty/alacritty.toml`                            |
 | `foot`       | `~/.config/foot/foot.ini`                                       |
 | `starship`   | `~/.config/starship.toml`                                       |
+| `htop`       | `~/.config/htop/htoprc`                                         |
 | `waybar`     | `~/.config/waybar/` — `config`, `style.css`, `scripts/`         |
 | `sway`       | `~/.config/sway/` — `config`, `config.d/`, `scripts/`           |
 | `kanshi`     | `~/.config/kanshi/config`                                       |
-| `gtk`        | `~/.config/gtk-3.0/`, `~/.config/gtk-4.0/`, `~/.gtkrc-2.0`      |
+| `gtk`        | `~/.config/gtk-3.0/`, `~/.config/gtk-4.0/`, `~/.config/xsettingsd/`, `~/.gtkrc-2.0`, `~/.icons/default/` |
 | `mako`       | `~/.config/mako/config`                                         |
 | `fuzzel`     | `~/.config/fuzzel/fuzzel.ini`                                   |
 | `nwg-drawer` | `~/.config/nwg-drawer/drawer.css`                               |
 | `gtklock`    | `~/.config/gtklock/`                                            |
 
-The desktop is themed with [Nord](https://www.nordtheme.com/) throughout.
+## Theming
 
-* **[PLAYBOOK.md](PLAYBOOK.md)** — the full technical manual: architecture, the palette and its role
-  conventions, every deviation from stock EndeavourOS and why, the keybinding reference, and the
-  gotchas. Read this one.
+The desktop carries **two palettes** — [Nord](https://www.nordtheme.com/) and
+[Gruvbox Dark](https://github.com/morhetz/gruvbox) — and switches between them with one keystroke:
+
+```sh
+theme            # print the active palette
+theme gruvbox    # switch
+theme toggle     # the other one — bound to $mod+Shift+t
+```
+
+No colour is written as a hex in an application config. Every one is a **role** (`bg`, `accent`,
+`critical`, …) defined twice, once per palette, in a pair of fragments inside the package that owns
+it. `theme` flips the 17 tracked symlinks that select which fragment is live, then reloads sway,
+waybar, mako and gsettings. It touches sway, waybar, foot, alacritty, fuzzel, mako, gtklock,
+nwg-drawer, vim and the whole GTK stack.
+
+Stow is deliberately *not* how the switch happens — a second package writing into `~/.config/waybar`
+would unfold it. See **[PLAYBOOK.md §3.3](PLAYBOOK.md)** for the mechanism, the flags, and what does
+not update immediately (open terminals, running GTK apps).
+
+* **[PLAYBOOK.md](PLAYBOOK.md)** — the full technical manual: architecture, the two palettes and
+  their role conventions, the switching model, every deviation from stock EndeavourOS and why, the
+  keybinding reference, and the gotchas. Read this one.
 * **[docs/setup.html](docs/setup.html)** — the same setup as an interactive checklist with copy
   buttons and saved progress. Open it in a browser when rebuilding on a new machine.
 
@@ -34,8 +55,11 @@ The desktop is themed with [Nord](https://www.nordtheme.com/) throughout.
 ```sh
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
-stow bash vim alacritty foot starship  # or one package at a time: stow vim
+stow bash vim alacritty foot starship htop bin  # or one at a time: stow vim
 ```
+
+`bin` puts `theme` on `PATH`. It is **not** folded — `~/.local/bin` is a real directory holding
+untracked binaries — so a script added to the package later needs `stow -R bin` before it appears.
 
 For the full desktop, see [PLAYBOOK.md](PLAYBOOK.md) — the sway/gtk packages need packages
 installed and stock configs moved aside first.
@@ -82,19 +106,26 @@ so the package works on a machine where neither is installed yet.
   which also makes starship's language modules report the project's interpreter
   rather than the ambient one. `sudo pacman -S mise`.
 * [alacritty-theme](https://github.com/alacritty/alacritty-theme) cloned to
-  `~/.config/alacritty/themes` — `alacritty.toml` imports
-  `themes/themes/nord.toml` from it. Without it alacritty still starts, but logs
-  a config error and falls back to the default colours. Note the clone also ships
-  `nordic.toml`, `nordfox.toml` and `nord_light.toml` — all different schemes.
+  `~/.config/alacritty/themes` — **optional now.** `alacritty.toml` used to import
+  `themes/themes/nord.toml` from this clone; it imports its own
+  `colors.toml` fragment instead, so the repo describes the colours on its own.
+  Clone it only if you want other schemes to hand — and note it ships
+  `nord.toml`, `nordic.toml`, `nordfox.toml` and `nord_light.toml`, three of
+  which are *not* Nord.
 * [foot](https://codeberg.org/dnkl/foot) — the terminal sway launches on
   `mod+Return`. `~/.config/sway/config.d/default` sets `$term footclient` and
   `autostart_applications` execs `foot --server`, so the daemon must be running
-  for the binding to work. `sudo pacman -S foot`. The `foot` package here is
-  self-contained — unlike `alacritty`, the Nordic palette is inlined rather than
-  imported from an untracked clone. Wayland-only, hence keeping `alacritty`.
-* [lightline](https://github.com/itchyny/lightline.vim) - vim' status bar.
-  Run `git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline`
-  to clone it.
+  for the binding to work. `sudo pacman -S foot`. Wayland-only, hence keeping
+  `alacritty` alongside it. foot has no config-reload signal, so it is the one
+  surface that keeps its old colours after `theme` — see PLAYBOOK §9.11.
+* vim plugins, all cloned into `~/.vim/pack/plugins/start/`. `.vimrc` guards the
+  colorscheme `source` with `filereadable`, so vim still starts without them:
+
+  ```sh
+  git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
+  git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
+  git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
+  ```
 
 ### Desktop packages
 
@@ -105,12 +136,24 @@ EndeavourOS Sway Community Edition already installs:
 sudo pacman -S --needed ttf-jetbrains-mono-nerd kanshi papirus-icon-theme
 yay -S nordic-theme papirus-folders
 sudo papirus-folders -C nordic -t Papirus-Dark   # one-off, recolours the folder icons
+
+# The Gruvbox GTK theme — installed by hand into ~/.themes, not from the AUR
+git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
+cd /tmp/colloid && ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
 ```
 
-* `nordic-theme` — the Nord GTK2/3/4 theme. Nothing in the base install provides one.
+* `nordic-theme` — the Nord GTK2/3/4 theme. Nothing in the base install provides one. Note the
+  theme is genuinely called *Nordic*; there is no GTK theme called "Nord".
+* `Colloid-Yellow-Dark-Gruvbox` — the counterpart for the Gruvbox palette. The AUR
+  `gruvbox-gtk-theme-git` was rejected: it pulls in `gtk-engine-murrine`, which wants a
+  from-source `gtk2` build. **Never pass `-l`/`--libadwaita` to that installer** — it overwrites
+  `~/.config/gtk-4.0/gtk.css`, which this repo owns.
 * `ttf-jetbrains-mono-nerd` — the *patched* font. The base install ships only
   `ttf-nerd-fonts-symbols`, so waybar's icons render via a fontconfig fallback rather than by
   configuration. `fc-match "JetBrainsMono Nerd Font"` must not return NotoSansMono.
-* `papirus-icon-theme` + `papirus-folders` — icons for mako, fuzzel and GTK.
+* `papirus-icon-theme` + `papirus-folders` — icons for mako, fuzzel and GTK. `theme` re-runs
+  `papirus-folders` per palette (`nordic` for Nord, `yellow` for Gruvbox — it has no gruvbox
+  colour). It writes into `/usr/share/icons`, so it is the one step needing `sudo` on every
+  switch; `theme --no-icons` skips it.
 * `kanshi` — display hotplug profiles (`kanshi` package in this repo).
 

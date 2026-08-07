@@ -1,7 +1,12 @@
-# Sway + Nord: the full playbook
+# Sway, Nord and Gruvbox: the full playbook
 
 The complete technical reference for this desktop: what it is, how the pieces fit together, and
 every way it differs from a stock EndeavourOS Sway install.
+
+It carries **two palettes**, Nord and Gruvbox Dark, and switches between them with one keystroke
+(`$mod+Shift+t`, or `theme <name>` at a shell). Nord is the default and the original; Gruvbox was
+added by making every colour in the setup a *role* rather than a hex, which is the single change
+that most of this document now turns on. §3.3 is the mechanism.
 
 This is the document to *read*. For a checklist to *follow* at a terminal, open
 [`docs/setup.html`](docs/setup.html) in a browser — same content, structured as steps with
@@ -89,41 +94,94 @@ to set `color-scheme`.
 
 ### 2.3 Where the palette lives
 
-There is no central colour file — every application parses its own config format, so the palette is
-duplicated by necessity. The full 16 colours are declared in
-`waybar/.config/waybar/style.css` as GTK `@define-color` names, which is the closest thing to a
-canonical listing. Everywhere else the hexes are inlined with a comment naming the nord index.
+Every application parses its own config format, so the palette is still duplicated by necessity —
+but it is no longer duplicated *ad hoc*. Each package carries a matched **pair of fragments** and a
+theme-neutral **symlink** that the package's main config includes:
+
+```
+waybar/.config/waybar/colors-nord.css       one fragment per theme
+waybar/.config/waybar/colors-gruvbox.css
+waybar/.config/waybar/colors.css  ->  colors-nord.css     tracked symlink; `theme` flips it
+```
+
+There are 17 such symlinks, one per colour-bearing file. They are **committed**, so the active
+theme is part of the repo's state and `git status` after a switch shows exactly 17 modified
+symlinks and nothing else.
+
+Two of the fragment pairs are the canonical listing of the roles:
+
+- **`waybar/.config/waybar/colors-{nord,gruvbox}.css`** — the thirteen roles as GTK
+  `@define-color` names. gtklock's and nwg-drawer's fragments define the same thirteen, so a rule
+  can be moved between the three files unchanged.
+- **`sway/.config/sway/theme-{nord,gruvbox}.env`** — the same thirteen as shell variables, for the
+  things that cannot parse CSS: `scripts/screenshot_*.sh`, waybar's `keyhint.sh`, and `theme`
+  itself. It also carries the two per-theme names that are *not* colours, `PAPIRUS_FOLDER` and
+  `GTK_THEME_NAME`.
+
+sway needs a third copy, `sway/.config/sway/colors-{nord,gruvbox}.conf`, as `set $role` lines: sway
+has no shell and cannot source the `.env`. All three must agree, and §3.1 is the authority.
+
+Everything else (foot, fuzzel, mako, alacritty, vim, the GTK settings files) spells the values in
+its own key syntax, inside a fragment. **A hex inlined in a main config is now a bug** — it will
+survive a theme switch and stand out against everything around it.
 
 ---
 
-## 3. The Nord palette
+## 3. The palettes
 
 ```
+Nord
 Polar Night   nord0  #2E3440    nord1  #3B4252    nord2  #434C5E    nord3  #4C566A
 Snow Storm    nord4  #D8DEE9    nord5  #E5E9F0    nord6  #ECEFF4
 Frost         nord7  #8FBCBB    nord8  #88C0D0    nord9  #81A1C1    nord10 #5E81AC
 Aurora        nord11 #BF616A    nord12 #D08770    nord13 #EBCB8B    nord14 #A3BE8C    nord15 #B48EAD
 ```
 
+```
+Gruvbox Dark
+Backgrounds   bg0_h  #1D2021    bg0    #282828    bg1    #3C3836    bg2    #504945    bg4 #7C6F64
+Foregrounds   fg0    #FBF1C7    fg1    #EBDBB2    fg4    #A89984    gray   #928374
+Neutral       red #CC241D  green #98971A  yellow #D79921  blue #458588  purple #B16286  aqua #689D6A  orange #D65D0E
+Bright        red #FB4934  green #B8BB26  yellow #FABD2F  blue #83A598  purple #D3869B  aqua #8EC07C  orange #FE8019
+```
+
+The two are not interchangeable in temperature. Nord's accent is a cool frost blue with the warning
+colour a long way off in yellow; gruvbox's accent *is* the yellow, with warning one hue step away in
+orange. Warning states therefore read as **hotter** under Gruvbox rather than as a different colour.
+That is a property of gruvbox, not a mistake in the mapping.
+
 ### 3.1 Role convention
 
 **This section is the point of the whole document.** The desktop drifted into four incompatible
-palettes because each config was themed ad hoc. Adding anything new means picking from this table,
-not choosing a colour that looks nice in isolation:
+palettes because each config was themed ad hoc; it now carries two palettes only because every
+colour is named by role. Adding anything new means picking a row from this table and supplying
+**both** values — never choosing a colour that looks nice in isolation, and never adding a role to
+one palette alone (§9.10):
 
-| Role | Colour | Used by |
-|---|---|---|
-| Background | `nord0` `#2E3440` | desktop bg, waybar bg, terminal bg, gtklock bg |
-| Raised surface | `nord1` `#3B4252` | mako body, popovers, cards, fuzzel-adjacent chrome |
-| Selection | `nord2` `#434C5E` | fuzzel selection, terminal selection bg |
-| Inactive / muted | `nord3` `#4C566A` | unfocused text, placeholders, separators, calendar weeks |
-| Foreground | `nord4` `#D8DEE9` | body text everywhere |
-| Bright foreground | `nord6` `#ECEFF4` | focused window title, active text |
-| **Focus / accent** | `nord8` `#88C0D0` | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
-| Secondary accent | `nord9`/`nord10` | calendar weekdays, gtklock buttons, waybar mode |
-| **Urgent / critical** | `nord11` `#BF616A` | urgent window, critical CPU/battery, destructive actions |
-| Warning | `nord13` `#EBCB8B` | warning states, "today" in the calendar, idle inhibitor on |
-| Success | `nord14` `#A3BE8C` | battery charging, success states |
+| Role | Nord | Gruvbox | Used by |
+|---|---|---|---|
+| `bg` | `nord0` `#2E3440` | `bg0` `#282828` | window bg, waybar bg, terminal bg, gtklock bg |
+| `surface` | `nord1` `#3B4252` | `bg1` `#3C3836` | mako body, popovers, cards, fuzzel-adjacent chrome |
+| `sel` | `nord2` `#434C5E` | `bg2` `#504945` | fuzzel selection, terminal selection bg |
+| `muted` | `nord3` `#4C566A` | `bg4` `#7C6F64` | unfocused border and text, placeholders, calendar weeks |
+| `fg` | `nord4` `#D8DEE9` | `fg1` `#EBDBB2` | body text everywhere |
+| `fg_bright` | `nord6` `#ECEFF4` | `fg0` `#FBF1C7` | focused window title, active text |
+| **`accent`** | `nord8` `#88C0D0` | `yellow` `#FABD2F` | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
+| `accent2` | `nord10` `#5E81AC` | `neutral orange` `#D65D0E` | focused-inactive border, calendar weekdays, gtklock buttons, waybar mode |
+| `indicator` | `nord7` `#8FBCBB` | `aqua` `#8EC07C` | sway split indicator — where the next window will open |
+| **`critical`** | `nord11` `#BF616A` | `red` `#FB4934` | urgent window, critical CPU/battery, destructive actions |
+| `warning` | `nord13` `#EBCB8B` | `orange` `#FE8019` | warning states, "today" in the calendar, idle inhibitor on |
+| `success` | `nord14` `#A3BE8C` | `green` `#B8BB26` | battery charging, success states |
+| `desktop` | `#272B33` | `bg0_h` `#1D2021` | the wallpaper-less background, one shade below `bg` |
+
+`desktop` is the one row that is not drawn from the palette on the Nord side: Nord has nothing below
+`nord0`, so it is a hand-darkened `nord0`. Gruvbox ships exactly this idea as `bg0_h`, so no
+off-palette value is needed there. It earns the exception — the desktop being darker than the window
+background is what turns the gaps into visible channels and lets `smart_borders on` be safe.
+
+Two per-theme names in `theme-*.env` are not colours and still have to be chosen per palette:
+`GTK_THEME_NAME` (`Nordic` / `Colloid-Yellow-Dark-Gruvbox`) and `PAPIRUS_FOLDER` (`nordic` /
+`yellow` — see §3.2).
 
 ### 3.2 Nord is not Nordic
 
@@ -139,6 +197,72 @@ blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml`
 - **papirus-folders** calls its Nord folder colour `nordic`, and rejects `nord` outright with
   *"Unable to find 'nord' color"*. The icons really are Nord — `folder-nordic.svg` is drawn in
   `#5E81AC` (nord10), `#81A1C1` (nord9) and `#ECEFF4` (nord6). Use `-C nordic`.
+
+**The parallel gruvbox trap: papirus-folders has no gruvbox colour at all.** `papirus-folders -l`
+lists 25 names and gruvbox is not among them, so `PAPIRUS_FOLDER=yellow` in `theme-gruvbox.env` is a
+*stand-in*, chosen because gruvbox's signature accent is its yellow. It is the one place in the
+setup where the Gruvbox theme is approximated rather than matched. Do not "fix" it by inventing a
+hex — papirus-folders only accepts names from its own list.
+
+**The GTK themes are asymmetric too.** Nord's is `Nordic` in `/usr/share/themes` from the AUR;
+Gruvbox's is `Colloid-Yellow-Dark-Gruvbox` in **`~/.themes`**, installed by hand (§4.2, §8). Both
+names are read out of `theme-*.env` as `GTK_THEME_NAME`, so nothing else needs to know where they
+live — but `ls /usr/share/themes` will not find the gruvbox one, and that is not a fault.
+
+### 3.3 Switching
+
+`theme` (`bin/.local/bin/theme` → `~/.local/bin/theme`, bound to **`$mod+Shift+t`**):
+
+```sh
+theme                       print the active theme
+theme nord | theme gruvbox  switch to a named theme
+theme toggle                switch to the other one          <- what the keybinding runs
+```
+
+| Flag | Effect |
+|---|---|
+| `--no-icons` | Skip papirus-folders. It writes into `/usr/share/icons`, so it is the one step that needs `sudo`; this is the flag to use in a script or over ssh |
+| `--restart-terminals` | Also `pkill -x foot` and re-exec `foot --server`, applying the palette to the terminal immediately — at the cost of every open shell (§9.11) |
+
+**How it finds what to switch.** It walks the repo for symlinks whose target matches
+`*-nord`, `*-nord.*`, `*-gruvbox` or `*-gruvbox.*` and repoints each at its sibling. Nothing is
+hardcoded, so adding a themed application means adding two fragments and a symlink and changing no
+code. The corollary is the sharp edge: **a themed file not named to that pattern is silently not
+switched.** There is no manifest to fall out of step with, and equally no manifest to complain.
+
+The active theme is read back from `sway/.config/sway/theme.env`'s own link target rather than from
+a state file, so it cannot disagree with reality.
+
+Before it flips anything it checks that both palettes define the same role names, in
+`theme-*.env` and in `colors-*.conf`, and refuses if they differ. That guard exists because of §9.10.
+
+**stow is deliberately not involved.** A `theme-nord` / `theme-gruvbox` pair of stow packages was
+the obvious design and is wrong: a second package writing into `~/.config/waybar` forces stow to
+**unfold** that directory, and every themed package would lose the "new files appear for free"
+property described in §5.2. Flipping a symlink *inside* the package leaves fold state untouched.
+This is why §5.2's table is unchanged by the theming work.
+
+**The symlinks are committed.** From a clean tree, a switch leaves exactly 17 modified paths and
+nothing else:
+
+```sh
+theme gruvbox --no-icons
+git -C ~/repos/dotfiles status --short    # 17 lines, every one a symlink
+```
+
+Commit them (or `git checkout .`) — leaving them dirty makes every later diff noisy.
+
+**What a switch does *not* update immediately:**
+
+| | Why | Remedy |
+|---|---|---|
+| foot | No config-reload signal exists (§9.11) | `--restart-terminals`, or log out |
+| Running GTK apps | They read `settings.ini` once, at startup (§9.9) | Restart the app |
+| Folder icons | papirus-folders needs `sudo`; skipped when there is no tty to prompt on | Run the printed `sudo papirus-folders …` line |
+
+Everything else — sway, waybar, mako, gsettings/libadwaita, nwg-drawer, fuzzel, gtklock, new
+terminals, new vim sessions — is live by the time the command returns. `theme` runs
+`sway --validate` before `swaymsg reload` and refuses to reload an invalid config.
 
 ---
 
@@ -167,10 +291,17 @@ blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml`
 | Package | Source | Why |
 |---|---|---|
 | `nordic-theme` | **AUR** | The GTK2/3/4 Nord theme. `/usr/share/themes/Nordic`. Nothing in the base install provides a Nord GTK theme. |
+| `Colloid-Yellow-Dark-Gruvbox` | **source** | The GTK theme for the Gruvbox palette, in `~/.themes`. Not a package — see §8 for the two-line install |
 | `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
-| `papirus-folders` | **AUR** | Recolours Papirus folder icons to Nord. Needs `sudo papirus-folders -C nordic -t Papirus-Dark` run once |
+| `papirus-folders` | **AUR** | Recolours Papirus folder icons. `theme` drives it per palette (`nordic` / `yellow`), and it is the one step needing `sudo` |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `kanshi` | repo | Display hotplug profiles |
+| `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
+
+**Why the gruvbox GTK theme is not the AUR package.** `gruvbox-gtk-theme-git` depends on
+`gtk-engine-murrine`, which on a current Arch pulls in a **from-source `gtk2` build** — and gtk2 is
+not installed here, nor wanted for one theme. `vinceliuice/Colloid-gtk-theme` has a gruvbox tweak
+that produces the same result, installs into `~/.themes` without root, and needs no engine.
 
 ### 4.3 Deliberately not used
 
@@ -205,14 +336,31 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | Package | Folded? | Reason |
 |---|---|---|
 | `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `htop` | **Yes** | Nothing else writes into `~/.config/htop`. Note htop rewrites `htoprc` *itself* on exit, so settings changed in its UI arrive as a git diff through the symlink — that is the folded behaviour working, not a fault. |
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
+| `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 
 The rule: **never fold a directory that a tool writes into, or that holds untracked content.**
-Check which a directory is with `ls -la ~/.config | grep <pkg>` — a symlink means folded, a real
-directory means `-R` is required after adding files.
+Check which a directory is:
+
+```sh
+[ -L ~/.config/waybar ] && echo folded || echo unfolded
+```
+
+Use the `[ -L ]` test, not `ls -la ~/.config | grep -E ' waybar$'`. `ls` renders a symlink as
+`waybar -> ...`, so a `$`-anchored grep matches only the **unfolded** case — the command prints
+nothing and silently "passes" exactly when folding is healthy, and prints a line exactly when it is
+broken. The anchored form shipped in this plan's own verification step and had to be corrected.
 
 To fold one that isn't: `stow -D <pkg> && rmdir <the now-empty target dirs> && stow <pkg>`.
+
+**The theming work did not change a single row of this table, by design.** Each theme fragment and
+its symlink live *inside* the package that owns them, so switching writes into the repo, never into
+`~/.config`. The alternative — a `theme-nord` / `theme-gruvbox` pair of stow packages — would have
+put a second package's files into `~/.config/waybar`, `~/.config/foot` and the rest, forcing stow to
+unfold every one of them and costing all seven themed folded packages their "new files appear for
+free" property in exchange for nothing. See §3.3.
 
 ### 5.3 Adopting an existing config
 
@@ -247,23 +395,23 @@ The core reference. Each row: what stock does → what this repo does → why �
 
 | | Stock | Here | Why |
 |---|---|---|---|
-| sway borders | Dracula `#6272A4` / `#282A36` / `#F8F8F2` | Nord, `nord8` focus | Consistency; stock clashed with the terminals |
-| sway border bg | `bground` == `border` (accent-filled titlebar) | `bground` = `nord0` | The accent belongs on the border, not flooding the title area |
+| sway borders | Dracula `#6272A4` / `#282A36` / `#F8F8F2` | `$accent` focus, `$accent2` focused-inactive, `$muted` unfocused | Consistency; stock clashed with the terminals. Role names, so both palettes get the same ladder |
+| sway border bg | `bground` == `border` (accent-filled titlebar) | `bground` = `$bg` | The accent belongs on the border, not flooding the title area |
 | sway font | `Noto Sans Regular 10` | `JetBrainsMono Nerd Font 10` | Matches bar and launcher; glyph coverage |
 | Terminals | *Nordic* (`#242933`) | *Nord* (`#2E3440`) | See §3.2 — different scheme despite the name |
-| waybar | `@highlight #685878`, `@base1 #19191e`, literal `orange`/`red` | All 16 Nord colours as `@define-color` | One-off hexes matched nothing else |
-| waybar calendar | pastel pink `#ff6699` `#ecc6d9` `#99ffdd` | Nord | Loudest palette break in the setup |
+| waybar | `@highlight #685878`, `@base1 #19191e`, literal `orange`/`red` | The thirteen roles as `@define-color`, from a switchable fragment | One-off hexes matched nothing else, and named roles are what make two palettes possible |
+| waybar calendar | pastel pink `#ff6699` `#ecc6d9` `#99ffdd` | `$accent2` weekdays, `$warning` today, `$muted` week numbers | Loudest palette break in the setup. The weekday colour moved nord9 → nord7 in the role rewrite — the one deliberate visual change on the Nord side |
 | waybar font | `JetBrainsMono` | `"JetBrainsMono Nerd Font"` | §9.4 |
-| mako | Arc blue `#5294e2` on `#404552` | Nord, `nord1` body / `nord8` border | |
+| mako | Arc blue `#5294e2` on `#404552` | `$surface` body / `$accent` border | |
 | mako icons | `/usr/share/icons/Arc-X-D` | `/usr/share/icons/Papirus-Dark` | **The stock path does not exist** — icons were silently falling back |
-| fuzzel | purple/navy `08052bdd`, Dracula selection `44475add` | Nord | Related to nothing else |
+| fuzzel | purple/navy `08052bdd`, Dracula selection `44475add` | `$bg` / `$sel` / `$accent` border | Related to nothing else |
 | fuzzel font | `JetBrainsMono-Regular` | `JetBrains Mono` | §9.4 — file name vs fontconfig family |
-| nwg-drawer | `rgba(38,18,57,.9)` purple | `rgba(46,52,64,.9)` = nord0 | |
-| gtklock | 22 MB background image, purple accents | Solid `nord0`, Nord accents | Image moved to `~/Pictures/wallpapers`; a 22 MB binary has no place in a config dir |
-| GTK theme | `Arc-Dark` / `Qogir-Dark` | `Nordic` / `Papirus-Dark` | |
+| nwg-drawer | `rgba(38,18,57,.9)` purple | `@bg` with alpha | |
+| gtklock | 22 MB background image, purple accents | Solid `@bg`, role-named accents | Image moved to `~/Pictures/wallpapers`; a 22 MB binary has no place in a config dir |
+| GTK theme / icons | `Arc-Dark` / `Qogir-Dark` | `Nordic` or `Colloid-Yellow-Dark-Gruvbox`, `Papirus-Dark` | Per palette, from `GTK_THEME_NAME` in `theme-*.env` |
 | GTK dark hint | `gtk-application-prefer-dark-theme=0` | `=1` | Was `0` while the theme name was a *dark* variant — libadwaita apps rendered light |
 | libadwaita | *(nothing)* | `gtk-4.0/gtk.css` + `color-scheme` in gsettings | §2.2 — the only way to reach these apps |
-| Wallpaper | 3.3 MB PNG via untracked `~/.azotebg` | `output * bg #2E3440 solid_color` | Native to sway; no loose script, no tracked binary |
+| Wallpaper | 3.3 MB PNG via untracked `~/.azotebg` | `output * bg $desktop solid_color` | Native to sway; no loose script, no tracked binary |
 
 ### 6.2 Defects fixed
 
@@ -277,6 +425,11 @@ The core reference. Each row: what stock does → what this repo does → why �
 | **mako icon path** | Points at a directory that does not exist | Papirus-Dark | `notify-send -i firefox test` |
 | **waybar workspaces 1–2** | `format-icons` covered `"3"`–`"10"` only; 1 and 2 fell through to the raw name | Added, plus a `default` | Harmless for numeric workspaces; breaks the moment one is renamed |
 | **No Nerd Font** | Only the symbols-only fallback was installed; every glyph rendered via fontconfig fallback | `ttf-jetbrains-mono-nerd` | §9.4 |
+| **Cursor theme never resolved** | The name was written `Qogir-dark` in 13 places; the directory is `/usr/share/icons/Qogir-Dark`. XCursor resolves by **case-sensitive path**, so it silently fell back to the default cursor everywhere | `Qogir-Dark` throughout, plus `seat * xcursor_theme` and `~/.icons/default/index.theme` so it reaches XWayland and the compositor cursor too | `ls -d /usr/share/icons/Qogir-dark` errors, `-Dark` does not — that one letter was the whole bug |
+| **Dangling GTK2 include** | `.gtkrc-2.0` ended with `include "/home/xinye/.gtkrc-2.0.mine"` — a file that has never existed on this machine | Line dropped | `grep -rl gtkrc-2.0.mine ~/repos/dotfiles --exclude-dir=.git --exclude-dir=docs` → nothing but this file |
+| **Stale, untracked xsettingsd** | `~/.config/xsettingsd/xsettingsd.conf` was untracked and still named `Arc-Dark` / `Qogir-Dark`, disagreeing with `settings.ini`. **xsettingsd is not running**, which is exactly why the drift was invisible | Tracked in the `gtk` package, per-theme, generated from the same names as everything else | `readlink -f ~/.config/xsettingsd/xsettingsd.conf` is inside the repo |
+| **alacritty depended on an untracked clone** | Its palette was imported from `~/.config/alacritty/themes`, so the repo alone did not describe the colours | Self-contained `colors-{nord,gruvbox}.toml` fragments; the clone is now optional | The only `import` in `alacritty.toml` is `~/.config/alacritty/colors.toml` |
+| **Cancelled screenshot ran anyway** | `grim -g "$(slurp)"` — pressing Escape gave slurp a non-zero exit and an empty string, and grim was handed an empty geometry | `scripts/screenshot_region.sh` captures slurp's exit status and bails | `Print`, then Escape: nothing is written and swappy does not open |
 
 ### 6.3 Added capability
 
@@ -286,7 +439,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | Dropdown terminal | `$mod+grave` | `footclient --app-id dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| footclient …` creates it on first press |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
 | Gaps toggle | `$mod+g` | `gaps inner current toggle 12` — for screen sharing and screenshots |
-| Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. The three stock Print bindings are untouched |
+| Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §6.2, §9.13 |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
 | App placement | `config.d/application_defaults` | `assign` (not `for_window … move`) so windows don't flash on the wrong workspace first. X11 apps need `class`, Wayland apps `app_id` |
@@ -326,6 +479,7 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 | `$mod+p` | Window switcher |
 | `$mod+Shift+e` | Power menu |
 | `$mod+f1` | Lock (gtklock) |
+| **`$mod+Shift+t`** | **Toggle Nord ↔ Gruvbox (`theme toggle`, §3.3)** |
 
 ### Windows
 | Key | Action |
@@ -371,20 +525,41 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 ## 8. Post-install steps that cannot be stowed
 
 ```sh
-# Nord-tint the Papirus folder icons (one-off, writes into /usr/share/icons)
+# Tint the Papirus folder icons (writes into /usr/share/icons, so root).
+# `theme` re-runs this on every switch when the colour differs; this is just
+# the first one. nordic for Nord, yellow for Gruvbox — see §3.2.
 sudo papirus-folders -C nordic -t Papirus-Dark
 
-# alacritty colour schemes — an untracked clone; alacritty.toml imports nord.toml from it
-git clone https://github.com/alacritty/alacritty-theme ~/.config/alacritty/themes
+# The Gruvbox GTK theme. Not a package: see §4.2 for why not the AUR one.
+# NEVER add -l/--libadwaita — it overwrites ~/.config/gtk-4.0/gtk.css, which is
+# precisely the nwg-look failure mode of §9.1.
+git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
+cd /tmp/colloid && ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
 
-# vim status bar
+# vim: status bar, and one colorscheme per palette
 git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
+git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
+git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
+
+# The theme switcher, so `theme` and $mod+Shift+t work
+stow bin
 
 # ~/.bashrc already exists from /etc/skel and stow will not overwrite a real file
 mv ~/.bashrc ~/.bashrc.bak && stow bash
 ```
 
-Optional, if you want the greetd-level environment fix from §6.4, edit `/etc/greetd/config.toml`.
+**Optional now, not required:**
+
+```sh
+# alacritty's palette is self-contained since the two-palette work. This clone
+# is only worth having if you want other schemes to hand.
+git clone https://github.com/alacritty/alacritty-theme ~/.config/alacritty/themes
+```
+
+Also optional: the greetd-level environment fix from §6.4, in `/etc/greetd/config.toml`.
+
+`bin` is **not** folded (§5.2), so a script added to the package later needs `stow -R bin` before it
+appears on `PATH`.
 
 ---
 
@@ -425,10 +600,27 @@ stow -R gtk
 Also: `exec export FOO=bar` does nothing. sway runs the command in a subshell that exits
 immediately, taking the variable with it. Use `systemctl --user set-environment`.
 
+**Two `exec_always` lines here lack the `pkill` prefix**, and they do not behave the same way:
+
+```
+exec_always nwg-drawer -r -c 7 -is 90 …      # single instance in practice
+exec_always --no-startup-id foot --server    # NOT proven single — see below
+```
+
+`nwg-drawer -r` is resident mode and stays at one process across reloads (`pgrep -xc nwg-drawer`
+→ `1` after 15 hours and many reloads). `foot --server` is a weaker claim than it looks: two were
+alive at the time of writing, an old one and a newer one that owns
+`$XDG_RUNTIME_DIR/foot-wayland-1.sock`. So this is a **latent leak of the same shape as the swayidle
+one** — smaller, because the orphan holds no socket and does nothing, but it is not the reload-safe
+line it appears to be. Check with `pgrep -a foot`; more than one `foot --server` means orphans.
+Do not add `pkill -x foot` to the line without thinking: it also kills every open terminal, which is
+exactly why `theme --restart-terminals` is opt-in.
+
 ### 9.3 azote rewrites `~/.azotebg`
 
 The GUI wallpaper picker writes `~/.azotebg` and starts its own `swaybg`, which paints over sway's
-native `output bg`. If the background stops being Nord, that's why: `pkill swaybg` and reload.
+native `output bg`. If the background stops matching the palette, that's why: `pkill swaybg` and
+reload.
 
 ### 9.4 Font family names vs file names
 
@@ -497,6 +689,105 @@ already running; if the new one looks right, nothing is broken:
 thunar -q && thunar &        # Thunar runs as a daemon; -q is the way to stop it
 ```
 
+This is also what `theme` means by "already-running GTK apps keep the old theme". It is not a bug in
+the switcher and there is nothing it can do about it.
+
+### 9.10 An undefined GTK colour renders black, silently
+
+The single nastiest failure mode of the two-palette model, and the reason `theme` has a
+pre-flight check at all.
+
+GTK CSS resolves `@name` at parse time. If the name is not defined, **the rule takes black** and
+nothing is logged — no warning on stderr, no fallback to the previous value, no visual hint that a
+name is involved. A widget simply turns black, which reads as a rendering bug rather than a missing
+definition. On a `#2E3440` bar a black region is easy to miss entirely.
+
+The way to produce it is to add a role to one palette and forget the other, so `theme` refuses to
+switch when `theme-nord.env` and `theme-gruvbox.env` (or the two `colors-*.conf`) do not define
+exactly the same names:
+
+```
+theme: theme-nord.env and theme-gruvbox.env define different roles
+```
+
+That is the guard working. Add the role to *both* fragments and it goes away. The same discipline
+applies to the four GTK CSS fragments — waybar, gtklock, nwg-drawer, and `gtk-{3,4}.0/gtk.css` —
+which the check cannot cover, because it reads the shell and sway copies.
+
+Related: **a raw hex in an application config is now a bug**, not a style choice. It will survive a
+switch and sit there in the wrong palette. §2.3 lists where values are allowed to live.
+
+### 9.11 foot cannot be told to re-read its colours
+
+foot has **no config-reload signal.** `SIGUSR1` and `SIGUSR2` look like one and are not: they toggle
+between the `[colors-dark]` and `[colors-light]` blocks *that were loaded at startup*. Sending them
+after editing the config does nothing new.
+
+**The rejected trick, recorded so it is not re-proposed:** park Nord in `[colors-dark]` and Gruvbox
+in `[colors-light]`, then switch with `SIGUSR1`. It works, and it was still rejected twice over —
+it caps the setup at exactly two themes forever, and it makes the config lie, with a dark palette
+declared as the light one. Restarting the server is the honest answer:
+
+```sh
+theme gruvbox --restart-terminals    # pkill -x foot; foot --server
+```
+
+That costs every open shell, so it is opt-in rather than the default. Without it, existing terminals
+and the running server keep the old palette until the next login.
+
+Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
+fragments use `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
+`[colors-dark]` unconditionally, which is what makes the section name a formality rather than a
+light/dark switch.
+
+### 9.12 waybar's `include` is overridden by the *including* file
+
+Backwards from every other config format in this setup. In waybar, a key defined in `config` **wins**
+over the same key coming from an `"include"`, regardless of where the `"include"` line sits.
+
+So moving the clock's colours into `colors.json` while leaving a `"clock"` object behind in `config`
+does not merge them — the `config` copy silently wins and the fragment has no effect at all. The
+`clock` module had to be **deleted from `config` entirely** and defined only in the fragment. The
+symptom is a module that ignores the theme while every other module switches correctly.
+
+### 9.13 sway `$variables` cannot cross `config.d` ordering
+
+`config.d/*` is read alphabetically (§9.6), so `default` — which holds the keybindings — is parsed
+**before** `theme`, which is where `include ../colors.conf` defines the palette. A `$role` used in a
+binding in `default` is therefore not yet defined, and sway rejects the whole config:
+
+```
+Invalid border color $accent
+```
+
+This is why the screenshot bindings call `scripts/screenshot_region.sh` instead of inlining
+`slurp -c $accent`: the script sources `~/.config/sway/theme.env` at *runtime*, sidestepping parse
+order completely. Any future binding that needs a colour should do the same rather than move files
+around to fix the sort order.
+
+### 9.14 Moving a config block wholesale loses whatever stayed behind
+
+When the waybar clock moved into the colour fragment, its `actions` block — scroll to shift the
+calendar month — was left in the old file and dropped. **Every check in this repo still passed**:
+`sway --validate` does not read waybar's config, the JSON stayed valid, waybar started clean, and
+the clock rendered correctly. Only scrolling on it revealed the loss.
+
+This repo's verification is entirely syntactic. There is no test that a feature still exists. When
+relocating a block, diff the *old* block against the new one key by key before deleting it —
+`git show HEAD:path/to/file` is the cheap way to get the old text back.
+
+### 9.15 `bash -lc` does not read `.bashrc`
+
+Line 6 of `bash/.bashrc` is the stock Arch guard:
+
+```sh
+[[ $- != *i* ]] && return
+```
+
+A login-but-not-interactive shell returns there, so **everything below it — the prompt, `LS_COLORS`,
+mise, starship — is skipped**. Testing a change with `bash -lc '…'` shows an unthemed shell and
+looks like the change did not land. Use `bash -ic '…'` for anything sourced from `.bashrc`.
+
 ---
 
 ## 10. Troubleshooting
@@ -522,6 +813,14 @@ thunar -q && thunar &        # Thunar runs as a daemon; -q is the way to stop it
 | A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
 | One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
 | `$mod+Return` does nothing | `foot --server` not running | `pgrep -a foot` |
+| Terminal still the old palette after a switch | foot cannot reload colours | `theme <name> --restart-terminals`, or log out; §9.11 |
+| One surface still the old palette, everything else switched | A running GTK app, or a file whose name does not match `<base>-<theme>.<ext>` so `theme` never saw it | `theme` prints how many symlinks it flipped — it must say **17**; §3.3 |
+| A widget renders **black** | A role used but not defined in that palette's fragment | §9.10 — define it in *both* fragments |
+| `theme: missing fragment: …` | A `colors.*` symlink exists with no counterpart for the target theme | Create the sibling fragment, or remove the symlink |
+| `theme: … define different roles` | The two palettes have drifted | §9.10. This is the guard, not a fault |
+| Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo` and there was no tty to prompt on | Run the `sudo papirus-folders -C <colour> -t Papirus-Dark` line `theme` printed |
+| Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path; §6.2 |
+| A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.env` from a script instead |
 
 ### Verification sweep
 
@@ -533,7 +832,23 @@ swaymsg -t get_outputs                        # scale 2 on eDP-1
 gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 systemctl --user show-environment | grep XDG_CURRENT      # =sway
 readlink -f ~/.config/sway ~/.config/waybar ~/.gtkrc-2.0  # all inside the repo
+
+theme                                                     # nord | gruvbox
+readlink ~/repos/dotfiles/sway/.config/sway/theme.env     # theme-<that>.env
 ```
 
+Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
+
+```sh
+for p in sway waybar foot mako fuzzel gtklock nwg-drawer htop; do
+    printf '%-12s ' "$p"
+    if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+done
+```
+
+Eight lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
+
 Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar
-clock tooltip, `$mod+f1`, thunar, a GTK4 app, `$mod+Return`.
+clock tooltip (and *scroll* on it — §9.14), `$mod+f1`, thunar, a GTK4 app, `$mod+Return`, `Print`,
+`vim`, `ls`.
