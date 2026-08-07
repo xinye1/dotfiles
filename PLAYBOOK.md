@@ -340,6 +340,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
+| `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future theme fragment — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 
 The rule: **never fold a directory that a tool writes into, or that holds untracked content.**
 Check which a directory is:
@@ -815,12 +816,13 @@ looks like the change did not land. Use `bash -ic '…'` for anything sourced fr
 
 | Symptom | Likely cause | Check / fix |
 |---|---|---|
-| Config change had no effect | Package unfolded, new file not linked | `ls -la ~/.config \| grep <pkg>`; `stow -R <pkg>` |
+| Config change had no effect | Package unfolded, new file not linked | `[ -L ~/.config/<pkg> ] && echo folded \|\| echo unfolded` (§5.2 — `ls -la \| grep` silently passes when it shouldn't); `stow -R <pkg>` |
 | Config change had no effect | Symlink points outside the repo | `readlink -f ~/.config/<pkg>` |
 | Change needs a full logout to apply | Used `exec` instead of `exec_always` | §9.2 |
 | Screen never locks | swayidle not running, or many are | `pgrep -xc swayidle` — must be exactly `1` |
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
 | GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
+| GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |
 | GTK theme reverted | nwg-look was opened | §9.1 |
 | Boxes instead of icons | Nerd Font missing | `fc-match "JetBrainsMono Nerd Font"` |
@@ -837,7 +839,7 @@ looks like the change did not land. Use `bash -ic '…'` for anything sourced fr
 | Terminal still the old palette after a switch | foot cannot reload colours | `theme <name> --restart-terminals`, or log out; §9.11 |
 | One surface still the old palette, everything else switched | A running GTK app, or a file whose name does not match `<base>-<theme>.<ext>` so `theme` never saw it | `theme` prints how many symlinks it flipped — it must say **17**; §3.3 |
 | A widget renders **black** | A role used but not defined in that palette's fragment | §9.10 — define it in *both* fragments |
-| `theme: missing fragment: …` | A `colors.*` symlink exists with no counterpart for the target theme | Create the sibling fragment, or remove the symlink |
+| `theme: missing fragment: …` | A theme symlink (not necessarily `colors.*` — could be `settings.ini`, `.gtkrc-2.0`, etc.) exists with no counterpart for the target theme | Create the sibling fragment, or remove the symlink |
 | `theme: … define different roles` | The two palettes have drifted | §9.10. This is the guard, not a fault |
 | Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo` and there was no tty to prompt on | Run the `sudo papirus-folders -C <colour> -t Papirus-Dark` line `theme` printed |
 | Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path; §6.2 |

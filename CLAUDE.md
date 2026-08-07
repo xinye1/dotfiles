@@ -71,7 +71,9 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   and `sway/.config/sway/theme-*.env` (shell). Note *Nord* and *Nordic* are different schemes; the
   GTK theme is genuinely named `Nordic` and the palette is Nord.
 - **Switching is `theme <name>`** (`bin/.local/bin/theme`, bound to `$mod+Shift+t`). It flips the
-  17 `colors.*` symlinks inside each package. Never switch by editing configs, and never introduce
+  17 theme symlinks inside each package (9 are named `colors.*`; the other 8 are `gtk.css` ×2,
+  `settings.ini` ×2, `xsettingsd.conf`, `.gtkrc-2.0`, `theme.env`, `colorscheme.vim` — don't grep for
+  `colors.*` expecting to find all 17). Never switch by editing configs, and never introduce
   a theme stow package — a second package writing into a folded target would unfold it.
 - A new themed file must be named `<base>-nord.<ext>` / `<base>-gruvbox.<ext>` with a
   `<base>.<ext>` symlink, or `theme` will not find it — and will not warn.

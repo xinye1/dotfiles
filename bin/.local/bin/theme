@@ -95,6 +95,28 @@ switch_to() {
 
     check_roles
 
+    # Pre-flight: validate every sibling BEFORE flipping anything. The old code
+    # checked existence inside the flip loop, so a missing fragment aborted
+    # mid-switch with some symlinks already repointed and some not — and if
+    # sway/theme.env happened to flip before the failing one, `current_theme`
+    # would then read as `$to` and a re-run would report "Already $to" and
+    # exit 0 on a half-themed desktop. Collect every missing fragment rather
+    # than dying on the first: forgetting one sibling of a themed file often
+    # means forgetting several, and reporting them all in one pass beats
+    # discovering them one `theme` invocation at a time.
+    missing=""
+    for link in $(theme_links); do
+        target=$(readlink "$link")
+        newtarget=$(retarget "$target" "$from" "$to") || continue
+        if [ ! -e "$(dirname "$link")/$newtarget" ]; then
+            missing="$missing
+  $(dirname "$link")/$newtarget"
+        fi
+    done
+    if [ -n "$missing" ]; then
+        die "missing fragment(s), nothing switched:$missing"
+    fi
+
     # `for` over command substitution, not a `while read` pipeline: the counter
     # must survive the loop, and a pipeline would run it in a subshell. Safe
     # because no path in this repo contains whitespace.
@@ -102,9 +124,6 @@ switch_to() {
     for link in $(theme_links); do
         target=$(readlink "$link")
         newtarget=$(retarget "$target" "$from" "$to") || continue
-        if [ ! -e "$(dirname "$link")/$newtarget" ]; then
-            die "missing fragment: $(dirname "$link")/$newtarget"
-        fi
         ln -sfn "$newtarget" "$link"
         n=$((n + 1))
     done
