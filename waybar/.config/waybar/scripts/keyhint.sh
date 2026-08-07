@@ -2,8 +2,10 @@
 
 # Set the font
 font="JetBrainsMono Nerd Font"
-# Nord nord8 for section headers (was a neutral #808080)
-header="#88C0D0"
+# Section headers use the accent role. theme.env is a symlink switched by
+# ~/.local/bin/theme, so this follows the active palette.
+. "$HOME/.config/sway/theme.env"
+header="$ACCENT"
 
 cheat=(
     --title="EndeavourOS Sway keybindings:"

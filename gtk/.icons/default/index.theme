@@ -1,0 +1,13 @@
+# Cursor theme for the desktop and for XWayland clients.
+#
+# GTK apps get their cursor from gtk-cursor-theme-name in settings.ini, but
+# nothing else does — the sway cursor and XWayland clients read this file and
+# `seat * xcursor_theme` in sway's config.d/input. Without it the cursor over
+# the desktop is the default, not Qogir-dark, which is why the theme appeared
+# to apply only inside GTK windows.
+#
+# Theme-independent: Qogir-dark is neutral grey and reads against both palettes.
+[Icon Theme]
+Name=Default
+Comment=Default cursor theme
+Inherits=Qogir-dark
