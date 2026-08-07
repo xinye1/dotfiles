@@ -12,6 +12,12 @@ input type:touchpad {
 # Enable numlock by default
 input type:keyboard xkb_numlock enabled
 
+# Cursor. Must match gtk-cursor-theme-name in the gtk package's settings.ini
+# and ~/.icons/default/index.theme — those three cover GTK apps, the sway
+# cursor, and XWayland clients respectively. Deliberately NOT per-theme:
+# Qogir-Dark is neutral grey and works against both palettes.
+seat * xcursor_theme Qogir-Dark 24
+
 # Lid switch. The machine has a 0:5:Lid_Switch input that stock left unhandled,
 # so closing the lid left the internal panel enabled and rendering.
 #

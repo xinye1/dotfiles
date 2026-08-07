@@ -268,13 +268,19 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # Note: you can clear all cliphist entries by running `cliphist wipe`
 
 #
+# Theme
+#
+    # Switch between the Nord and Gruvbox palettes. See ~/.local/bin/theme.
+    bindsym $mod+Shift+t exec theme toggle
+
+#
 # Screenshots
 #
     # Snip a selection and pipe to swappy
-    bindsym print exec grim -g "$(slurp)" - | swappy -f -
+    bindsym print exec ~/.config/sway/scripts/screenshot_region.sh
     # Snip a selection straight to the clipboard, skipping the swappy editor —
     # for when the screenshot is going immediately into a chat window.
-    bindsym Ctrl+Shift+Print exec grim -g "$(slurp)" - | wl-copy
+    bindsym Ctrl+Shift+Print exec ~/.config/sway/scripts/screenshot_region.sh --clipboard
     # Screenshot a window and pipe to swappy
     bindsym Ctrl+Print exec ~/.config/sway/scripts/screenshot_window.sh
     # Screenshot the current display and pipe to swappy

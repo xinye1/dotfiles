@@ -34,11 +34,11 @@ for_window [app_id="Chromium"] inhibit_idle fullscreen
 #
 # Deliberately partial: only apps with a fixed home are listed. Pinning
 # everything makes the layout rigid and fights the scratchpad.
-assign [app_id="firefox"]        workspace number 2
+# assign [app_id="firefox"]        workspace number 2
 assign [app_id="google-chrome"]  workspace number 2
-assign [app_id="thunar"]         workspace number 4
-assign [app_id="pavucontrol"]    workspace number 5
+assign [app_id="thunar"]         workspace number 3
+# assign [app_id="pavucontrol"]    workspace number 5
 
 # app_id is Wayland-native; X11 apps under XWayland expose `class` instead.
 assign [class="Google-chrome"]   workspace number 2
-assign [class="Thunar"]          workspace number 4
+assign [class="Thunar"]          workspace number 3

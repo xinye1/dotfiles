@@ -4,3 +4,6 @@
 # htop writes htoprc via mkstemp+rename inside the folded package dir; a killed
 # htop can leave the temp file behind
 htop/.config/htop/htoprc.tmp.*
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/

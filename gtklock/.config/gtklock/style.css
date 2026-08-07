@@ -1,12 +1,13 @@
 /* gtklock — the lock screen ($mod+f1, and on idle/before-sleep).
  *
- * Nord. Two changes from stock beyond the palette:
+ * Palette: `colors.css` is a symlink to colors-nord.css or colors-gruvbox.css;
+ * ~/.local/bin/theme flips it. gtklock reads its style at launch, so a switch
+ * applies to the next lock with no reload needed.
  *
- * 1. The background was url("EndeavourOS_Astronaut_SpaceWalk.png"), a 22M image
- *    sitting in this config dir. It has been moved to ~/Pictures/wallpapers and
- *    replaced with solid nord0 — matching the desktop background, and keeping a
- *    22M binary out of the dotfiles repo.
- * 2. The purple accents rgba(127,63,191,*) are replaced with nord8/nord10. */
+ * The background was a 22M image sitting in this config dir; it now lives in
+ * ~/Pictures/wallpapers and this is a solid @bg, matching the desktop. */
+
+@import url("colors.css");
 
 * {
   border: none;
@@ -14,47 +15,47 @@
 }
 window {
   background-image: none;
-  background-color: #2e3440;
+  background-color: @bg;
 }
 #clock-label {
   font-family: "JetBrainsMono Nerd Font";
   font-size: 64.0px;
-  color: #eceff4;
+  color: @fg_bright;
 }
 #unlock-button {
   background: none;
-  background-color: rgba(94, 129, 172, 0.4);   /* nord10 */
-  border: 2px solid rgba(136, 192, 208, 0.5);  /* nord8  */
+  background-color: alpha(@accent2, 0.4);
+  border: 2px solid alpha(@accent, 0.5);
   border-radius: 10px;
-  color: #eceff4;
+  color: @fg_bright;
   padding: 4px;
 }
 #unlock-button:hover {
-  background-color: rgba(136, 192, 208, 0.9);
-  color: #2e3440;
+  background-color: alpha(@accent, 0.9);
+  color: @bg;
 }
 #input-field {
   border-radius: 10px;
-  background-color: rgba(59, 66, 82, 0.6);     /* nord1 */
-  border: 2px solid rgba(136, 192, 208, 0.5);
-  color: #eceff4;
+  background-color: alpha(@surface, 0.6);
+  border: 2px solid alpha(@accent, 0.5);
+  color: @fg_bright;
   padding-top: 5px;
   padding-bottom: 5px;
 }
 #input-field:focus {
-  border: 2px solid #88c0d0;
+  border: 2px solid @accent;
 }
 #powerbar-box button {
   background: none;
-  background-color: rgba(94, 129, 172, 0.4);
-  border: 2px solid rgba(136, 192, 208, 0.5);
+  background-color: alpha(@accent2, 0.4);
+  border: 2px solid alpha(@accent, 0.5);
   border-radius: 10px;
-  color: #eceff4;
+  color: @fg_bright;
   padding: 4px;
 }
 #powerbar-box button:hover {
-  background-color: rgba(136, 192, 208, 0.9);
-  color: #2e3440;
+  background-color: alpha(@accent, 0.9);
+  color: @bg;
 }
 #input-label {
   font-size: 0px;

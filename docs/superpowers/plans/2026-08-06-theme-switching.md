@@ -85,6 +85,34 @@ Establishes both palettes in the one format every later task can read, and the n
 **Interfaces:**
 - Produces: thirteen shell variables — `BG SURFACE SEL MUTED FG FG_BRIGHT ACCENT ACCENT2 INDICATOR CRITICAL WARNING SUCCESS DESKTOP` — each a `#RRGGBB` string, plus `PAPIRUS_FOLDER` and `GTK_THEME_NAME`. Sourced by `sway/scripts/screenshot_*.sh`, `waybar/scripts/keyhint.sh` and `bin/theme` in later tasks.
 
+- [ ] **Step 0: Confirm the Gruvbox GTK theme is present**
+
+**Already installed — do not install anything.** The theme name is
+`Colloid-Yellow-Dark-Gruvbox`, in `~/.themes/`. Verify and move on:
+
+```bash
+test -d ~/.themes/Colloid-Yellow-Dark-Gruvbox/gtk-3.0 && echo "theme present ✓"
+```
+
+If that fails, stop and report — do not substitute another theme name.
+
+Background, for the docs task later. This replaced the AUR route the design
+assumed. `gruvbox-gtk-theme-git` depends on `gtk-engine-murrine`, which pulls a
+from-source **gtk2** build; gtk2 is not installed on this machine and nothing
+here uses it. Colloid ships an installer that places exactly one variant into a
+user directory with no root at all, which is also how `alacritty-theme` and
+`lightline` are already handled (PLAYBOOK §8). It was installed with:
+
+```bash
+git clone --depth 1 https://github.com/vinceliuice/Colloid-gtk-theme
+cd Colloid-gtk-theme
+./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
+```
+
+**Never pass `-l`/`--libadwaita` to that installer.** It writes a theme into
+`~/.config/gtk-4.0/`, destroying the stow-managed `gtk.css` there — the same
+failure mode PLAYBOOK §9.1 documents for nwg-look.
+
 - [ ] **Step 1: Write the Nord palette**
 
 `sway/.config/sway/theme-nord.env`:
@@ -158,8 +186,8 @@ DESKTOP=#1D2021
 # palette's signature accent.
 PAPIRUS_FOLDER=yellow
 
-# Set in Task 8, after reading the real directory name off /usr/share/themes.
-GTK_THEME_NAME=PLACEHOLDER_SET_IN_TASK_8
+# ~/.themes/<name>, installed from vinceliuice/Colloid-gtk-theme. See Step 0.
+GTK_THEME_NAME=Colloid-Yellow-Dark-Gruvbox
 ```
 
 - [ ] **Step 3: Create the symlink and verify both parse**
@@ -192,7 +220,7 @@ stow -R sway
 ls -la ~/.config | grep ' sway'
 ```
 
-Expected: `sway -> ../../repos/dotfiles/sway/.config/sway` — still a symlink, i.e. still folded.
+Expected: `sway -> ../repos/dotfiles/sway/.config/sway` — still a symlink, i.e. still folded. What matters is the arrow, not the exact number of `../` segments.
 
 - [ ] **Step 6: Commit**
 
@@ -592,10 +620,15 @@ Expected: `Switched 2 symlinks: nord -> gruvbox`, then `colors-gruvbox.conf` and
 - [ ] **Step 4: Confirm folding survived the switch — the core claim of the design**
 
 ```bash
-ls -la ~/.config | grep -E ' (sway|waybar|foot|mako|fuzzel|gtklock|nwg-drawer)$'
+for p in sway waybar foot mako fuzzel gtklock nwg-drawer; do
+  printf '%-12s ' "$p"
+  if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+done
 ```
 
-Expected: every one of them is still a symlink (`->`), not a real directory. If any is now a real directory, stop — something has written into the target tree from outside its package.
+Expected: seven lines, every one `folded (symlink)`. Any `UNFOLDED (real dir)` means something has written into the target tree from outside its package — stop and investigate.
+
+Do **not** test this with `ls -la ~/.config | grep -E ' (pkg)$'`. `ls -la` renders a symlink as `name -> target`, so a `$` anchor matches only the unfolded case: the command prints nothing when folding is healthy, which reads as a pass but proves nothing. Test the link type directly with `[ -L ]`, as above.
 
 - [ ] **Step 5: Switch back, and confirm idempotence**
 
@@ -780,10 +813,20 @@ waybar's `include` gives precedence to the **including** file, so `clock` must b
                 "weekdays": "<span color='#8FBCBB'><b>{}</b></span>",
                 "today":    "<span color='#EBCB8B'><b><u>{}</u></b></span>"
             }
+        },
+        "actions": {
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
         }
     }
 }
 ```
+
+**The `actions` block is not optional.** It is what makes scrolling on the clock
+shift the calendar month. Because the whole module moves, anything left behind
+is silently lost — JSON stays valid, the CSS parse still passes, and nothing
+reports an error. Diff the extracted module against the pre-change `config`
+key by key before committing.
 
 The whole module lives here, not just its colours, because JSON has no variables and waybar's include cannot merge into an object the including file already defines. The non-colour keys are therefore duplicated between the two fragments — keep them in step.
 
@@ -1390,35 +1433,25 @@ The only task that installs a package, and the only one where a value must be re
 - Create: `gtk/.gtkrc-2.0-{nord,gruvbox}`
 - Create: `gtk/.config/xsettingsd/xsettingsd-{nord,gruvbox}.conf`
 - Replace with symlinks: `gtk/.config/gtk-3.0/settings.ini`, `gtk-3.0/gtk.css`, `gtk-4.0/settings.ini`, `gtk-4.0/gtk.css`, `.gtkrc-2.0`, `xsettingsd/xsettingsd.conf`
-- Modify: `sway/.config/sway/theme-gruvbox.env` — replace `GTK_THEME_NAME=PLACEHOLDER_SET_IN_TASK_8`
 
-- [ ] **Step 1: Install the Gruvbox GTK theme and read its real name**
+**Interfaces:**
+- Consumes: `GTK_THEME_NAME` from `sway/.config/sway/theme-gruvbox.env` — `Colloid-Yellow-Dark-Gruvbox`, in `~/.themes/`. Referred to below as `<GRUVBOX_GTK>`. Do not invent a value for it.
 
-```bash
-yay -S gruvbox-gtk-theme-git
-ls /usr/share/themes/
-```
+- [ ] **Step 1: Recover the Gruvbox GTK theme name**
 
-The package installs one or more directories whose exact names are not knowable in advance. Pick the **dark** variant (something of the form `Gruvbox-Dark…`) and use that string verbatim everywhere below. Record it:
+Installed and recorded in Task 1 Step 0. Read it back rather than re-deriving it, and confirm it still matches what `theme-gruvbox.env` says:
 
 ```bash
-GRUVBOX_GTK=$(ls /usr/share/themes/ | grep -i '^Gruvbox.*Dark' | head -1)
-echo "$GRUVBOX_GTK"
-test -d "/usr/share/themes/$GRUVBOX_GTK/gtk-3.0" && echo "has gtk-3.0 ✓"
+GRUVBOX_GTK=$(grep -oP '(?<=^GTK_THEME_NAME=).*' ~/repos/dotfiles/sway/.config/sway/theme-gruvbox.env)
+test -d "$HOME/.themes/$GRUVBOX_GTK/gtk-3.0" && echo "theme present: $GRUVBOX_GTK"
 ```
 
-If nothing matches, list `/usr/share/themes/` and choose by hand. Do not guess.
+Note it lives in `~/.themes`, not `/usr/share/themes` — GTK searches both, but
+anything you write about paths must say the right one.
 
-- [ ] **Step 2: Set `GTK_THEME_NAME` in the Gruvbox palette**
+Expected: the directory exists. If it does not, the Task 1 value was wrong — stop and report rather than guessing a replacement.
 
-In `sway/.config/sway/theme-gruvbox.env`, replace the placeholder line with the real value, e.g.:
-
-```sh
-# /usr/share/themes/<name>, from the AUR package `gruvbox-gtk-theme-git`.
-GTK_THEME_NAME=Gruvbox-Dark
-```
-
-- [ ] **Step 3: Split the GTK3 settings**
+- [ ] **Step 2: Split the GTK3 settings**
 
 `gtk/.config/gtk-3.0/settings-nord.ini` — the current `settings.ini` content verbatim, with this header:
 
@@ -1451,7 +1484,7 @@ gtk-application-prefer-dark-theme=1
 
 `settings-gruvbox.ini`: identical except `gtk-theme-name=<GRUVBOX_GTK from Step 1>`.
 
-- [ ] **Step 4: Split the GTK3 user CSS**
+- [ ] **Step 3: Split the GTK3 user CSS**
 
 `gtk/.config/gtk-3.0/gtk-nord.css` — the current `gtk.css` verbatim. `gtk-gruvbox.css`:
 
@@ -1470,7 +1503,7 @@ selection {
 }
 ```
 
-- [ ] **Step 5: Split the GTK4 settings and libadwaita CSS**
+- [ ] **Step 4: Split the GTK4 settings and libadwaita CSS**
 
 `gtk-4.0/settings-nord.ini` and `settings-gruvbox.ini`: current `gtk-4.0/settings.ini` with the respective `gtk-theme-name`.
 
@@ -1529,7 +1562,7 @@ selection {
 @define-color theme_selected_fg_color #282828;
 ```
 
-- [ ] **Step 6: Split GTK2 and drop the dangling include**
+- [ ] **Step 5: Split GTK2 and drop the dangling include**
 
 `gtk/.gtkrc-2.0-nord` — the current `.gtkrc-2.0`, **with the `include "/home/xinye/.gtkrc-2.0.mine"` line deleted** (that file does not exist; the include has always been dangling) and this header:
 
@@ -1558,16 +1591,42 @@ gtk-xft-rgba="rgb"
 
 `.gtkrc-2.0-gruvbox`: identical with `gtk-theme-name="<GRUVBOX_GTK>"`.
 
-- [ ] **Step 7: Track xsettingsd**
+- [ ] **Step 6: Track xsettingsd**
 
-```bash
-cp ~/.config/xsettingsd/xsettingsd.conf ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
-cat ~/repos/dotfiles/gtk/.config/xsettingsd/xsettingsd-nord.conf
+**The file on disk is STALE — do not copy it verbatim.** It currently reads:
+
+```
+Net/ThemeName "Arc-Dark"
+Net/IconThemeName "Qogir-Dark"
+Gtk/CursorThemeName "Qogir-dark"
+Net/EnableEventSounds 1
+EnableInputFeedbackSounds 0
+Xft/Antialias 1
+Xft/Hinting 1
+Xft/HintStyle "hintslight"
+Xft/RGBA "rgb"
 ```
 
-Read what it contains, then create `xsettingsd-gruvbox.conf` with the same keys and the Gruvbox theme name substituted for `Nordic`. Add a header comment to both noting they are switched by `theme`, and that xsettingsd serves XWayland clients (PLAYBOOK §2.2).
+`Arc-Dark` and `Qogir-Dark` predate the Nord retheme and disagree with
+`gtk-3.0/settings.ini`, which says `Nordic` / `Papirus-Dark`. This was one of the
+gaps this plan set out to close — the file was never tracked, so nothing kept it
+in step. **xsettingsd is also not running**, which is why the drift went unnoticed:
+XWayland clients have been getting no XSettings at all.
 
-- [ ] **Step 8: Replace the originals with symlinks**
+So the Nord variant must be *corrected*, not copied:
+
+- `Net/ThemeName "Nordic"`, `Net/IconThemeName "Papirus-Dark"` — matching settings.ini
+- `Gtk/CursorThemeName "Qogir-dark"` — correct already, and theme-independent
+- the `Net/EnableEventSounds`, `EnableInputFeedbackSounds` and four `Xft/*` lines carry over unchanged
+
+`xsettingsd-gruvbox.conf` is the same with `Net/ThemeName "Colloid-Yellow-Dark-Gruvbox"`.
+
+Add a header comment to both noting they are switched by `theme`, that xsettingsd
+serves XWayland clients (PLAYBOOK §2.2), and that the daemon is not currently
+running — tracking the file makes it correct if it is ever started, but starting
+it is out of scope here.
+
+- [ ] **Step 7: Replace the originals with symlinks**
 
 ```bash
 cd ~/repos/dotfiles/gtk
@@ -1579,7 +1638,7 @@ ln -sfn .gtkrc-2.0-nord .gtkrc-2.0
 ( cd .config/xsettingsd && ln -sfn xsettingsd-nord.conf xsettingsd.conf )
 ```
 
-- [ ] **Step 9: Deploy — `gtk` is unfolded, so `-R` is mandatory**
+- [ ] **Step 8: Deploy — `gtk` is unfolded, so `-R` is mandatory**
 
 ```bash
 cd ~/repos/dotfiles
@@ -1591,7 +1650,7 @@ cat ~/.config/gtk-3.0/settings.ini | head -3      # must resolve through two sym
 
 Expected: `gtk-theme-name=Nordic` printed, proving the chained symlink resolves.
 
-- [ ] **Step 10: Confirm gsettings still gets the right values**
+- [ ] **Step 9: Confirm gsettings still gets the right values**
 
 ```bash
 swaymsg reload
@@ -1599,7 +1658,7 @@ gsettings get org.gnome.desktop.interface gtk-theme       # 'Nordic'
 gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 ```
 
-- [ ] **Step 11: Switch and verify GTK follows**
+- [ ] **Step 10: Switch and verify GTK follows**
 
 ```bash
 theme gruvbox
@@ -1609,11 +1668,11 @@ thunar -q; thunar &                                        # a GTK3 app, freshly
 
 Per PLAYBOOK §9.9, only *newly started* GTK apps pick up the change. Launch a GTK4/libadwaita app too and confirm it is gruvbox rather than stock Adwaita dark.
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 cd ~/repos/dotfiles
-git add gtk sway/.config/sway/theme-gruvbox.env
+git add gtk
 git commit -m "Switch the whole GTK stack per theme, and track xsettingsd"
 ```
 
@@ -1805,9 +1864,23 @@ The last two gap fixes.
 
 **Files:**
 - Create: `gtk/.icons/default/index.theme`
-- Modify: `sway/.config/sway/config.d/theme` — add `seat * xcursor_theme`
-- Modify: `sway/.config/sway/scripts/screenshot_display.sh`, `screenshot_window.sh`
+- Create: `sway/.config/sway/scripts/screenshot_region.sh`
+- Modify: `sway/.config/sway/config.d/input` — add `seat * xcursor_theme`
+- Modify: `sway/.config/sway/config.d/default` — repoint the two inline slurp bindings
+- Modify: `sway/.config/sway/scripts/screenshot_window.sh`
 - Modify: `waybar/.config/waybar/scripts/keyhint.sh`
+
+**Two corrections to the original plan, both established by testing:**
+
+1. **`screenshot_display.sh` does not use slurp** — it grabs the focused output with `grim -o`. There is nothing to theme there; leave it alone. The real slurp callers are `screenshot_window.sh` and two *inline* bindings in `config.d/default`.
+
+2. **sway variables cannot reach `config.d/default`.** `config.d/*` is read alphabetically, so `default` is parsed *before* `theme`, where `include ../colors.conf` lives. A `$role` used in `default` is not yet defined and sway rejects the config outright:
+
+   ```
+   Error on line 1 '...': Invalid border color $accent
+   ```
+
+   So the two inline `slurp` calls cannot be themed with sway variables. They move into a script that sources `theme.env` at runtime, which sidesteps parse ordering entirely and makes all three slurp callers use one mechanism.
 
 - [ ] **Step 1: Add the cursor index.theme**
 
@@ -1818,7 +1891,7 @@ The last two gap fixes.
 #
 # GTK apps get their cursor from gtk-cursor-theme-name in settings.ini, but
 # nothing else does — the sway cursor and XWayland clients read this file and
-# `seat * xcursor_theme` in sway's config.d/theme. Without it the cursor over
+# `seat * xcursor_theme` in sway's config.d/input. Without it the cursor over
 # the desktop is the default, not Qogir-dark, which is why the theme appeared
 # to apply only inside GTK windows.
 #
@@ -1831,7 +1904,7 @@ Inherits=Qogir-dark
 
 - [ ] **Step 2: Set the sway cursor**
 
-In `sway/.config/sway/config.d/theme`, near the font declaration:
+This goes in `config.d/**input**`, not `theme`: a seat is an input device, the file is about input devices, and the cursor is deliberately *not* part of the switchable palette. It uses no variables, so parse order does not matter.
 
 ```
 # Cursor. Must match gtk-cursor-theme-name in the gtk package's settings.ini
@@ -1841,17 +1914,55 @@ In `sway/.config/sway/config.d/theme`, near the font declaration:
 seat * xcursor_theme Qogir-dark 24
 ```
 
-- [ ] **Step 3: Give slurp the palette**
+- [ ] **Step 3: Create the region-screenshot script**
 
-Read the two screenshot scripts first:
+`sway/.config/sway/scripts/screenshot_region.sh`, mode 755:
 
-```bash
-cat ~/repos/dotfiles/sway/.config/sway/scripts/screenshot_display.sh
-cat ~/repos/dotfiles/sway/.config/sway/scripts/screenshot_window.sh
-grep -rn slurp ~/repos/dotfiles/sway/.config/sway/
+```sh
+#!/bin/sh
+# Region screenshot, with the slurp selection box in the active palette.
+#
+# Usage:  screenshot_region.sh              region -> swappy editor
+#         screenshot_region.sh --clipboard  region -> clipboard, no editor
+#
+# Why a script rather than sway variables: config.d/* is read alphabetically,
+# so `default` (which holds the keybindings) is parsed BEFORE `theme` (which
+# includes colors.conf). A $role written into a binding in `default` is not yet
+# defined and sway rejects the whole config. Sourcing the palette at runtime
+# sidesteps parse ordering completely.
+set -eu
+
+. "$HOME/.config/sway/theme.env"
+
+# slurp exits non-zero when the selection is cancelled with Escape. Bail out
+# rather than handing grim an empty geometry, which the previous inline
+# `grim -g "$(slurp)"` did.
+geom=$(slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 1
+
+if [ "${1:-}" = "--clipboard" ]; then
+    grim -g "$geom" - | wl-copy
+else
+    grim -g "$geom" - | swappy -f -
+fi
 ```
 
-In every script that invokes `slurp`, add near the top:
+`slurp` accepts `#RRGGBB` or `#RRGGBBAA` (`man 1 slurp`, COLORS). The role variables already carry the leading `#`, so an alpha suffix appends directly.
+
+- [ ] **Step 4: Repoint the two inline bindings**
+
+In `config.d/default`, replace the two inline slurp bindings:
+
+```
+    # Snip a selection and pipe to swappy
+    bindsym print exec ~/.config/sway/scripts/screenshot_region.sh
+    # Snip a selection straight to the clipboard, skipping the swappy editor —
+    # for when the screenshot is going immediately into a chat window.
+    bindsym Ctrl+Shift+Print exec ~/.config/sway/scripts/screenshot_region.sh --clipboard
+```
+
+- [ ] **Step 5: Give screenshot_window.sh the palette**
+
+Add after the shebang:
 
 ```sh
 # Palette, so the selection box matches the active theme. theme.env is a
@@ -1859,17 +1970,11 @@ In every script that invokes `slurp`, add near the top:
 . "$HOME/.config/sway/theme.env"
 ```
 
-and give each `slurp` invocation:
+and give its `slurp` the same four flags: `slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66"`.
 
-```sh
-slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66"
-```
+- [ ] **Step 6: Give keyhint.sh the palette**
 
-`-b` background, `-c` selection border, `-s` selection fill, `-B` the dimmed area outside it. slurp takes `#RRGGBBAA`, and the role variables already carry the leading `#`.
-
-- [ ] **Step 4: Give keyhint.sh the palette**
-
-In `waybar/.config/waybar/scripts/keyhint.sh`, replace `header="#88C0D0"` with:
+Replace `header="#88C0D0"` with:
 
 ```sh
 # Section headers use the accent role. theme.env is a symlink switched by
@@ -1878,28 +1983,39 @@ In `waybar/.config/waybar/scripts/keyhint.sh`, replace `header="#88C0D0"` with:
 header="$ACCENT"
 ```
 
-- [ ] **Step 5: Validate and deploy**
+- [ ] **Step 7: Validate and deploy**
 
 ```bash
 cd ~/repos/dotfiles
-sh -n sway/.config/sway/scripts/screenshot_display.sh
+sh -n sway/.config/sway/scripts/screenshot_region.sh
 sh -n sway/.config/sway/scripts/screenshot_window.sh
 sh -n waybar/.config/waybar/scripts/keyhint.sh
+chmod +x sway/.config/sway/scripts/screenshot_region.sh
+stow -n -v sway gtk waybar
 stow -R sway gtk waybar
 sway --validate -c ~/.config/sway/config
 swaymsg reload
 pgrep -xc swayidle        # 1
 ```
 
-- [ ] **Step 6: Test each surface**
+Confirm the palette actually resolves in a script context:
+
+```bash
+( . ~/.config/sway/theme.env && echo "slurp would use: -b ${BG}cc -c $ACCENT -s ${ACCENT}22 -B ${BG}66" )
+```
+
+- [ ] **Step 8: Test each surface**
 
 Press `Print` — the selection box should be drawn in the accent colour. Click the waybar keyboard-layout module — section headers in the accent colour. Move the cursor over the empty desktop — it should be the Qogir-dark pointer, not the default X arrow. Then `theme gruvbox` and re-check `Print` and the keyhint.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 cd ~/repos/dotfiles
-git add sway gtk waybar
+git add sway/.config/sway/config.d/input sway/.config/sway/config.d/default \
+        sway/.config/sway/scripts/screenshot_region.sh \
+        sway/.config/sway/scripts/screenshot_window.sh \
+        waybar/.config/waybar/scripts/keyhint.sh gtk/.icons
 git commit -m "Apply the cursor theme outside GTK, and theme the slurp selection"
 ```
 
@@ -1936,6 +2052,14 @@ git commit -m "Apply the cursor theme outside GTK, and theme the slurp selection
 
 Add `bin` to the package table. Rewrite the theming paragraph around the two palettes and the `theme` command, linking to the playbook's new switching section.
 
+**Required, not optional** — `CLAUDE.md` mandates that a new package is added to the README table *and* to `PLAYBOOK.md` §5.2 with its fold decision and the reason. `bin` is the new package this plan introduces, and it was flagged in review as missing both. Its §5.2 row is:
+
+| `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), plus mise/starship shims. Folding would pull all of it into the repo. A newly added file therefore needs `stow -R bin`. |
+| `htop` | **Yes** | Nothing else writes into `~/.config/htop`. Note htop rewrites `htoprc` itself on exit, so settings changed in its UI arrive as a git diff through the symlink — that is the folded behaviour working, not a fault. |
+
+`htop` also needs a README table row. It was added to the repo alongside this work but is
+not part of the theming; document it, do not theme it.
+
 - [ ] **Step 3: Update `CLAUDE.md`**
 
 Under Conventions, add:
@@ -1967,10 +2091,13 @@ Every command quoted in the docs must be one that was actually run during this p
 cd ~/repos/dotfiles
 theme            # nord
 theme gruvbox && theme nord
-ls -la ~/.config | grep -E ' (sway|waybar|foot|mako|fuzzel|gtklock|nwg-drawer)$'
+for p in sway waybar foot mako fuzzel gtklock nwg-drawer; do
+  printf '%-12s ' "$p"
+  if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+done
 ```
 
-Expected: all seven still symlinks — folding intact, which is the claim §5.2 now makes.
+Expected: seven lines, every one `folded (symlink)` — folding intact, which is the claim §5.2 now makes.
 
 - [ ] **Step 6: Commit**
 

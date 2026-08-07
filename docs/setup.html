@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sway + Nord — setup</title>
+<title>Sway + Nord/Gruvbox — setup</title>
 <style>
 /* ---------------------------------------------------------------------------
-   Nord. The palette is the subject of this page, so it is also its design
-   system: Polar Night grounds the dark theme, Snow Storm the light one.
-   Accent shifts nord8 -> nord10 on light ground, where the paler frost blue
-   would not hold contrast against near-white.
+   Nord. The desktop this page describes carries two palettes, but the page
+   itself commits to one — Nord, the default — so that the Gruvbox swatches in
+   phase 09 read as samples rather than as chrome. Polar Night grounds the dark
+   theme, Snow Storm the light one. Accent shifts nord8 -> nord10 on light
+   ground, where the paler frost blue would not hold contrast against near-white.
    ------------------------------------------------------------------------ */
 :root {
   --nord0:#2E3440; --nord1:#3B4252; --nord2:#434C5E; --nord3:#4C566A;
@@ -102,6 +103,8 @@ h1{
 h1 .dim{color:var(--text-dim);font-weight:400}
 .lede{max-width:62ch;margin:0;color:var(--text);font-size:1.02rem}
 .lede a{color:var(--accent)}
+.lede code{font-family:var(--mono);font-size:.86em;background:var(--surface);
+  padding:.1em .35em;border-radius:3px}
 
 /* ---------- rail ---------- */
 .rail{position:sticky;top:1.5rem;max-height:calc(100vh - 3rem);overflow-y:auto;
@@ -223,6 +226,10 @@ h2.phase-title{font-family:var(--mono);font-size:1.3rem;font-weight:700;letter-s
 .sw .name{color:var(--text-bright);display:block}
 .sw .hex{color:var(--text-dim);text-transform:uppercase;font-variant-numeric:tabular-nums}
 .sw .role{color:var(--accent);font-size:.65rem;display:block;margin-top:.15rem}
+.pal-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text-dim);margin:1.75rem 0 .7rem}
+.pal-label:first-child{margin-top:0}
+.pal-label b{color:var(--text-bright);font-weight:600;letter-spacing:.06em}
 
 /* ---------- reference table ---------- */
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
@@ -247,11 +254,13 @@ footer a{color:var(--accent)}
 
   <header class="masthead">
     <p class="eyebrow">EndeavourOS Sway CE <span>·</span> repeatable setup</p>
-    <h1>Sway&nbsp;+&nbsp;Nord<br><span class="dim">from a fresh install</span></h1>
+    <h1>Sway,&nbsp;Nord<br>and&nbsp;Gruvbox<br><span class="dim">from a fresh install</span></h1>
     <p class="lede">
       Every step needed to rebuild this desktop on another machine, in order, with the checks that
       prove each one worked. Progress is saved in this browser — close the tab, reboot, come back.
-      The reasoning behind each choice lives in <a href="../PLAYBOOK.md">PLAYBOOK.md</a>.
+      The desktop carries two palettes and switches between them with
+      <code>$mod+Shift+t</code>; phase 08 is that mechanism. The reasoning behind each choice lives
+      in <a href="../PLAYBOOK.md">PLAYBOOK.md</a>.
     </p>
   </header>
 
@@ -311,8 +320,9 @@ footer a{color:var(--accent)}
     <section class="phase" id="p1" data-title="Packages">
       <div class="phase-head"><span class="phase-num">01</span><h2 class="phase-title">Packages</h2></div>
       <p class="phase-note">
-        Five additions over the CE base. The Nerd Font is the one people skip — everything appears to
-        work without it because fontconfig silently falls back.
+        Five additions over the CE base, plus one GTK theme that is not a package at all. The Nerd
+        Font is the one people skip — everything appears to work without it because fontconfig
+        silently falls back.
       </p>
 
       <div class="step">
@@ -349,12 +359,39 @@ footer a{color:var(--accent)}
         </div>
       </div>
 
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p1-colloid">
+            <span class="step-title">Build the Gruvbox GTK theme into <code>~/.themes</code></span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
+<span class="p">❯</span> cd /tmp/colloid
+<span class="p">❯</span> ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox</pre>
+        </div>
+        <div class="step-body">
+          <p>Not from the AUR. <code>gruvbox-gtk-theme-git</code> depends on
+          <code>gtk-engine-murrine</code>, which drags in a from-source <code>gtk2</code> build for
+          the sake of one theme. This installs into <code>~/.themes</code> with no root and no
+          engine, producing <code>Colloid-Yellow-Dark-Gruvbox</code>.</p>
+        </div>
+        <div class="callout bad">
+          <p><strong>Never pass <code>-l</code> / <code>--libadwaita</code> to that installer.</strong>
+          It replaces <code>~/.config/gtk-4.0/gtk.css</code> with its own — which is exactly the
+          nwg-look failure mode in phase 07, and destroys the overrides this repo owns.</p>
+        </div>
+      </div>
+
       <div class="verify">
         <p class="verify-label">Check</p>
         <div class="scroll">
         <table>
           <tr><td>fc-match "JetBrainsMono Nerd Font"</td><td>not NotoSansMono</td></tr>
-          <tr><td>ls /usr/share/themes/Nordic</td><td>exists</td></tr>
+          <tr><td>ls -d /usr/share/themes/Nordic</td><td>exists</td></tr>
+          <tr><td>ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox</td><td>exists</td></tr>
         </table>
         </div>
       </div>
@@ -459,7 +496,7 @@ footer a{color:var(--accent)}
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
 <pre><span class="p">❯</span> cd ~/repos/dotfiles
-<span class="p">❯</span> stow -n -v bash vim starship alacritty foot waybar \
+<span class="p">❯</span> stow -n -v bash vim bin starship alacritty foot htop waybar \
         sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
         </div>
         <div class="step-body">
@@ -477,7 +514,7 @@ footer a{color:var(--accent)}
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="p">❯</span> stow bash vim starship alacritty foot waybar \
+<pre><span class="p">❯</span> stow bash vim bin starship alacritty foot htop waybar \
         sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
         </div>
       </div>
@@ -489,16 +526,45 @@ footer a{color:var(--accent)}
           <tr><td>readlink -f ~/.config/sway</td><td>~/repos/dotfiles/…</td></tr>
           <tr><td>readlink -f ~/.config/waybar</td><td>~/repos/dotfiles/…</td></tr>
           <tr><td>readlink -f ~/.gtkrc-2.0</td><td>~/repos/dotfiles/…</td></tr>
-          <tr><td>ls -la ~/.config | grep gtk-3.0</td><td>real dir, not a link</td></tr>
+          <tr><td>readlink -f ~/.local/bin/theme</td><td>~/repos/dotfiles/…</td></tr>
         </table>
         </div>
       </div>
 
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p4-fold">
+            <span class="step-title">Confirm the folded packages really folded</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> for p in sway waybar foot mako fuzzel gtklock nwg-drawer htop; do
+<span class="p">❯</span>     printf '%-12s ' "$p"
+<span class="p">❯</span>     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
+<span class="p">❯</span> done</pre>
+        </div>
+        <div class="step-body">
+          <p>Eight lines, every one <code>folded (symlink)</code>. This is the property the whole
+          theming model rests on — each package's palette fragments live inside it, so no second
+          package ever has to write into these directories.</p>
+        </div>
+        <div class="callout">
+          <p><strong>Use the <code>[ -L ]</code> test, not
+          <code>ls -la ~/.config | grep -E ' foo$'</code>.</strong> <code>ls</code> prints a symlink
+          as <code>foo -&gt; target</code>, so the <code>$</code> anchor matches only the
+          <em>unfolded</em> case: the command prints nothing and looks like a pass precisely when
+          folding is healthy, and speaks up only when it is broken.</p>
+        </div>
+      </div>
+
       <div class="callout">
-        <p><strong>Folded vs unfolded.</strong> <code>gtk</code> and <code>alacritty</code> are
-        deliberately <em>not</em> folded — nwg-look writes into the GTK dirs, and alacritty's
-        <code>themes/</code> clone lives inside its own. For those two, a newly added file is silently
-        absent until you run <code>stow -R &lt;pkg&gt;</code>.</p>
+        <p><strong>Three packages are deliberately <em>not</em> folded.</strong> nwg-look writes into
+        the <code>gtk</code> dirs; alacritty's optional <code>themes/</code> clone lives inside its
+        own; and <code>~/.local/bin</code> (the <code>bin</code> package) holds untracked binaries
+        that folding would drag into the repo. For those three, a newly added file is silently absent
+        until you run <code>stow -R &lt;pkg&gt;</code>.</p>
       </div>
     </section>
 
@@ -513,7 +579,7 @@ footer a{color:var(--accent)}
         <label>
           <div class="step-top">
             <input type="checkbox" data-id="p5-folders">
-            <span class="step-title">Nord-tint the Papirus folders</span>
+            <span class="step-title">Tint the Papirus folders<span class="tag root">sudo</span></span>
           </div>
         </label>
         <div class="cmd">
@@ -527,24 +593,57 @@ footer a{color:var(--accent)}
           <code>#ECEFF4</code>. The GTK theme is likewise named <code>Nordic</code>. Run
           <code>papirus-folders -l</code> to see the list.</p>
         </div>
+        <div class="callout">
+          <p><strong>Gruvbox has no entry on that list at all.</strong> The switcher uses
+          <code>yellow</code> as the stand-in, gruvbox's signature accent. This is the one place in
+          the setup where the palette is approximated rather than matched — and the only reason
+          <code>theme</code> ever needs <code>sudo</code>, since papirus-folders writes into
+          <code>/usr/share/icons</code>.</p>
+        </div>
       </div>
 
       <div class="step">
         <label>
           <div class="step-top">
             <input type="checkbox" data-id="p5-clones">
-            <span class="step-title">Clone the two untracked dependencies</span>
+            <span class="step-title">Clone the vim plugins</span>
           </div>
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="c"># alacritty.toml imports themes/themes/nord.toml from this clone</span>
-<span class="p">❯</span> git clone https://github.com/alacritty/alacritty-theme \
-        ~/.config/alacritty/themes
-
-<span class="c"># vim status bar</span>
+<pre><span class="c"># status bar, plus one colorscheme per palette</span>
 <span class="p">❯</span> git clone https://github.com/itchyny/lightline.vim \
-        ~/.vim/pack/plugins/start/lightline</pre>
+        ~/.vim/pack/plugins/start/lightline
+<span class="p">❯</span> git clone https://github.com/arcticicestudio/nord-vim \
+        ~/.vim/pack/plugins/start/nord-vim
+<span class="p">❯</span> git clone https://github.com/morhetz/gruvbox \
+        ~/.vim/pack/plugins/start/gruvbox</pre>
+        </div>
+        <div class="step-body">
+          <p><code>.vimrc</code> guards the colorscheme <code>source</code> with
+          <code>filereadable</code>, so vim still starts on a machine without these — it just opens
+          uncoloured rather than erroring on every launch.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p5-alacritty">
+            <span class="step-title">Clone alacritty-theme<span class="tag opt">optional</span></span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> git clone https://github.com/alacritty/alacritty-theme \
+        ~/.config/alacritty/themes</pre>
+        </div>
+        <div class="step-body">
+          <p>No longer required. <code>alacritty.toml</code> used to import <code>nord.toml</code>
+          from this clone; it now imports its own switchable <code>colors.toml</code> fragment, so
+          the repo describes the colours on its own. Clone it only to have other schemes to hand —
+          and note it ships <code>nord</code>, <code>nordic</code>, <code>nordfox</code> and
+          <code>nord_light</code>, three of which are not Nord.</p>
         </div>
       </div>
 
@@ -605,7 +704,9 @@ footer a{color:var(--accent)}
 <span class="p">❯</span> fc-match "JetBrainsMono Nerd Font"
 <span class="p">❯</span> swaymsg -t get_outputs | grep -E '"name"|"scale"'
 <span class="p">❯</span> gsettings get org.gnome.desktop.interface color-scheme
-<span class="p">❯</span> systemctl --user show-environment | grep XDG_CURRENT</pre>
+<span class="p">❯</span> systemctl --user show-environment | grep XDG_CURRENT
+<span class="p">❯</span> theme
+<span class="p">❯</span> readlink ~/repos/dotfiles/sway/.config/sway/theme.env</pre>
         </div>
         <div class="verify">
           <p class="verify-label">Expected</p>
@@ -616,6 +717,8 @@ footer a{color:var(--accent)}
             <tr><td>scale</td><td>2.0</td></tr>
             <tr><td>color-scheme</td><td>'prefer-dark'</td></tr>
             <tr><td>XDG_CURRENT_DESKTOP</td><td>sway</td></tr>
+            <tr><td>theme</td><td>nord</td></tr>
+            <tr><td>readlink … theme.env</td><td>theme-nord.env</td></tr>
           </table>
           </div>
         </div>
@@ -630,10 +733,13 @@ footer a{color:var(--accent)}
         </label>
         <div class="step-body">
           <p><code>$mod+d</code> launcher · <code>notify-send test</code> · <code>$mod+Shift+d</code>
-          drawer · the waybar clock tooltip · <code>$mod+f1</code> lock · thunar for GTK3 · any
-          libadwaita app · <code>$mod+Return</code> terminal.</p>
+          drawer · the waybar clock tooltip, and <em>scroll</em> on it · <code>$mod+f1</code> lock ·
+          thunar for GTK3 · any libadwaita app · <code>$mod+Return</code> terminal ·
+          <code>Print</code> · <code>vim</code> · <code>ls</code>.</p>
           <p>A libadwaita app rendering light is the tell that
-          <code>~/.config/gtk-4.0/gtk.css</code> didn't land.</p>
+          <code>~/.config/gtk-4.0/gtk.css</code> didn't land. Scrolling the clock is in the list
+          because a <code>actions</code> block was once lost in a refactor and every syntactic check
+          still passed.</p>
         </div>
       </div>
     </section>
@@ -687,23 +793,280 @@ footer a{color:var(--accent)}
             </tr>
             <tr>
               <td>config.d order</td>
-              <td>Read alphabetically; <code>theme</code> sorts last and wins</td>
-              <td>Name overrides <code>zz-local</code></td>
+              <td>Read alphabetically; <code>theme</code> sorts last and wins — so a
+                  <code>$role</code> used in <code>default</code> is not defined yet and sway fails
+                  with <code>Invalid border color $accent</code></td>
+              <td>Name overrides <code>zz-local</code>; source <code>theme.env</code> from a script
+                  when a binding needs a colour</td>
+            </tr>
+            <tr>
+              <td>Undefined GTK colour</td>
+              <td>An <code>@name</code> with no definition renders <strong>black</strong>, with no
+                  error and no fallback — it reads as a rendering bug, not a missing value</td>
+              <td>Define every role in <em>both</em> palettes; <code>theme</code> refuses to switch
+                  when they disagree</td>
+            </tr>
+            <tr>
+              <td>waybar <code>include</code></td>
+              <td>Precedence goes to the <em>including</em> file, so a module left in
+                  <code>config</code> silently beats the fragment</td>
+              <td>Define a themed module <em>only</em> in the fragment</td>
+            </tr>
+            <tr>
+              <td>foot reload</td>
+              <td>No config-reload signal exists. <code>SIGUSR1</code>/<code>SIGUSR2</code> only pick
+                  between the blocks loaded at startup</td>
+              <td><code>theme … --restart-terminals</code>, or log out</td>
+            </tr>
+            <tr>
+              <td>foot <code>[colors]</code></td>
+              <td>Deprecated; warns on every launch</td>
+              <td>Fragments use <code>[colors-dark]</code></td>
+            </tr>
+            <tr>
+              <td>Theme name case</td>
+              <td>XCursor resolves by case-sensitive path. <code>Qogir-dark</code> never matched
+                  <code>/usr/share/icons/Qogir-Dark</code>, so the cursor silently stayed default</td>
+              <td><code>ls -d /usr/share/icons/&lt;name&gt;</code> before trusting a name</td>
+            </tr>
+            <tr>
+              <td><code>bash -lc</code></td>
+              <td>Line 6 of <code>.bashrc</code> is <code>[[ $- != *i* ]] &amp;&amp; return</code>, so
+                  a non-interactive shell skips the whole file and the change looks unapplied</td>
+              <td>Test with <code>bash -ic</code></td>
+            </tr>
+            <tr>
+              <td>Moving a config block</td>
+              <td>Whatever stayed behind is lost, and every check here is syntactic — the waybar
+                  clock's scroll <code>actions</code> went this way unnoticed</td>
+              <td>Diff old against new key by key; <code>git show HEAD:&lt;path&gt;</code></td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- ============ palette ============ -->
-    <section class="phase" id="p8" data-title="Palette">
-      <div class="phase-head"><span class="phase-num">08</span><h2 class="phase-title">The palette</h2></div>
+    <!-- ============ 8 ============ -->
+    <section class="phase" id="p8" data-title="Switching">
+      <div class="phase-head"><span class="phase-num">08</span><h2 class="phase-title">Switching palettes</h2></div>
       <p class="phase-note">
-        Adding anything new means picking a role from this table. The desktop drifted into four
-        incompatible palettes because each config was themed on its own. Note that <em>Nord</em> and
-        <em>Nordic</em> are different schemes — <code>alacritty-theme</code> ships both.
+        Every colour in the setup is a named <em>role</em>, defined twice — once per palette — in a
+        pair of fragments inside the package that owns it. A tracked symlink picks which fragment is
+        live. Switching is flipping 17 of those symlinks.
       </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-key">
+            <span class="step-title">Switch with the keybinding</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p>Press <code>$mod+Shift+t</code>. That is the whole day-to-day interface — it runs
+          <code>theme toggle</code>. The bar, window borders, desktop, notifications, launcher, app
+          grid and every GTK app change together; the three exceptions are listed below.</p>
+          <p>Nothing needs a terminal, and nothing needs the repo. The rest of this phase is for
+          when you want to see what it did, or when something looks wrong.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-switch">
+            <span class="step-title">Switch from the shell</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> theme                    <span class="c"># print the active palette</span>
+<span class="p">❯</span> theme gruvbox            <span class="c"># switch</span>
+<span class="p">❯</span> theme toggle             <span class="c"># the other one — what $mod+Shift+t runs</span></pre>
+        </div>
+        <div class="step-body">
+          <p>Two flags. <code>--no-icons</code> skips papirus-folders, the only step needing
+          <code>sudo</code> — use it in a script or over ssh, where there is no terminal to prompt on.
+          <code>--restart-terminals</code> also restarts <code>foot --server</code>, applying the
+          palette to the terminal immediately at the cost of every open shell.</p>
+          <p>Each switch prints how many symlinks it flipped. It must say <strong>17</strong>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-finish">
+            <span class="step-title">Finish the two parts that lag</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> sudo papirus-folders -C yellow -t Papirus-Dark   <span class="c"># gruvbox; -C nordic for nord</span>
+<span class="p">❯</span> theme --restart-terminals                        <span class="c"># or just log out</span></pre>
+        </div>
+        <div class="step-body">
+          <p>Only needed if the switcher said it skipped them. It runs papirus-folders itself when a
+          terminal is there to take the <code>sudo</code> prompt, and prints the exact line to run
+          when there isn't — over ssh, from a keybinding, or under <code>--no-icons</code>.</p>
+          <p><code>--restart-terminals</code> <strong>closes every open terminal</strong>. foot has no
+          config-reload signal at all, so there is no gentler option; skip it and new terminals are
+          right while old ones stay as they were until you log out.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-eyes">
+            <span class="step-title">Check it reached everywhere</span>
+          </div>
+        </label>
+        <div class="step-body">
+          <p>Same sweep as phase 06, now under the other palette: <code>$mod+d</code> launcher ·
+          <code>notify-send test</code> · <code>$mod+Shift+d</code> drawer · the waybar clock
+          tooltip, and <em>scroll</em> on it · <code>$mod+f1</code> lock · thunar for GTK3 · any
+          libadwaita app · <code>$mod+Return</code> terminal · <code>Print</code> · <code>vim</code>
+          · <code>ls</code>.</p>
+          <p>What each failure looks like: a <strong>black</strong> widget means a role the palette
+          doesn't define — GTK CSS renders an undefined <code>@name</code> as black with no error. A
+          surface still in the <em>old</em> palette means its fragment isn't named to the pattern and
+          was never switched. A libadwaita app rendering light means
+          <code>~/.config/gtk-4.0/gtk.css</code> isn't linked.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-commit">
+            <span class="step-title">Commit the flipped symlinks</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> git -C ~/repos/dotfiles status --short   <span class="c"># 17 lines, all symlinks</span></pre>
+        </div>
+        <div class="step-body">
+          <p>The symlinks are tracked, so the active palette is part of the repo's state. From a
+          clean tree a switch produces exactly 17 modified paths and nothing else. Commit them or
+          <code>git checkout .</code> — leaving them dirty makes every later diff noisy.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-recover">
+            <span class="step-title">If a switch looks half-applied</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> theme                                    <span class="c"># what does it think is active?</span>
+<span class="p">❯</span> cd ~/repos/dotfiles &amp;&amp; git status --short  <span class="c"># 17 lines, or 0 — never between</span>
+<span class="p">❯</span> theme nord --no-icons &amp;&amp; theme gruvbox --no-icons</pre>
+        </div>
+        <div class="step-body">
+          <p>A switch is all-or-nothing by construction: every fragment is checked to exist
+          <em>before</em> any symlink moves, so a missing one aborts having changed nothing and names
+          what's missing. If the tree shows some number other than 17 or 0 modified paths, something
+          outside the switcher edited a symlink.</p>
+          <p>Switching away and back re-flips all 17 from a known state. It is safe to run at any
+          time and cannot half-apply.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p8-add">
+            <span class="step-title">Add a themed application</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> cd ~/repos/dotfiles/&lt;pkg&gt;/.config/&lt;app&gt;
+<span class="p">❯</span> <span class="c"># write colors-nord.ext and colors-gruvbox.ext — same role names in both</span>
+<span class="p">❯</span> ln -sfn colors-nord.ext colors.ext       <span class="c"># relative and bare, never a path</span>
+<span class="p">❯</span> <span class="c"># point the app's config at colors.ext with its own include directive</span>
+<span class="p">❯</span> theme gruvbox --no-icons                 <span class="c"># must now say 18</span></pre>
+        </div>
+        <div class="step-body">
+          <p>No code changes — the switcher finds its work by filename. The count going up by one is
+          the confirmation; if it doesn't, the name doesn't match
+          <code>&lt;base&gt;-nord.&lt;ext&gt;</code> / <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code>
+          and the file will be <strong>silently</strong> left on one palette forever.</p>
+          <p>If the package is unfolded — <code>alacritty</code>, <code>gtk</code>, <code>vim</code>,
+          <code>bin</code> — the new files need <code>stow -R &lt;pkg&gt;</code> before they exist in
+          <code>~</code> at all.</p>
+        </div>
+      </div>
+
+      <div class="callout">
+        <p><strong>Three things do not update immediately.</strong> <em>foot</em> — it has no
+        config-reload signal, so open terminals and the running server keep the old colours until
+        <code>--restart-terminals</code> or a logout. <em>Running GTK apps</em> — they read
+        <code>settings.ini</code> once, at startup; restart the app. <em>Folder icons</em> — skipped
+        when there is no tty for <code>sudo</code>; run the line the switcher printed. Everything
+        else is live by the time the command returns.</p>
+      </div>
+
+      <div class="callout bad">
+        <p><strong>Never make the switcher a stow package.</strong> A <code>theme-nord</code> /
+        <code>theme-gruvbox</code> pair writing into <code>~/.config/waybar</code> would force stow to
+        <em>unfold</em> that directory, and every themed package would lose the "new files appear for
+        free" property checked in phase 04. Flipping a symlink inside the package leaves fold state
+        untouched — which is why the fold table in the playbook is unchanged by any of this.</p>
+      </div>
+
+      <div class="callout">
+        <p><strong>Adding a themed application</strong> means adding two fragments and a symlink, and
+        changing no code — the switcher discovers its work by filename. The sharp edge is the same
+        fact from the other side: a file <em>not</em> named
+        <code>&lt;base&gt;-nord.&lt;ext&gt;</code> / <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code> is
+        silently never switched. There is no manifest to fall out of step with, and none to complain
+        either.</p>
+      </div>
+    </section>
+
+    <!-- ============ palette ============ -->
+    <section class="phase" id="p9" data-title="Palettes">
+      <div class="phase-head"><span class="phase-num">09</span><h2 class="phase-title">The palettes</h2></div>
+      <p class="phase-note">
+        Adding anything new means picking a role and supplying <strong>both</strong> values. The
+        desktop drifted into four incompatible palettes because each config was themed on its own;
+        it carries two coherent ones now only because every colour is named by role. Note that
+        <em>Nord</em> and <em>Nordic</em> are different schemes — <code>alacritty-theme</code> ships
+        both, and the GTK theme is genuinely called <code>Nordic</code>.
+      </p>
+
+      <div class="tablewrap">
+        <table class="ref">
+          <thead><tr><th>Role</th><th>Nord</th><th>Gruvbox</th><th>Used by</th></tr></thead>
+          <tbody id="role-rows"></tbody>
+        </table>
+      </div>
+
+      <p class="pal-label"><b>Nord</b> — the default</p>
       <div class="swatches" id="swatches"></div>
+
+      <p class="pal-label"><b>Gruvbox Dark</b></p>
+      <div class="swatches" id="swatches-gruvbox"></div>
+
+      <div class="callout">
+        <p><strong><code>desktop</code> is the one role not drawn from the palette on the Nord
+        side.</strong> Nord has nothing below <code>nord0</code>, so it is a hand-darkened
+        <code>#272B33</code>; gruvbox ships exactly this idea as <code>bg0_h</code>. The desktop
+        being one shade below the window background is what turns the gaps into visible channels.</p>
+      </div>
+
+      <div class="callout">
+        <p><strong>The two are not interchangeable in temperature.</strong> Nord's accent is a cool
+        frost blue with warning a long way off in yellow; gruvbox's accent <em>is</em> the yellow,
+        with warning one hue step away in orange. Warning states read as <em>hotter</em> under
+        Gruvbox rather than as a different colour. That is gruvbox, not a mistake in the mapping.</p>
+      </div>
     </section>
 
   </main>
@@ -719,36 +1082,96 @@ footer a{color:var(--accent)}
 (function () {
   "use strict";
 
-  /* ---- palette ------------------------------------------------------- */
+  /* ---- palettes ------------------------------------------------------ */
+  /* [scheme name, hex, role it fills — blank where the palette carries a
+     colour this desktop does not use for anything]. */
   var NORD = [
-    ["nord0","#2E3440","background"],   ["nord1","#3B4252","raised surface"],
-    ["nord2","#434C5E","selection"],    ["nord3","#4C566A","inactive"],
-    ["nord4","#D8DEE9","foreground"],   ["nord5","#E5E9F0",""],
-    ["nord6","#ECEFF4","bright text"],  ["nord7","#8FBCBB",""],
-    ["nord8","#88C0D0","focus / accent"],["nord9","#81A1C1","secondary"],
-    ["nord10","#5E81AC","secondary"],   ["nord11","#BF616A","urgent"],
+    ["nord0","#2E3440","bg"],           ["nord1","#3B4252","surface"],
+    ["nord2","#434C5E","sel"],          ["nord3","#4C566A","muted"],
+    ["nord4","#D8DEE9","fg"],           ["nord5","#E5E9F0",""],
+    ["nord6","#ECEFF4","fg_bright"],    ["nord7","#8FBCBB","indicator"],
+    ["nord8","#88C0D0","accent"],       ["nord9","#81A1C1",""],
+    ["nord10","#5E81AC","accent2"],     ["nord11","#BF616A","critical"],
     ["nord12","#D08770",""],            ["nord13","#EBCB8B","warning"],
-    ["nord14","#A3BE8C","success"],     ["nord15","#B48EAD",""]
+    ["nord14","#A3BE8C","success"],     ["nord15","#B48EAD",""],
+    ["(darkened)","#272B33","desktop"]
   ];
-  var sw = document.getElementById("swatches");
-  NORD.forEach(function (c) {
-    var d = document.createElement("div");
-    d.className = "sw";
-    var chip = document.createElement("div");
-    chip.className = "chip";
-    chip.style.background = c[1];
-    var meta = document.createElement("div");
-    meta.className = "meta";
-    var n = document.createElement("span"); n.className = "name"; n.textContent = c[0];
-    var h = document.createElement("span"); h.className = "hex"; h.textContent = c[1];
-    meta.appendChild(n); meta.appendChild(h);
-    if (c[2]) {
-      var r = document.createElement("span"); r.className = "role"; r.textContent = c[2];
-      meta.appendChild(r);
-    }
-    d.appendChild(chip); d.appendChild(meta);
-    sw.appendChild(d);
-  });
+  var GRUVBOX = [
+    ["bg0_h","#1D2021","desktop"],      ["bg0","#282828","bg"],
+    ["bg1","#3C3836","surface"],        ["bg2","#504945","sel"],
+    ["bg4","#7C6F64","muted"],          ["gray","#928374",""],
+    ["fg4","#A89984",""],               ["fg1","#EBDBB2","fg"],
+    ["fg0","#FBF1C7","fg_bright"],      ["yellow","#FABD2F","accent"],
+    ["neutral orange","#D65D0E","accent2"], ["orange","#FE8019","warning"],
+    ["aqua","#8EC07C","indicator"],     ["red","#FB4934","critical"],
+    ["green","#B8BB26","success"],      ["blue","#83A598",""],
+    ["purple","#D3869B",""]
+  ];
+
+  function renderSwatches(list, id) {
+    var sw = document.getElementById(id);
+    if (!sw) return;
+    list.forEach(function (c) {
+      var d = document.createElement("div");
+      d.className = "sw";
+      var chip = document.createElement("div");
+      chip.className = "chip";
+      chip.style.background = c[1];
+      var meta = document.createElement("div");
+      meta.className = "meta";
+      var n = document.createElement("span"); n.className = "name"; n.textContent = c[0];
+      var h = document.createElement("span"); h.className = "hex"; h.textContent = c[1];
+      meta.appendChild(n); meta.appendChild(h);
+      if (c[2]) {
+        var r = document.createElement("span"); r.className = "role"; r.textContent = c[2];
+        meta.appendChild(r);
+      }
+      d.appendChild(chip); d.appendChild(meta);
+      sw.appendChild(d);
+    });
+  }
+  renderSwatches(NORD, "swatches");
+  renderSwatches(GRUVBOX, "swatches-gruvbox");
+
+  /* The role table is built from the same two arrays, so a hex can only ever
+     be wrong in one place rather than two. */
+  var ROLES = [
+    ["bg",        "window, bar, terminal and lock-screen background"],
+    ["surface",   "mako body, popovers, cards"],
+    ["sel",       "fuzzel selection, terminal selection"],
+    ["muted",     "unfocused borders and text, placeholders, calendar weeks"],
+    ["fg",        "body text everywhere"],
+    ["fg_bright", "focused window title, active text"],
+    ["accent",    "focused border, focused workspace, GTK accent, fuzzel border"],
+    ["accent2",   "focused-inactive border, calendar weekdays, gtklock buttons"],
+    ["indicator", "sway split indicator — where the next window opens"],
+    ["critical",  "urgent window, critical CPU/battery, destructive actions"],
+    ["warning",   "warning states, “today” in the calendar, idle inhibitor"],
+    ["success",   "battery charging, success states"],
+    ["desktop",   "the wallpaper-less background, one shade below bg"]
+  ];
+  function lookup(list, role) {
+    for (var i = 0; i < list.length; i++) if (list[i][2] === role) return list[i];
+    return null;
+  }
+  var rows = document.getElementById("role-rows");
+  if (rows) {
+    ROLES.forEach(function (r) {
+      var n = lookup(NORD, r[0]), g = lookup(GRUVBOX, r[0]);
+      var tr = document.createElement("tr");
+      function cell(text) {
+        var td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+        return td;
+      }
+      cell(r[0]);
+      cell(n ? n[0] + " " + n[1] : "—");
+      cell(g ? g[0] + " " + g[1] : "—");
+      cell(r[1]);
+      rows.appendChild(tr);
+    });
+  }
 
   /* ---- copy buttons -------------------------------------------------- */
   document.querySelectorAll(".copy").forEach(function (btn) {

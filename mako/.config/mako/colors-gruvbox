@@ -1,0 +1,26 @@
+# Gruvbox Dark — mako's colours.
+#
+# Included by config via a `colors` symlink that ~/.local/bin/theme flips.
+# mako's include accepts criteria sections, so the per-urgency overrides live
+# here too rather than being split across two files.
+#
+# surface body against fg text: one step up from the desktop background so
+# notifications read as raised rather than as a hole in the wallpaper.
+
+background-color=#3C3836
+text-color=#EBDBB2
+border-color=#FABD2F
+progress-color=over #FABD2F80
+
+[urgency=low]
+border-color=#7C6F64
+text-color=#8EC07C
+
+[urgency=normal]
+border-color=#FABD2F
+
+# Critical notifications never time out on their own.
+[urgency=high]
+border-color=#FB4934
+text-color=#FBF1C7
+ignore-timeout=1

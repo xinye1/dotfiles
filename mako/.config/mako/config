@@ -1,25 +1,23 @@
 # mako — notification daemon. Launched from sway's config.d/autostart_applications.
 #
-# Nord. Was Arc-blue (#5294e2 border on a #404552 body), which matched the GTK
+# Was Arc-blue (#5294e2 border on a #404552 body), which matched the GTK
 # theme of the day and nothing else.
 
 font=JetBrains Mono 11
 
-# nord1 body against nord4 text: one step up from the nord0 desktop background so
-# notifications read as raised rather than as a hole in the wallpaper.
-background-color=#3B4252
-text-color=#D8DEE9
-border-color=#88C0D0
+# Palette. `colors` is a symlink to colors-nord or colors-gruvbox;
+# ~/.local/bin/theme flips it, then runs `makoctl reload` — mako is exec'd
+# rather than exec_always'd in sway, so a sway reload does NOT restart it.
+include=~/.config/mako/colors
 
 width=315
 height=200
 padding=10
 margin=10
-progress-color=over #88C0D080
 
 # Was /usr/share/icons/Arc-X-D, a directory that does not exist on this system —
-# notification icons were silently falling back. Papirus-Dark ships Nord-tinted
-# folders once `papirus-folders -C nord -t Papirus-Dark` has been run.
+# notification icons were silently falling back. Papirus-Dark ships theme-tinted
+# folders once `papirus-folders -C nordic -t Papirus-Dark` has been run.
 icon-path=/usr/share/icons/Papirus-Dark
 max-icon-size=70
 layer=overlay
@@ -28,16 +26,3 @@ border-size=5
 border-radius=0
 
 default-timeout=5000
-
-[urgency=low]
-border-color=#4C566A
-text-color=#8FBCBB
-
-[urgency=normal]
-border-color=#88C0D0
-
-# Critical notifications keep nord11 and, as before, never time out on their own.
-[urgency=high]
-border-color=#BF616A
-text-color=#ECEFF4
-ignore-timeout=1

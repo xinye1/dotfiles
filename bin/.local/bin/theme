@@ -1,0 +1,222 @@
+#!/bin/sh
+# theme — switch the desktop between Nord and Gruvbox Dark.
+#
+#   theme                 print the active theme
+#   theme nord|gruvbox    switch
+#   theme toggle          switch to the other one          ($mod+Shift+t)
+#
+#   --restart-terminals   also restart `foot --server`, applying the palette to
+#                         foot immediately at the cost of every open shell
+#   --no-icons            skip papirus-folders (avoids the sudo prompt)
+#
+# HOW IT WORKS
+#   Every colour-bearing config includes a theme-neutral filename which is a
+#   symlink tracked in the repo, e.g.
+#       waybar/.config/waybar/colors.css -> colors-nord.css
+#   This script finds every symlink in the repo whose target ends in
+#   `-nord.<ext>` / `-nord` (or the gruvbox equivalent) and repoints it at its
+#   sibling. Nothing is hardcoded, so adding a new themed application means
+#   adding the two fragments and the symlink — no change here.
+#
+#   stow is deliberately NOT involved. Flipping a symlink inside the repo
+#   leaves every package's fold state untouched; switching with stow packages
+#   would unfold them. See PLAYBOOK.md.
+set -eu
+
+REPO="$HOME/repos/dotfiles"
+THEMES="nord gruvbox"
+
+# NOTE ON `set -e`: a bare `[ cond ] && action` is a landmine here. When the
+# test fails the whole list returns non-zero and `set -e` kills the script. Use
+# `if` blocks for every guard below, never `&&`.
+die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
+
+# The active theme, read from the symlinks themselves rather than a state file,
+# so it can never disagree with reality.
+current_theme() {
+    t=$(readlink "$REPO/sway/.config/sway/theme.env" 2>/dev/null) || return 1
+    case "$t" in
+        theme-nord.env)    echo nord ;;
+        theme-gruvbox.env) echo gruvbox ;;
+        *) return 1 ;;
+    esac
+}
+
+# Every repo symlink pointing at a per-theme fragment.
+theme_links() {
+    find "$REPO" -name .git -prune -o -type l -print | while read -r link; do
+        target=$(readlink "$link")
+        case "$target" in
+            *-nord|*-nord.*|*-gruvbox|*-gruvbox.*) printf '%s\n' "$link" ;;
+        esac
+    done
+}
+
+# Both palettes must define the same role names. A role defined in only one of
+# them renders as black in GTK CSS with no error, which is near-impossible to
+# diagnose from the symptom — so refuse to switch instead.
+#
+# Plain string comparison rather than `diff <(...) <(...)`: process substitution
+# is a bashism, and this script is /bin/sh. (On Arch /bin/sh happens to be bash,
+# so it would work today — but the shebang says sh, so it stays sh.)
+check_roles() {
+    d="$REPO/sway/.config/sway"
+    a=$(grep -oE '^[A-Z_]+=' "$d/theme-nord.env" | sort)
+    b=$(grep -oE '^[A-Z_]+=' "$d/theme-gruvbox.env" | sort)
+    if [ "$a" != "$b" ]; then
+        die "theme-nord.env and theme-gruvbox.env define different roles"
+    fi
+
+    an=$(grep -oE '^set \$[a-z_]+' "$d/colors-nord.conf" | sort)
+    bn=$(grep -oE '^set \$[a-z_]+' "$d/colors-gruvbox.conf" | sort)
+    if [ "$an" != "$bn" ]; then
+        die "colors-nord.conf and colors-gruvbox.conf define different roles"
+    fi
+}
+
+# Rename one fragment path from theme $from to theme $to. Pure POSIX parameter
+# expansion rather than sed, so that `.gtkrc-2.0-nord` (no extension) and
+# `colors-nord.css` (extension) are both handled unambiguously.
+retarget() {
+    case $1 in
+        *-"$2".*) printf '%s-%s.%s' "${1%-$2.*}" "$3" "${1##*.}" ;;
+        *-"$2")   printf '%s-%s' "${1%-$2}" "$3" ;;
+        *)        return 1 ;;
+    esac
+}
+
+switch_to() {
+    to=$1
+    from=$(current_theme) || die "cannot determine the active theme; is sway/.config/sway/theme.env a symlink?"
+    if [ "$to" = "$from" ]; then
+        echo "Already $to."
+        return 0
+    fi
+
+    check_roles
+
+    # Pre-flight: validate every sibling BEFORE flipping anything. The old code
+    # checked existence inside the flip loop, so a missing fragment aborted
+    # mid-switch with some symlinks already repointed and some not — and if
+    # sway/theme.env happened to flip before the failing one, `current_theme`
+    # would then read as `$to` and a re-run would report "Already $to" and
+    # exit 0 on a half-themed desktop. Collect every missing fragment rather
+    # than dying on the first: forgetting one sibling of a themed file often
+    # means forgetting several, and reporting them all in one pass beats
+    # discovering them one `theme` invocation at a time.
+    missing=""
+    for link in $(theme_links); do
+        target=$(readlink "$link")
+        newtarget=$(retarget "$target" "$from" "$to") || continue
+        if [ ! -e "$(dirname "$link")/$newtarget" ]; then
+            missing="$missing
+  $(dirname "$link")/$newtarget"
+        fi
+    done
+    if [ -n "$missing" ]; then
+        die "missing fragment(s), nothing switched:$missing"
+    fi
+
+    # `for` over command substitution, not a `while read` pipeline: the counter
+    # must survive the loop, and a pipeline would run it in a subshell. Safe
+    # because no path in this repo contains whitespace.
+    n=0
+    for link in $(theme_links); do
+        target=$(readlink "$link")
+        newtarget=$(retarget "$target" "$from" "$to") || continue
+        ln -sfn "$newtarget" "$link"
+        n=$((n + 1))
+    done
+    echo "Switched $n symlinks: $from -> $to"
+}
+
+reload_desktop() {
+    # sway reload also restarts waybar (it owns the bar process), re-runs
+    # scripts/import-gsettings (pushing the new GTK/icon/cursor names into
+    # gsettings, which is what libadwaita apps read), and re-execs nwg-drawer.
+    if command -v swaymsg >/dev/null 2>&1 && swaymsg -t get_version >/dev/null 2>&1; then
+        sway --validate -c "$HOME/.config/sway/config" || die "sway config is invalid; not reloading"
+        swaymsg reload >/dev/null
+        echo "  sway, waybar, nwg-drawer, gsettings  reloaded"
+    else
+        echo "  sway not running; skipped"
+    fi
+
+    # mako is exec'd, not exec_always'd, so a sway reload does not restart it.
+    if command -v makoctl >/dev/null 2>&1 && makoctl reload 2>/dev/null; then
+        echo "  mako                                  reloaded"
+    fi
+}
+
+reload_icons() {
+    . "$REPO/sway/.config/sway/theme-$1.env"
+    command -v papirus-folders >/dev/null 2>&1 || return 0
+
+    # `papirus-folders -l` marks the active colour with a leading "> ".
+    active=$(papirus-folders -l 2>/dev/null | awk '/^ *>/ {print $2}')
+    if [ "$active" = "$PAPIRUS_FOLDER" ]; then
+        return 0
+    fi
+
+    # Writes into /usr/share/icons, so it is the one step needing root and the
+    # one thing that cannot be stowed. Skip rather than hang when there is no
+    # terminal to prompt on.
+    if [ ! -t 0 ]; then
+        echo "  papirus-folders  SKIPPED (no tty for sudo); run: sudo papirus-folders -C $PAPIRUS_FOLDER -t Papirus-Dark"
+        return 0
+    fi
+    echo "  papirus-folders -> $PAPIRUS_FOLDER (needs sudo)"
+    sudo papirus-folders -C "$PAPIRUS_FOLDER" -t Papirus-Dark >/dev/null
+}
+
+do_icons=1
+restart_terminals=0
+target=""
+for arg in "$@"; do
+    case "$arg" in
+        --no-icons)          do_icons=0 ;;
+        --restart-terminals) restart_terminals=1 ;;
+        -h|--help)           sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*)                  die "unknown option: $arg" ;;
+        *)                   target=$arg ;;
+    esac
+done
+
+if [ -z "$target" ]; then
+    current_theme || die "cannot determine the active theme"
+    exit 0
+fi
+
+if [ "$target" = toggle ]; then
+    case $(current_theme) in
+        nord) target=gruvbox ;;
+        *)    target=nord ;;
+    esac
+fi
+
+case " $THEMES " in
+    *" $target "*) ;;
+    *) die "unknown theme '$target' (known: $THEMES)" ;;
+esac
+
+switch_to "$target"
+reload_desktop
+if [ "$do_icons" -eq 1 ]; then
+    reload_icons "$target"
+fi
+
+if [ "$restart_terminals" -eq 1 ]; then
+    pkill -x foot 2>/dev/null || true
+    foot --server >/dev/null 2>&1 &
+    echo "  foot --server restarted"
+else
+    # foot has no config-reload signal: SIGUSR1/2 only pick between the
+    # [colors-dark] and [colors-light] blocks loaded at startup.
+    echo
+    echo "Not yet showing the new palette:"
+    echo "  foot        open terminals and the running server keep the old colours."
+    echo "              Re-run with --restart-terminals, or log out."
+fi
+echo "  GTK apps    already-running ones keep the old theme; restart them."
+echo
+echo "The flipped symlinks are uncommitted; \`git -C $REPO status\` to see them."
