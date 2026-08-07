@@ -5,6 +5,13 @@
 syntax enable " enable syntax processing
 filetype plugin indent on
 
+" Palette. colorscheme.vim is a symlink switched by ~/.local/bin/theme.
+" Guarded so a machine without the clones from PLAYBOOK.md §8 still starts vim
+" instead of erroring on every launch.
+if filereadable(expand('~/.vim/colorscheme.vim'))
+  source ~/.vim/colorscheme.vim
+endif
+
 "==== Spaces & tabs ====
 set tabstop=2       " number of visual spaces per TAB
 set softtabstop=2   " number of spaces in tab when editing

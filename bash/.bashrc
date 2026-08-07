@@ -45,6 +45,13 @@ alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
 # `mise exec -- <cmd>` or `mise run <task>`.
 command -v mise >/dev/null && eval "$(mise activate bash)"
 
+# --- LS_COLORS ---------------------------------------------------------------
+# The file uses only the 16 ANSI slots, so it follows whichever terminal
+# palette the theme switcher has set — no per-theme variant needed.
+if [ -r "$HOME/.config/dircolors" ]; then
+    eval "$(dircolors -b "$HOME/.config/dircolors")"
+fi
+
 # --- Prompt -----------------------------------------------------------------
 # Fallback prompt set *before* starship: if starship is missing the guard below
 # is skipped and this PS1 stays in effect, so the shell is still usable.
