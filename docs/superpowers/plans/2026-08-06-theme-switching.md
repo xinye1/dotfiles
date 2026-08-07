@@ -2055,6 +2055,10 @@ Add `bin` to the package table. Rewrite the theming paragraph around the two pal
 **Required, not optional** — `CLAUDE.md` mandates that a new package is added to the README table *and* to `PLAYBOOK.md` §5.2 with its fold decision and the reason. `bin` is the new package this plan introduces, and it was flagged in review as missing both. Its §5.2 row is:
 
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), plus mise/starship shims. Folding would pull all of it into the repo. A newly added file therefore needs `stow -R bin`. |
+| `htop` | **Yes** | Nothing else writes into `~/.config/htop`. Note htop rewrites `htoprc` itself on exit, so settings changed in its UI arrive as a git diff through the symlink — that is the folded behaviour working, not a fault. |
+
+`htop` also needs a README table row. It was added to the repo alongside this work but is
+not part of the theming; document it, do not theme it.
 
 - [ ] **Step 3: Update `CLAUDE.md`**
 
