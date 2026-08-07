@@ -1864,9 +1864,23 @@ The last two gap fixes.
 
 **Files:**
 - Create: `gtk/.icons/default/index.theme`
-- Modify: `sway/.config/sway/config.d/theme` — add `seat * xcursor_theme`
-- Modify: `sway/.config/sway/scripts/screenshot_display.sh`, `screenshot_window.sh`
+- Create: `sway/.config/sway/scripts/screenshot_region.sh`
+- Modify: `sway/.config/sway/config.d/input` — add `seat * xcursor_theme`
+- Modify: `sway/.config/sway/config.d/default` — repoint the two inline slurp bindings
+- Modify: `sway/.config/sway/scripts/screenshot_window.sh`
 - Modify: `waybar/.config/waybar/scripts/keyhint.sh`
+
+**Two corrections to the original plan, both established by testing:**
+
+1. **`screenshot_display.sh` does not use slurp** — it grabs the focused output with `grim -o`. There is nothing to theme there; leave it alone. The real slurp callers are `screenshot_window.sh` and two *inline* bindings in `config.d/default`.
+
+2. **sway variables cannot reach `config.d/default`.** `config.d/*` is read alphabetically, so `default` is parsed *before* `theme`, where `include ../colors.conf` lives. A `$role` used in `default` is not yet defined and sway rejects the config outright:
+
+   ```
+   Error on line 1 '...': Invalid border color $accent
+   ```
+
+   So the two inline `slurp` calls cannot be themed with sway variables. They move into a script that sources `theme.env` at runtime, which sidesteps parse ordering entirely and makes all three slurp callers use one mechanism.
 
 - [ ] **Step 1: Add the cursor index.theme**
 
@@ -1877,7 +1891,7 @@ The last two gap fixes.
 #
 # GTK apps get their cursor from gtk-cursor-theme-name in settings.ini, but
 # nothing else does — the sway cursor and XWayland clients read this file and
-# `seat * xcursor_theme` in sway's config.d/theme. Without it the cursor over
+# `seat * xcursor_theme` in sway's config.d/input. Without it the cursor over
 # the desktop is the default, not Qogir-dark, which is why the theme appeared
 # to apply only inside GTK windows.
 #
@@ -1890,7 +1904,7 @@ Inherits=Qogir-dark
 
 - [ ] **Step 2: Set the sway cursor**
 
-In `sway/.config/sway/config.d/theme`, near the font declaration:
+This goes in `config.d/**input**`, not `theme`: a seat is an input device, the file is about input devices, and the cursor is deliberately *not* part of the switchable palette. It uses no variables, so parse order does not matter.
 
 ```
 # Cursor. Must match gtk-cursor-theme-name in the gtk package's settings.ini
@@ -1900,17 +1914,55 @@ In `sway/.config/sway/config.d/theme`, near the font declaration:
 seat * xcursor_theme Qogir-dark 24
 ```
 
-- [ ] **Step 3: Give slurp the palette**
+- [ ] **Step 3: Create the region-screenshot script**
 
-Read the two screenshot scripts first:
+`sway/.config/sway/scripts/screenshot_region.sh`, mode 755:
 
-```bash
-cat ~/repos/dotfiles/sway/.config/sway/scripts/screenshot_display.sh
-cat ~/repos/dotfiles/sway/.config/sway/scripts/screenshot_window.sh
-grep -rn slurp ~/repos/dotfiles/sway/.config/sway/
+```sh
+#!/bin/sh
+# Region screenshot, with the slurp selection box in the active palette.
+#
+# Usage:  screenshot_region.sh              region -> swappy editor
+#         screenshot_region.sh --clipboard  region -> clipboard, no editor
+#
+# Why a script rather than sway variables: config.d/* is read alphabetically,
+# so `default` (which holds the keybindings) is parsed BEFORE `theme` (which
+# includes colors.conf). A $role written into a binding in `default` is not yet
+# defined and sway rejects the whole config. Sourcing the palette at runtime
+# sidesteps parse ordering completely.
+set -eu
+
+. "$HOME/.config/sway/theme.env"
+
+# slurp exits non-zero when the selection is cancelled with Escape. Bail out
+# rather than handing grim an empty geometry, which the previous inline
+# `grim -g "$(slurp)"` did.
+geom=$(slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 1
+
+if [ "${1:-}" = "--clipboard" ]; then
+    grim -g "$geom" - | wl-copy
+else
+    grim -g "$geom" - | swappy -f -
+fi
 ```
 
-In every script that invokes `slurp`, add near the top:
+`slurp` accepts `#RRGGBB` or `#RRGGBBAA` (`man 1 slurp`, COLORS). The role variables already carry the leading `#`, so an alpha suffix appends directly.
+
+- [ ] **Step 4: Repoint the two inline bindings**
+
+In `config.d/default`, replace the two inline slurp bindings:
+
+```
+    # Snip a selection and pipe to swappy
+    bindsym print exec ~/.config/sway/scripts/screenshot_region.sh
+    # Snip a selection straight to the clipboard, skipping the swappy editor —
+    # for when the screenshot is going immediately into a chat window.
+    bindsym Ctrl+Shift+Print exec ~/.config/sway/scripts/screenshot_region.sh --clipboard
+```
+
+- [ ] **Step 5: Give screenshot_window.sh the palette**
+
+Add after the shebang:
 
 ```sh
 # Palette, so the selection box matches the active theme. theme.env is a
@@ -1918,17 +1970,11 @@ In every script that invokes `slurp`, add near the top:
 . "$HOME/.config/sway/theme.env"
 ```
 
-and give each `slurp` invocation:
+and give its `slurp` the same four flags: `slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66"`.
 
-```sh
-slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66"
-```
+- [ ] **Step 6: Give keyhint.sh the palette**
 
-`-b` background, `-c` selection border, `-s` selection fill, `-B` the dimmed area outside it. slurp takes `#RRGGBBAA`, and the role variables already carry the leading `#`.
-
-- [ ] **Step 4: Give keyhint.sh the palette**
-
-In `waybar/.config/waybar/scripts/keyhint.sh`, replace `header="#88C0D0"` with:
+Replace `header="#88C0D0"` with:
 
 ```sh
 # Section headers use the accent role. theme.env is a symlink switched by
@@ -1937,28 +1983,39 @@ In `waybar/.config/waybar/scripts/keyhint.sh`, replace `header="#88C0D0"` with:
 header="$ACCENT"
 ```
 
-- [ ] **Step 5: Validate and deploy**
+- [ ] **Step 7: Validate and deploy**
 
 ```bash
 cd ~/repos/dotfiles
-sh -n sway/.config/sway/scripts/screenshot_display.sh
+sh -n sway/.config/sway/scripts/screenshot_region.sh
 sh -n sway/.config/sway/scripts/screenshot_window.sh
 sh -n waybar/.config/waybar/scripts/keyhint.sh
+chmod +x sway/.config/sway/scripts/screenshot_region.sh
+stow -n -v sway gtk waybar
 stow -R sway gtk waybar
 sway --validate -c ~/.config/sway/config
 swaymsg reload
 pgrep -xc swayidle        # 1
 ```
 
-- [ ] **Step 6: Test each surface**
+Confirm the palette actually resolves in a script context:
+
+```bash
+( . ~/.config/sway/theme.env && echo "slurp would use: -b ${BG}cc -c $ACCENT -s ${ACCENT}22 -B ${BG}66" )
+```
+
+- [ ] **Step 8: Test each surface**
 
 Press `Print` — the selection box should be drawn in the accent colour. Click the waybar keyboard-layout module — section headers in the accent colour. Move the cursor over the empty desktop — it should be the Qogir-dark pointer, not the default X arrow. Then `theme gruvbox` and re-check `Print` and the keyhint.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 cd ~/repos/dotfiles
-git add sway gtk waybar
+git add sway/.config/sway/config.d/input sway/.config/sway/config.d/default \
+        sway/.config/sway/scripts/screenshot_region.sh \
+        sway/.config/sway/scripts/screenshot_window.sh \
+        waybar/.config/waybar/scripts/keyhint.sh gtk/.icons
 git commit -m "Apply the cursor theme outside GTK, and theme the slurp selection"
 ```
 
