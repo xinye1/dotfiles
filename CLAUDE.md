@@ -48,14 +48,32 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   `[colors-light]` blocks loaded at startup, so a switch needs a server restart or a logout.
 - **`.bashrc` line 6 is `[[ $- != *i* ]] && return`**, so `bash -lc` skips the entire file. Test
   anything sourced from it with `bash -ic`.
+- **`sh` has no function-local variables**, and `bin/.local/bin/theme` is `/bin/sh`. A name assigned
+  inside a function is the caller's name. `switch_to()` used a loop variable called `target` — the
+  same global holding the requested theme — so it returned with `target` set to the last symlink's
+  old value and `reload_icons` sourced `theme-colors-nord.ini.env`. Under `set -e` that aborted
+  *after* the symlinks flipped but *before* papirus-folders ran, which looked like "the switch needs
+  two runs". Never reuse a caller's variable name in a function there; `tests/theme_test.sh` pins it.
 - **Moving a config block wholesale silently loses whatever stays behind**, and every check here is
   syntactic. The waybar clock's `actions` block was dropped exactly this way and nothing complained.
   Diff the old block against the new one key by key before deleting it.
 
 ## Verify
 
-No build or tests. `stow -n -v <pkg>` (dry run) is the verification step — run it before `stow <pkg>`.
-`stow -R <pkg>` to pick up deletions; `stow -D <pkg>` to unlink.
+No build. `stow -n -v <pkg>` (dry run) is the verification step for a package — run it before
+`stow <pkg>`. `stow -R <pkg>` to pick up deletions; `stow -D <pkg>` to unlink.
+
+One test suite, for the one thing here with real logic:
+
+```sh
+sh tests/theme_test.sh                                  # the copy in the repo
+THEME_BIN=~/.local/bin/theme sh tests/theme_test.sh     # the installed symlink
+```
+
+**Run it after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under a fake `$HOME`
+and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live desktop. `tests/` is a
+repo-root directory like `docs/`, **not** a stow package — it is never named in a `stow` command, and
+must not be: `tests/…` would install to `~/tests/…`.
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload).

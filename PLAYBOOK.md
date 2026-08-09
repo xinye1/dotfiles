@@ -264,6 +264,20 @@ Everything else — sway, waybar, mako, gsettings/libadwaita, nwg-drawer, fuzzel
 terminals, new vim sessions — is live by the time the command returns. `theme` runs
 `sway --validate` before `swaymsg reload` and refuses to reload an invalid config.
 
+**One invocation does all of it.** If a switch ever appears to need two runs — some packages themed,
+papirus-folders and the closing advisory missing on the first — that is a bug in `theme`, not a
+property of the design. It happened once: `switch_to()` used a loop variable named `target`, the
+same global holding the requested theme, and `sh` has no function-local scope, so `reload_icons`
+was handed `colors-nord.ini` and `set -e` killed the script mid-run. `tests/theme_test.sh` pins this
+and the rest of the switcher's guarantees:
+
+```sh
+sh tests/theme_test.sh    # throwaway $HOME, stubbed swaymsg — the live desktop is untouched
+```
+
+Run it after any edit to `bin/.local/bin/theme`. `tests/` is a repo-root directory like `docs/`, not
+a stow package — never `stow tests`, which would install it to `~/tests/`.
+
 ### 3.4 Switching, as a procedure
 
 The reference above is the mechanism. This is what you actually do.

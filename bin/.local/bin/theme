@@ -45,8 +45,8 @@ current_theme() {
 # Every repo symlink pointing at a per-theme fragment.
 theme_links() {
     find "$REPO" -name .git -prune -o -type l -print | while read -r link; do
-        target=$(readlink "$link")
-        case "$target" in
+        linktarget=$(readlink "$link")
+        case "$linktarget" in
             *-nord|*-nord.*|*-gruvbox|*-gruvbox.*) printf '%s\n' "$link" ;;
         esac
     done
@@ -104,10 +104,20 @@ switch_to() {
     # than dying on the first: forgetting one sibling of a themed file often
     # means forgetting several, and reporting them all in one pass beats
     # discovering them one `theme` invocation at a time.
+    # NOTE ON VARIABLE NAMES: sh has no function-local scope, so every name set
+    # here is global. The loop variable below was once called `target` — the
+    # same name the option parser uses for the requested theme. `switch_to`
+    # therefore returned with `target` holding the *last symlink's old target*
+    # (`colors-nord.ini`), and `reload_icons "$target"` sourced
+    # `theme-colors-nord.ini.env`, which does not exist. Under `set -e` that
+    # killed the script after the symlinks had flipped but before
+    # papirus-folders ran, so a switch took two invocations. Do not reuse a
+    # caller's variable name in a function here; `oldtarget` pairs with
+    # `newtarget` and collides with nothing.
     missing=""
     for link in $(theme_links); do
-        target=$(readlink "$link")
-        newtarget=$(retarget "$target" "$from" "$to") || continue
+        oldtarget=$(readlink "$link")
+        newtarget=$(retarget "$oldtarget" "$from" "$to") || continue
         if [ ! -e "$(dirname "$link")/$newtarget" ]; then
             missing="$missing
   $(dirname "$link")/$newtarget"
@@ -122,8 +132,8 @@ switch_to() {
     # because no path in this repo contains whitespace.
     n=0
     for link in $(theme_links); do
-        target=$(readlink "$link")
-        newtarget=$(retarget "$target" "$from" "$to") || continue
+        oldtarget=$(readlink "$link")
+        newtarget=$(retarget "$oldtarget" "$from" "$to") || continue
         ln -sfn "$newtarget" "$link"
         n=$((n + 1))
     done
@@ -149,7 +159,14 @@ reload_desktop() {
 }
 
 reload_icons() {
-    . "$REPO/sway/.config/sway/theme-$1.env"
+    # Guard rather than let `.` fail: sourcing a missing file under `set -e`
+    # aborts the script with a bare "No such file or directory" naming a
+    # nonsense path, which says nothing about where the bad name came from.
+    env_file="$REPO/sway/.config/sway/theme-$1.env"
+    if [ ! -f "$env_file" ]; then
+        die "no palette named '$1' (expected $env_file)"
+    fi
+    . "$env_file"
     command -v papirus-folders >/dev/null 2>&1 || return 0
 
     # `papirus-folders -l` marks the active colour with a leading "> ".
