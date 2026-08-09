@@ -1,1 +1,1 @@
-colorscheme-gruvbox.vim
+colorscheme-nord.vim
