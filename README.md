@@ -49,7 +49,17 @@ not update immediately (open terminals, running GTK apps).
   their role conventions, the switching model, every deviation from stock EndeavourOS and why, the
   keybinding reference, and the gotchas. Read this one.
 * **[docs/setup.html](docs/setup.html)** — the same setup as an interactive checklist with copy
-  buttons and saved progress. Open it in a browser when rebuilding on a new machine.
+  buttons and saved progress. Open it in a browser when rebuilding on a new machine. It opens with
+  a diagrammed map of how the construct fits together — the two kinds of symlink, folded vs
+  unfolded, and what sway owns at runtime — and phase 09 explains the switcher itself, in a
+  technical and a plain-language register you can toggle between.
+
+`theme` is the only thing here with enough logic to get wrong twice, so it has tests. Run them after
+touching it — they use a throwaway `$HOME` and stubbed `swaymsg`, so the live desktop is untouched:
+
+```sh
+sh tests/theme_test.sh
+```
 
 ## Setup
 

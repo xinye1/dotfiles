@@ -30,6 +30,10 @@
   --ok:var(--nord14);
   --warn:var(--nord13);
   --bad:var(--nord11);
+  /* The plain-language lane in phase 09. nord15 is the one hue the rest of the
+     page never uses, so the second register reads as a different voice rather
+     than as another severity level. */
+  --plain:var(--nord15);
 
   --mono:"JetBrains Mono","JetBrainsMono Nerd Font",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:ui-sans-serif,system-ui,"Noto Sans","Segoe UI",Roboto,sans-serif;
@@ -50,6 +54,8 @@
     --accent:var(--nord10);
     --accent-ink:var(--nord6);
     --ok:#4f7a3f; --warn:#9a7524; --bad:#a4474f;
+    /* nord15 itself is too pale to read as text on Snow Storm. */
+    --plain:#86577f;
     color-scheme:light;
   }
 }
@@ -59,6 +65,7 @@
   --text:var(--nord1); --text-bright:var(--nord0); --text-dim:#697585;
   --accent:var(--nord10); --accent-ink:var(--nord6);
   --ok:#4f7a3f; --warn:#9a7524; --bad:#a4474f;
+  --plain:#86577f;
   color-scheme:light;
 }
 :root[data-theme="dark"] {
@@ -66,6 +73,7 @@
   --text:var(--nord4); --text-bright:var(--nord6); --text-dim:#8791a3;
   --accent:var(--nord8); --accent-ink:var(--nord0);
   --ok:var(--nord14); --warn:var(--nord13); --bad:var(--nord11);
+  --plain:var(--nord15);
   color-scheme:dark;
 }
 
@@ -218,6 +226,92 @@ h2.phase-title{font-family:var(--mono);font-size:1.3rem;font-weight:700;letter-s
 .tag.opt{border-color:color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--warn)}
 .tag.root{border-color:color-mix(in srgb,var(--bad) 50%,var(--line));color:var(--bad)}
 
+/* ---------- mechanism, in two registers ----------
+   Phase 09 says everything twice: once precisely, once plainly. The two are
+   siblings in the DOM rather than separate pages, so they cannot drift apart
+   the way a "simple version" kept elsewhere always does. The control below
+   hides one lane or the other; it never removes content from the document, so
+   find-in-page and printing still see both. */
+.regbar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;
+  margin:0 0 1.5rem 2.4rem;font-family:var(--mono);font-size:.7rem}
+@media (max-width:40rem){.regbar{margin-left:0}}
+.regbar .lbl{letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-right:.3rem}
+.regbar button{font-family:var(--mono);font-size:.7rem;background:transparent;color:var(--text-dim);
+  border:1px solid var(--line);border-radius:3px;padding:.24rem .6rem;cursor:pointer;
+  transition:color .15s,border-color .15s,background .15s}
+.regbar button:hover{color:var(--accent);border-color:var(--accent)}
+.regbar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.regbar button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);
+  border-color:var(--accent)}
+
+/* Group heading: four named concerns, so seven cards read as a structure
+   rather than as a list you have to hold in your head. */
+.grp{display:flex;align-items:center;gap:.75rem;margin:2rem 0 .85rem}
+.grp .gid{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--accent);
+  flex:none}
+h3.grp-title{font-family:var(--mono);font-size:.78rem;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--text-dim);margin:0;flex:none}
+.grp .rule{flex:1;height:1px;background:var(--line)}
+
+.mech{background:var(--surface);border:1px solid var(--line);border-radius:6px;
+  padding:1.1rem 1.25rem;margin-bottom:.85rem}
+h4.mech-title{font-family:var(--mono);font-size:.95rem;font-weight:700;letter-spacing:-.01em;
+  margin:0 0 .7rem;color:var(--text-bright)}
+.mech p{margin:0 0 .6rem;max-width:66ch;font-size:.93rem}
+.mech p:last-child{margin-bottom:0}
+.mech code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);
+  padding:.1em .35em;border-radius:3px}
+.mech a{color:var(--accent)}
+.mech .cmd,.mech .callout{grid-column:auto;margin-top:.75rem}
+.mech .tablewrap{margin-top:.75rem}
+.mech .tablewrap+p{margin-top:.75rem}
+
+.plain{margin-top:.9rem;padding:.75rem .9rem;border-radius:5px;
+  border-left:2px solid var(--plain);background:color-mix(in srgb,var(--plain) 11%,transparent)}
+.plain-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--plain);margin:0 0 .45rem}
+.plain p{margin:0 0 .55rem;font-size:.9rem;max-width:66ch}
+.plain p:last-child{margin-bottom:0}
+.plain strong{color:var(--text-bright)}
+.plain code{background:color-mix(in srgb,var(--plain) 14%,transparent)}
+
+/* ---------- diagrams ----------
+   Hand-authored inline SVG: no library, no runtime, no image files, so the
+   page stays a single portable document. Everything is drawn in the page's own
+   custom properties rather than literal hexes, so the figures follow the
+   light/dark switch with the rest of the page instead of going muddy in one of
+   them. Geometry is on a shared grid — lane centres at y=59/151/243 in the
+   second figure — because even gaps are most of what makes a hand-drawn
+   diagram read as deliberate. */
+.fig{margin:.95rem 0 0;padding:0}
+.fig svg{display:block;width:100%;height:auto;color:var(--text);
+  background:var(--bg);border:1px solid var(--line);border-radius:5px}
+.fig figcaption{margin:.5rem 0 0;font-size:.8rem;color:var(--text-dim);max-width:66ch}
+.fig .box{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.fig .plane{fill:none;stroke:var(--line);stroke-dasharray:3 3}
+.fig .warnt{fill:var(--warn);font-family:var(--mono);font-size:10px}
+.fig .acct{fill:var(--accent);font-family:var(--mono);font-size:10px}
+.fig .t{fill:var(--text-bright);font-family:var(--mono);font-size:12px}
+.fig .s{fill:var(--text-dim);font-family:var(--mono);font-size:10px}
+.fig .lab{fill:var(--text-dim);font-family:var(--mono);font-size:10px}
+.fig .note{fill:var(--accent);font-family:var(--mono);font-size:10px}
+.fig .hd{font-family:var(--mono);font-size:11px;fill:var(--text-bright)}
+.fig .hd.acc{fill:var(--accent)}
+.fig .hd.warn{fill:var(--warn)}
+.fig .edge{stroke:var(--text-dim);stroke-width:1.5;fill:none}
+.fig .edge.acc{stroke:var(--accent);stroke-width:2}
+.fig .edge.warn{stroke:var(--warn);stroke-width:2}
+.fig .edge.was{stroke-dasharray:4 4}
+.fig .mk{fill:var(--text-dim)}
+.fig .mk-acc{fill:var(--accent)}
+.fig .mk-warn{fill:var(--warn)}
+
+.reg-tech .plain{display:none}
+.reg-plain .tech{display:none}
+/* With one lane hidden the panel is the whole card, so its inset border and
+   tint would just repeat the card's own edge. */
+.reg-plain .plain{margin-top:0;padding:0;border-left:0;background:none}
+
 /* ---------- palette ---------- */
 .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr));gap:.5rem;margin:0}
 .sw{border:1px solid var(--line);border-radius:5px;overflow:hidden;background:var(--surface)}
@@ -258,9 +352,10 @@ footer a{color:var(--accent)}
     <p class="lede">
       Every step needed to rebuild this desktop on another machine, in order, with the checks that
       prove each one worked. Progress is saved in this browser — close the tab, reboot, come back.
-      The desktop carries two palettes and switches between them with
-      <code>$mod+Shift+t</code>; phase 08 is that mechanism. The reasoning behind each choice lives
-      in <a href="../PLAYBOOK.md">PLAYBOOK.md</a>.
+      Start with <a href="#pmap">the shape of it</a> for how the pieces fit together. The desktop
+      carries two palettes and switches between them with <code>$mod+Shift+t</code>; phase 08 is how
+      you drive that, phase 09 is how it works. The reasoning behind each choice lives in
+      <a href="../PLAYBOOK.md">PLAYBOOK.md</a>.
     </p>
   </header>
 
@@ -279,6 +374,203 @@ footer a{color:var(--accent)}
   <main>
 
     <!-- ============ 0 ============ -->
+    <!-- ============ overview ============ -->
+    <section class="phase" id="pmap" data-title="The shape of it">
+      <div class="phase-head"><span class="phase-num">—</span><h2 class="phase-title">The shape of it</h2></div>
+      <p class="phase-note">
+        Not a step — the map. Three facts explain almost every surprise this repo can produce: what
+        stow actually links, whether a directory is folded, and which of the two kinds of symlink you
+        are looking at.
+      </p>
+
+      <div class="mech">
+        <h4 class="mech-title">Two kinds of symlink, two different owners</h4>
+        <p>The repo is a set of packages, each one mirroring the layout under <code>$HOME</code>.
+        <strong>stow</strong> links a package's contents into <code>$HOME</code> — that happens once,
+        at install. Inside the repo, a second and completely separate set of links picks which colour
+        fragment is live, and <strong>theme</strong> moves those — that happens whenever you switch.</p>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 310" role="img"
+               aria-label="Three layers: the repo, the home directory, and the running application. Stow links files from the repo into the home directory once at install. The theme command moves a different set of links entirely inside the repo, between colors.css and its nord or gruvbox fragment. The two kinds of link never touch the same file.">
+            <defs>
+              <marker id="o1-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="o1-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-acc" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+            </defs>
+
+            <rect class="plane" x="12" y="40" width="318" height="210" rx="6"/>
+            <text class="s" x="24" y="58">REPO — ~/repos/dotfiles</text>
+
+            <rect class="box" x="30" y="76" width="132" height="32" rx="4"/>
+            <text class="t" x="96" y="97" text-anchor="middle">style.css</text>
+
+            <rect class="box" x="30" y="126" width="132" height="32" rx="4"/>
+            <text class="t" x="96" y="147" text-anchor="middle">colors.css</text>
+            <text class="s" x="96" y="176" text-anchor="middle">the switched link</text>
+
+            <polyline class="edge acc" points="162,140 176,140 176,120 186,120" marker-end="url(#o1-acc)"/>
+            <polyline class="edge was" points="162,148 176,148 176,172 186,172" marker-end="url(#o1-dim)"/>
+
+            <rect class="box" x="190" y="104" width="126" height="32" rx="4"/>
+            <text class="t" x="253" y="125" text-anchor="middle">colors-nord.css</text>
+
+            <rect class="box" x="190" y="156" width="126" height="32" rx="4"/>
+            <text class="t" x="253" y="177" text-anchor="middle">colors-gruvbox.css</text>
+
+            <line class="edge" x1="330" y1="132" x2="364" y2="132" marker-end="url(#o1-dim)"/>
+            <text class="lab" x="347" y="124" text-anchor="middle">stow</text>
+
+            <rect class="plane" x="372" y="40" width="188" height="210" rx="6"/>
+            <text class="s" x="384" y="58">$HOME</text>
+
+            <rect class="box" x="390" y="108" width="152" height="52" rx="4"/>
+            <text class="t" x="466" y="129" text-anchor="middle">~/.config/waybar/</text>
+            <text class="s" x="466" y="146" text-anchor="middle">style.css · colors.css</text>
+
+            <line class="edge" x1="560" y1="134" x2="592" y2="134" marker-end="url(#o1-dim)"/>
+            <text class="lab" x="576" y="126" text-anchor="middle">reads</text>
+
+            <rect class="box" x="598" y="110" width="108" height="48" rx="4"/>
+            <text class="t" x="652" y="131" text-anchor="middle">waybar</text>
+            <text class="s" x="652" y="147" text-anchor="middle">the process</text>
+
+            <line class="edge acc" x1="30" y1="278" x2="58" y2="278"/>
+            <text class="s" x="64" y="282">theme — moves links inside the repo, any time</text>
+            <line class="edge" x1="372" y1="278" x2="400" y2="278"/>
+            <text class="s" x="406" y="282">stow — links the repo into $HOME, once at install</text>
+          </svg>
+          <figcaption>
+            The two never touch the same link, which is the whole reason switching palettes cannot
+            disturb the stow layout — and why a <code>theme-nord</code> / <code>theme-gruvbox</code>
+            stow package would be a mistake. It would put the switch on the crossing arrow instead of
+            the internal one.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="mech">
+        <h4 class="mech-title">Folded or unfolded — the one that catches everyone</h4>
+        <p>When stow links a package it makes a choice you do not see. If the target directory does
+        not exist, it links the <em>whole directory</em> in one go. If a real directory is already
+        there, it links each file individually. That decision is invisible afterwards and decides
+        whether a file you add later appears on its own.</p>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 200" role="img"
+               aria-label="Folded versus unfolded. When folded, the config directory in home is itself one symlink to the package directory, so a file added to the package is already linked. When unfolded, the config directory is real and each file is linked individually, so a file added later has no link until stow is re-run.">
+            <defs>
+              <marker id="o2-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="o2-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-acc" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+            </defs>
+
+            <line class="plane" x1="356" y1="16" x2="356" y2="184"/>
+
+            <text class="hd acc" x="16" y="30">FOLDED</text>
+            <rect class="box" x="16" y="44" width="150" height="44" rx="4"/>
+            <text class="t" x="91" y="65" text-anchor="middle">~/.config/waybar</text>
+            <text class="s" x="91" y="81" text-anchor="middle">is itself a symlink</text>
+            <line class="edge acc" x1="166" y1="66" x2="196" y2="66" marker-end="url(#o2-acc)"/>
+            <rect class="box" x="200" y="38" width="140" height="102" rx="4"/>
+            <text class="t" x="270" y="60" text-anchor="middle">package dir</text>
+            <text class="s" x="270" y="84" text-anchor="middle">style.css</text>
+            <text class="s" x="270" y="102" text-anchor="middle">colors.css</text>
+            <text class="acct" x="270" y="124" text-anchor="middle">later.css</text>
+            <text class="s" x="16" y="168">one link — anything added inside is already linked</text>
+
+            <text class="hd warn" x="376" y="30">UNFOLDED</text>
+            <rect class="box" x="376" y="44" width="150" height="44" rx="4"/>
+            <text class="t" x="451" y="65" text-anchor="middle">~/.config/alacritty</text>
+            <text class="s" x="451" y="81" text-anchor="middle">is a real directory</text>
+            <polyline class="edge" points="526,66 538,66 538,84 552,84" marker-end="url(#o2-dim)"/>
+            <polyline class="edge" points="538,84 538,102 552,102" marker-end="url(#o2-dim)"/>
+            <rect class="box" x="560" y="38" width="146" height="102" rx="4"/>
+            <text class="t" x="633" y="60" text-anchor="middle">package dir</text>
+            <text class="s" x="633" y="84" text-anchor="middle">alacritty.toml</text>
+            <text class="s" x="633" y="102" text-anchor="middle">colors.toml</text>
+            <text class="warnt" x="633" y="124" text-anchor="middle">later.toml — no link</text>
+            <text class="s" x="376" y="168">one link per file — a file added later needs stow -R</text>
+          </svg>
+          <figcaption>
+            Note the missing arrow on the right: <code>later.toml</code> exists in the package and
+            simply is not linked. Check which one you have with
+            <code>[ -L ~/.config/&lt;pkg&gt; ]</code>. Packages stay unfolded on purpose when
+            something else writes into the target — <code>alacritty</code>, <code>gtk</code> (nwg-look
+            writes there), <code>vim</code>, and <code>bin</code> (untracked binaries live in
+            <code>~/.local/bin</code>).
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="mech">
+        <h4 class="mech-title">One compositor, and everything hanging off it</h4>
+        <p>The packages are not peers at runtime. <strong>sway starts and owns most of the desktop</strong>,
+        which is why a single <code>swaymsg reload</code> reaches so much of it — and why the theme
+        switcher needs so little code of its own.</p>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 290" role="img"
+               aria-label="Sway starts and owns waybar, nwg-drawer, the import-gsettings script, and the long-lived daemons mako, foot server, swayidle and kanshi. The import-gsettings script writes into gsettings, which is what GTK4 and libadwaita applications read.">
+            <defs>
+              <marker id="o3-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="o3-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-acc" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+            </defs>
+
+            <rect class="box" x="24" y="116" width="152" height="56" rx="5"/>
+            <text class="t" x="100" y="140" text-anchor="middle">sway</text>
+            <text class="s" x="100" y="157" text-anchor="middle">the hub</text>
+
+            <polyline class="edge acc" points="176,144 204,144 204,48 232,48" marker-end="url(#o3-acc)"/>
+            <polyline class="edge acc" points="204,144 204,112 232,112" marker-end="url(#o3-acc)"/>
+            <polyline class="edge acc" points="204,144 204,176 232,176" marker-end="url(#o3-acc)"/>
+            <polyline class="edge" points="204,144 204,240 232,240" marker-end="url(#o3-dim)"/>
+
+            <rect class="box" x="236" y="24" width="214" height="48" rx="4"/>
+            <text class="t" x="250" y="45">waybar</text>
+            <text class="s" x="250" y="61">restarted on every reload</text>
+
+            <rect class="box" x="236" y="88" width="214" height="48" rx="4"/>
+            <text class="t" x="250" y="109">nwg-drawer</text>
+            <text class="s" x="250" y="125">re-exec'd on every reload</text>
+
+            <rect class="box" x="236" y="152" width="214" height="48" rx="4"/>
+            <text class="t" x="250" y="173">import-gsettings</text>
+            <text class="s" x="250" y="189">re-run on every reload</text>
+
+            <rect class="box" x="236" y="216" width="214" height="48" rx="4"/>
+            <text class="t" x="250" y="237">long-lived daemons</text>
+            <text class="s" x="250" y="253">mako · foot · swayidle · kanshi</text>
+
+            <line class="edge acc" x1="450" y1="176" x2="482" y2="176" marker-end="url(#o3-acc)"/>
+            <rect class="box" x="488" y="156" width="104" height="40" rx="4"/>
+            <text class="t" x="540" y="181" text-anchor="middle">gsettings</text>
+
+            <line class="edge acc" x1="592" y1="176" x2="612" y2="176" marker-end="url(#o3-acc)"/>
+            <rect class="box" x="618" y="156" width="88" height="40" rx="4"/>
+            <text class="t" x="662" y="181" text-anchor="middle">GTK4 apps</text>
+          </svg>
+          <figcaption>
+            The bottom lane is the exception that bites: those four are started <em>once</em>, so a
+            reload does not restart them. That is why <code>theme</code> calls
+            <code>makoctl reload</code> itself, and why a terminal keeps its old colours. The
+            <code>gsettings</code> hop is the only route by which a GTK4 or libadwaita app learns
+            which theme it should be wearing.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
     <section class="phase" id="p0" data-title="Prerequisites">
       <div class="phase-head"><span class="phase-num">00</span><h2 class="phase-title">Prerequisites</h2></div>
       <p class="phase-note">
@@ -903,15 +1195,20 @@ footer a{color:var(--accent)}
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
 <pre><span class="p">❯</span> sudo papirus-folders -C yellow -t Papirus-Dark   <span class="c"># gruvbox; -C nordic for nord</span>
-<span class="p">❯</span> theme --restart-terminals                        <span class="c"># or just log out</span></pre>
+<span class="p">❯</span> theme gruvbox --restart-terminals                <span class="c"># name the palette — or just log out</span></pre>
         </div>
         <div class="step-body">
           <p>Only needed if the switcher said it skipped them. It runs papirus-folders itself when a
           terminal is there to take the <code>sudo</code> prompt, and prints the exact line to run
           when there isn't — over ssh, from a keybinding, or under <code>--no-icons</code>.</p>
           <p><code>--restart-terminals</code> <strong>closes every open terminal</strong>. foot has no
-          config-reload signal at all, so there is no gentler option; skip it and new terminals are
-          right while old ones stay as they were until you log out.</p>
+          config-reload signal at all, so there is no gentler option. Skipping it leaves
+          <em>every</em> terminal on the old palette, new ones included: <code>$mod+Return</code> runs
+          <code>footclient</code>, and the server it connects to read its colours once, at startup.
+          Nothing is right again until the server restarts or you log out.</p>
+          <p>The flag needs a palette named alongside it. <code>theme --restart-terminals</code> on
+          its own takes the no-argument path, prints the active palette and exits without restarting
+          anything — see phase 09.</p>
         </div>
       </div>
 
@@ -1030,9 +1327,399 @@ footer a{color:var(--accent)}
       </div>
     </section>
 
+    <!-- ============ mechanism ============ -->
+    <section class="phase reg-both" id="p9" data-title="How it works">
+      <div class="phase-head"><span class="phase-num">09</span><h2 class="phase-title">How the switcher works</h2></div>
+      <p class="phase-note">
+        Phase 08 is the procedure. This is the machine under it, in four parts: <strong>A</strong> what
+        you type, <strong>B</strong> what happens inside the repo, <strong>C</strong> how that reaches
+        the screen, and <strong>D</strong> what keeps it honest. Nothing here is needed to
+        <em>use</em> the desktop; it is what you read before changing the switcher, or when it does
+        something you did not expect.
+      </p>
+
+      <div class="regbar">
+        <span class="lbl">Register</span>
+        <button type="button" data-reg="both" aria-pressed="true">both</button>
+        <button type="button" data-reg="tech" aria-pressed="false">technical</button>
+        <button type="button" data-reg="plain" aria-pressed="false">plain</button>
+      </div>
+
+      <div class="grp"><span class="gid">A</span><h3 class="grp-title">The interface</h3><span class="rule"></span></div>
+
+      <div class="mech">
+        <h4 class="mech-title">A1 · <code>theme</code> — the command surface</h4>
+        <div class="tech">
+          <p>One POSIX <code>sh</code> script, about 240 lines, at
+          <code>bin/.local/bin/theme</code> in the repo and <code>~/.local/bin/theme</code> on your
+          <code>PATH</code> — the same file, linked there by <code>stow bin</code>. It calls nothing
+          exotic: <code>find</code>, <code>grep</code>, <code>sed</code>, <code>awk</code>,
+          <code>readlink</code> and <code>ln</code>. It is not a daemon and keeps nothing
+          running.</p>
+        </div>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">the whole interface</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> theme                              <span class="c"># print the active palette, exit 0</span>
+<span class="p">❯</span> theme nord                         <span class="c"># switch</span>
+<span class="p">❯</span> theme gruvbox                      <span class="c"># switch</span>
+<span class="p">❯</span> theme toggle                       <span class="c"># the other one — what $mod+Shift+t runs</span>
+<span class="p">❯</span> theme -h                           <span class="c"># the header comment, printed back</span>
+<span class="p">❯</span> theme gruvbox --no-icons           <span class="c"># skip papirus-folders, the only sudo step</span>
+<span class="p">❯</span> theme gruvbox --restart-terminals  <span class="c"># also restart foot --server</span></pre>
+        </div>
+        <div class="tech">
+          <p>Anything that is not a recognised flag is taken as the target palette, validated against
+          the list <code>nord gruvbox</code>. Every failure path prints
+          <code>theme: &lt;reason&gt;</code> to stderr and exits <strong>1</strong>; success is
+          <strong>0</strong>. That makes it safe in a script:
+          <code>theme gruvbox --no-icons || echo failed</code>.</p>
+        </div>
+        <div class="callout bad">
+          <p><strong>Both flags need a palette named alongside them.</strong> With no target,
+          <code>theme</code> takes its "just tell me the active palette" path and exits <em>before</em>
+          the flags are ever acted on — so <code>theme --restart-terminals</code> prints
+          <code>gruvbox</code> and restarts nothing, silently. Write
+          <code>theme gruvbox --restart-terminals</code>. Naming the palette you are already on is
+          fine: the switch is a no-op, and the flag still runs.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>It is one script you run and that finishes — not a background service watching for
+          changes. You type <code>theme gruvbox</code>, it edits some pointers on disk, tells a few
+          programs to re-read them, and exits. Nothing keeps running afterwards.</p>
+          <p><strong>The one trap:</strong> the two options only do anything if you also name a
+          palette. On its own, <code>theme --restart-terminals</code> just prints which palette you
+          are on and stops — no error, no effect. It looks like it worked.</p>
+        </div>
+      </div>
+
+      <div class="grp"><span class="gid">B</span><h3 class="grp-title">Inside the repo — how a switch is decided and made</h3><span class="rule"></span></div>
+
+      <div class="mech">
+        <h4 class="mech-title">B1 · What one invocation does, in order</h4>
+        <div class="tech">
+          <p>Ten steps. Everything that can refuse the switch happens in steps 2–5, before any file
+          on disk is touched.</p>
+          <div class="tablewrap">
+            <table class="ref">
+              <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>parse</td><td>Flags off the argument list; the remaining bare word is the target.</td></tr>
+                <tr><td>2</td><td><code>current_theme</code></td><td><code>readlink</code> on <code>sway/.config/sway/theme.env</code>. This is the only place "what is active" is ever read from.</td></tr>
+                <tr><td>3</td><td>resolve</td><td><code>toggle</code> becomes the other name; the target is checked against the known list.</td></tr>
+                <tr><td>4</td><td><code>check_roles</code></td><td>The two <code>theme-*.env</code> must declare identical variable names, and the two <code>colors-*.conf</code> identical <code>set $var</code> names. Refuses if not.</td></tr>
+                <tr><td>5</td><td>pre-flight</td><td>For every themed symlink, compute the sibling it would move to and assert it exists. Collects <em>all</em> misses and aborts naming them.</td></tr>
+                <tr><td>6</td><td>flip</td><td><code>ln -sfn</code> per link, then print the count. It must say <strong>17</strong>.</td></tr>
+                <tr><td>7</td><td><code>reload_desktop</code></td><td><code>sway --validate</code>, then <code>swaymsg reload</code>; then <code>makoctl reload</code>.</td></tr>
+                <tr><td>8</td><td><code>reload_icons</code></td><td>Source <code>theme-&lt;name&gt;.env</code>, and if the folder colour differs, <code>sudo papirus-folders</code>. Skipped under <code>--no-icons</code>, or printed as a line to run yourself when there is no terminal for the password prompt.</td></tr>
+                <tr><td>9</td><td>terminals</td><td>Only with <code>--restart-terminals</code>: <code>pkill -x foot</code>, then <code>foot --server</code>.</td></tr>
+                <tr><td>10</td><td>advisory</td><td>What has <em>not</em> repainted yet, and the reminder that 17 tracked symlinks are now dirty in git.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Steps 7–9 are the only ones that touch anything outside the repo, and none of them can
+          run unless step 6 completed.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>It is a batch job with a validation stage in front. It works out everything it is about
+          to do, checks all of it, and only then writes — so a switch either happens completely or
+          does not start. There is no state where half your desktop is Nord and half is Gruvbox.</p>
+          <p>The closest thing in your world: validating a whole dataframe's schema before writing a
+          single row, rather than discovering on row 40,000 that a column is missing and leaving a
+          half-written table behind.</p>
+        </div>
+      </div>
+
+      <!-- ---------------------------------------------------------------- -->
+      <div class="mech">
+        <h4 class="mech-title">B2 · How it finds its work — filenames, not a manifest</h4>
+        <div class="tech">
+          <p>There is no list of applications anywhere in the script. It searches the repo for
+          symlinks whose <em>target</em> ends in <code>-nord</code>, <code>-gruvbox</code>, or those
+          with an extension, and rewrites the name in place with shell parameter expansion — which is
+          why both shapes work:</p>
+        </div>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 250" role="img"
+               aria-label="An application config imports the neutral filename colors.css, which is a symlink. The theme command re-points that one symlink between colors-nord.css and colors-gruvbox.css, so the application config itself is never edited.">
+            <defs>
+              <marker id="f1-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="f1-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-acc" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+            </defs>
+
+            <rect class="box" x="14" y="100" width="176" height="52" rx="5"/>
+            <text class="t" x="102" y="122" text-anchor="middle">waybar/style.css</text>
+            <text class="s" x="102" y="139" text-anchor="middle">@import colors.css</text>
+
+            <line class="edge" x1="190" y1="126" x2="242" y2="126" marker-end="url(#f1-dim)"/>
+            <text class="lab" x="216" y="118" text-anchor="middle">reads</text>
+
+            <rect class="box" x="248" y="100" width="160" height="52" rx="5"/>
+            <text class="t" x="328" y="122" text-anchor="middle">colors.css</text>
+            <text class="s" x="328" y="139" text-anchor="middle">symlink · tracked</text>
+            <text class="note" x="328" y="176" text-anchor="middle">theme moves only this link</text>
+
+            <polyline class="edge was" points="408,118 452,118 452,58 514,58" marker-end="url(#f1-dim)"/>
+            <text class="lab" x="483" y="50" text-anchor="middle">before</text>
+
+            <polyline class="edge acc" points="408,134 452,134 452,194 514,194" marker-end="url(#f1-acc)"/>
+            <text class="lab" x="483" y="186" text-anchor="middle">now</text>
+
+            <rect class="box" x="520" y="34" width="186" height="48" rx="5"/>
+            <text class="t" x="613" y="55" text-anchor="middle">colors-nord.css</text>
+            <text class="s" x="613" y="71" text-anchor="middle">13 roles · Nord hexes</text>
+
+            <rect class="box" x="520" y="170" width="186" height="48" rx="5"/>
+            <text class="t" x="613" y="191" text-anchor="middle">colors-gruvbox.css</text>
+            <text class="s" x="613" y="207" text-anchor="middle">13 roles · Gruvbox hexes</text>
+          </svg>
+          <figcaption>
+            One application, one indirection. <code>style.css</code> names
+            <code>colors.css</code> and never changes; <code>colors.css</code> is the symlink, and a
+            switch re-points it at the sibling fragment. Seventeen of these move together. The
+            fragments must be named with the <code>-nord</code> / <code>-gruvbox</code> suffix, or
+            the search that finds them never sees the pair.
+          </figcaption>
+        </figure>
+
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">the naming contract</span><button class="copy" type="button">copy</button></div>
+<pre>colors.css     -&gt; colors-nord.css      <span class="c"># with an extension</span>
+.gtkrc-2.0     -&gt; .gtkrc-2.0-nord      <span class="c"># without one</span>
+theme.env      -&gt; theme-nord.env
+colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
+        </div>
+        <div class="tech">
+          <p>This cuts both ways, and the second way is the sharp one. Adding a themed application is
+          two fragments and a symlink with <strong>no code change</strong> — the count simply goes
+          from 17 to 18. But a file misnamed by one character is not an error: it is invisible. It
+          will sit on one palette forever, and nothing will ever mention it, because nothing knows it
+          was meant to exist.</p>
+          <p>That is why phase 08 tells you to read the printed count. The count is the only feedback
+          this design can give you.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>The script has no list of what to switch. It works it out every time by looking at
+          filenames — the way you would read every file matching
+          <code>data/*_2024.parquet</code> rather than keeping a list of them in the code.</p>
+          <p><strong>Why that matters:</strong> a correctly-named new file is picked up for free, and
+          a misnamed one is skipped in total silence. Same as the glob — if you typo the pattern you
+          do not get an error, you get fewer files and no warning. So the number the command prints
+          (<strong>17</strong>) is what you check, the way you would check a row count after a load.</p>
+        </div>
+      </div>
+
+      <!-- ---------------------------------------------------------------- -->
+      <div class="mech">
+        <h4 class="mech-title">B3 · Where "the active palette" is stored — nowhere</h4>
+        <div class="tech">
+          <p>There is no state file, no environment variable, no cache. <code>theme</code> with no
+          argument runs <code>readlink</code> on <code>sway/.config/sway/theme.env</code> and reports
+          what it points at. The recorded state cannot drift from the real state because there is no
+          recorded state — the symlink <em>is</em> both.</p>
+          <p>Since all 17 symlinks are tracked in git, the active palette is part of the repo's
+          committed state. From a clean tree a switch leaves exactly 17 modified paths, all symlinks.
+          Any other number means something outside the switcher moved one.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>Nothing writes down which palette is on. "Which one is active" is answered by looking at
+          where a pointer points, so the answer can never be stale or disagree with what you are
+          actually seeing.</p>
+          <p>It is the same idea as a <em>production</em> alias in a model registry: there is no
+          separate table saying which model is live — live is defined as whatever the pointer points
+          at. You move the pointer to deploy, and you ask the pointer to find out.</p>
+        </div>
+      </div>
+
+      <!-- ---------------------------------------------------------------- -->
+      <div class="mech">
+        <h4 class="mech-title">B4 · The rails that stop a half-switch</h4>
+        <div class="tech">
+          <div class="tablewrap">
+            <table class="ref">
+              <thead><tr><th>Rail</th><th>Stops</th><th>How it shows up</th></tr></thead>
+              <tbody>
+                <tr><td><code>check_roles</code></td><td>A role defined in one palette but not the other</td><td>Refuses to switch, names the two files</td></tr>
+                <tr><td>pre-flight</td><td>A missing fragment aborting mid-flip</td><td>Refuses, lists every missing file at once</td></tr>
+                <tr><td><code>sway --validate</code></td><td>Reloading a config that will not parse</td><td>Refuses to reload; the running desktop is untouched</td></tr>
+                <tr><td><code>set -eu</code></td><td>A failed step being stepped over</td><td>Stops at the failure</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The first rail is the one worth understanding. <strong>GTK CSS renders an undefined
+          <code>@name</code> as black</strong> — no warning, no fallback, no log line. A widget simply
+          turns black, and the cause is a colour name missing from a palette file you were not
+          editing at the time. It is close to undiagnosable from the symptom, so the switcher refuses
+          to switch at all when the two palettes declare different role names. A blocked switch is
+          the rail working.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>The failure this design is most afraid of is not a crash — it is the <strong>silent
+          wrong answer</strong>. If a colour name exists in one palette and not the other, nothing
+          errors; the affected widget just goes black.</p>
+          <p>That is the same shape as a join on a key that only exists on one side: no exception,
+          no red text, just quietly wrong values downstream that you find weeks later. So the script
+          does the equivalent of a schema check first — both palettes must declare exactly the same
+          names — and refuses to run at all if they do not. If a switch ever refuses, it has just
+          saved you from that.</p>
+        </div>
+      </div>
+
+      <div class="grp"><span class="gid">C</span><h3 class="grp-title">Outside the repo — how the change reaches the screen</h3><span class="rule"></span></div>
+
+      <div class="mech">
+        <h4 class="mech-title">C1 · What actually repaints, and what carries the colour</h4>
+        <div class="tech">
+          <p>Flipping symlinks changes files. Something still has to re-read them, and that is what
+          the single <code>swaymsg reload</code> buys — sway owns more processes than it looks like:</p>
+        </div>
+
+        <figure class="fig">
+          <svg viewBox="0 0 720 300" role="img"
+               aria-label="After one theme command flips seventeen symlinks, surfaces repaint at three different speeds: sway, waybar, nwg-drawer, gsettings and mako repaint immediately on reload; gtklock, fuzzel, vim and the screenshot and keyhint scripts are correct at their next launch; foot terminals and already-running GTK apps need a restart.">
+            <defs>
+              <marker id="f2-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="f2-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-acc" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+              <marker id="f2-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path class="mk-warn" d="M0,0 L10,5 L0,10 z"/>
+              </marker>
+            </defs>
+
+            <rect class="box" x="14" y="127" width="150" height="48" rx="5"/>
+            <text class="t" x="89" y="148" text-anchor="middle">theme gruvbox</text>
+            <text class="s" x="89" y="164" text-anchor="middle">or $mod+Shift+t</text>
+
+            <line class="edge" x1="164" y1="151" x2="200" y2="151" marker-end="url(#f2-dim)"/>
+
+            <rect class="box" x="206" y="127" width="168" height="48" rx="5"/>
+            <text class="t" x="290" y="148" text-anchor="middle">17 symlinks flipped</text>
+            <text class="s" x="290" y="164" text-anchor="middle">after every check passed</text>
+
+            <polyline class="edge acc" points="374,143 420,143 420,59 494,59" marker-end="url(#f2-acc)"/>
+            <text class="lab" x="457" y="51" text-anchor="middle">reload</text>
+
+            <line class="edge" x1="374" y1="151" x2="494" y2="151" marker-end="url(#f2-dim)"/>
+            <text class="lab" x="457" y="143" text-anchor="middle">on launch</text>
+
+            <polyline class="edge warn" points="374,159 420,159 420,243 494,243" marker-end="url(#f2-warn)"/>
+            <text class="lab" x="457" y="235" text-anchor="middle">restart</text>
+
+            <rect class="box" x="500" y="26" width="206" height="66" rx="5"/>
+            <text class="hd acc" x="514" y="46">repaints immediately</text>
+            <text class="s" x="514" y="63">sway · waybar · nwg-drawer</text>
+            <text class="s" x="514" y="79">gsettings · mako</text>
+
+            <rect class="box" x="500" y="118" width="206" height="66" rx="5"/>
+            <text class="hd" x="514" y="138">correct next time</text>
+            <text class="s" x="514" y="155">gtklock · fuzzel · vim</text>
+            <text class="s" x="514" y="171">screenshot &amp; keyhint</text>
+
+            <rect class="box" x="500" y="210" width="206" height="66" rx="5"/>
+            <text class="hd warn" x="514" y="230">needs a restart</text>
+            <text class="s" x="514" y="247">foot — every terminal</text>
+            <text class="s" x="514" y="263">GTK apps already open</text>
+          </svg>
+          <figcaption>
+            The three speeds are why a switch can look half-applied when it is not. Everything on the
+            top lane is done by the time the command returns. The middle lane needs nothing from you.
+            Only the bottom lane is outstanding, and the command prints exactly that lane before it
+            exits.
+          </figcaption>
+        </figure>
+
+        <div class="tech">
+          <div class="tablewrap">
+            <table class="ref">
+              <thead><tr><th>Surface</th><th>Re-reads because</th><th>When</th></tr></thead>
+              <tbody>
+                <tr><td>sway itself</td><td><code>config.d/theme</code> does <code>include ../colors.conf</code></td><td>on reload</td></tr>
+                <tr><td>waybar</td><td>sway owns the bar process and restarts it; <code>style.css</code> does <code>@import url("colors.css")</code></td><td>on reload</td></tr>
+                <tr><td>nwg-drawer</td><td><code>exec_always</code>, so the reload re-execs it</td><td>on reload</td></tr>
+                <tr><td>GTK 3 / 4 apps</td><td><code>exec_always scripts/import-gsettings</code> pushes <code>settings.ini</code> into gsettings</td><td>on reload, for apps started after</td></tr>
+                <tr><td>mako</td><td><code>exec</code>, not <code>exec_always</code> — a reload will <em>not</em> restart it, so <code>theme</code> calls <code>makoctl reload</code> itself</td><td>on reload</td></tr>
+                <tr><td>gtklock, fuzzel, vim</td><td>They read their config at launch</td><td>next launch</td></tr>
+                <tr><td>screenshot overlay, keyhint popup</td><td>Those scripts <code>source</code> <code>theme.env</code> when they run</td><td>next invocation</td></tr>
+                <tr><td>foot</td><td>No config-reload signal exists at all</td><td><strong>server restart or logout</strong></td></tr>
+                <tr><td>Running GTK apps</td><td>They read <code>settings.ini</code> once, at startup</td><td><strong>restart the app</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><code>import-gsettings</code> is doing more than it looks. It reads
+          <code>~/.config/gtk-3.0/settings.ini</code> — itself one of the 17 flipped symlinks — and
+          pushes the theme, icon, cursor and font names into gsettings. It also derives
+          <code>color-scheme</code> from <code>gtk-application-prefer-dark-theme</code>, which is the
+          <em>only</em> key libadwaita (GTK 4) apps consult to decide light versus dark. Without that
+          line they render light against a dark desktop no matter what <code>settings.ini</code>
+          says.</p>
+          <p>The three scripts that source <code>theme.env</code> at runtime do so for a structural
+          reason: <code>config.d/*</code> is read <strong>alphabetically</strong> and
+          <code>theme</code> sorts last, so a file earlier in the order cannot reference
+          <code>$accent</code> — it is not defined yet, and sway fails with
+          <code>Invalid border color $accent</code>. Anything earlier that needs a colour has to call
+          a script that reads the palette at the moment it runs.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>Changing the files is only half of it — each program still has to notice. They fall into
+          three groups:</p>
+          <p><strong>Reload and they are correct</strong> (the bar, window borders, desktop,
+          notifications, the app grid) — one command handles all of these.
+          <strong>Correct next time you open them</strong> (lock screen, launcher, vim, the
+          screenshot overlay) — nothing to do.
+          <strong>Stuck until restarted</strong> (terminals, and any GTK app already open) — these
+          read their colours once when they started and have no way to be told otherwise.</p>
+          <p>Think of it as hot-reloading a config versus having to restart the kernel. Most things
+          hot-reload; terminals need the restart.</p>
+        </div>
+      </div>
+
+      <div class="grp"><span class="gid">D</span><h3 class="grp-title">Keeping it honest</h3><span class="rule"></span></div>
+
+      <div class="mech">
+        <h4 class="mech-title">D1 · The tests</h4>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> cd ~/repos/dotfiles &amp;&amp; sh tests/theme_test.sh</pre>
+        </div>
+        <div class="tech">
+          <p>Eight cases, thirty assertions, and the only tests in the repo — <code>theme</code> is
+          the only piece here with enough logic to get wrong. They run the real script against a
+          throwaway <code>$HOME</code> containing a miniature repo, with <code>swaymsg</code>,
+          <code>sway</code> and <code>makoctl</code> stubbed to fail, so <strong>the live desktop is
+          never touched</strong> and you can run them at any time.</p>
+          <p>They pin the guarantees claimed above: that one invocation completes the whole switch,
+          that a missing fragment leaves the tree untouched, that divergent role names refuse, that
+          both filename shapes flip. Run them after any edit to
+          <code>bin/.local/bin/theme</code>.</p>
+        </div>
+        <div class="plain">
+          <p class="plain-label">In plain terms</p>
+          <p>A safety net for editing the script. It fakes a whole home directory and a fake desktop,
+          runs the real command against them, and checks the results — so running the tests cannot
+          disturb the machine you are sitting at.</p>
+          <p>They exist because this script already shipped one bug that made a switch need two runs.
+          The tests were written to fail on that bug first, then the bug was fixed — so they are known
+          to actually catch something, not just to pass.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ palette ============ -->
-    <section class="phase" id="p9" data-title="Palettes">
-      <div class="phase-head"><span class="phase-num">09</span><h2 class="phase-title">The palettes</h2></div>
+    <section class="phase" id="p10" data-title="Palettes">
+      <div class="phase-head"><span class="phase-num">10</span><h2 class="phase-title">The palettes</h2></div>
       <p class="phase-note">
         Adding anything new means picking a role and supplying <strong>both</strong> values. The
         desktop drifted into four incompatible palettes because each config was themed on its own;
@@ -1211,6 +1898,36 @@ footer a{color:var(--accent)}
     ta.select();
     try { document.execCommand("copy"); done(); } catch (e) { /* clipboard unavailable */ }
     document.body.removeChild(ta);
+  }
+
+  /* ---- register toggle (phase 09) ------------------------------------ *
+   * Both registers stay in the DOM; this only sets a class on the section.
+   * Remembered separately from the checklist so that resetting progress does
+   * not also reset how you prefer to read. */
+  var REGKEY = "sway-nord-setup-register";
+  var mechSection = document.getElementById("p9");
+  var regBtns = Array.prototype.slice.call(document.querySelectorAll(".regbar button"));
+
+  function setRegister(reg) {
+    if (!mechSection) return;
+    mechSection.classList.remove("reg-both", "reg-tech", "reg-plain");
+    mechSection.classList.add("reg-" + reg);
+    regBtns.forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.reg === reg ? "true" : "false");
+    });
+    try { localStorage.setItem(REGKEY, reg); } catch (e) { /* private mode */ }
+  }
+
+  if (regBtns.length) {
+    var startReg = "both";
+    try {
+      var s = localStorage.getItem(REGKEY);
+      if (s === "both" || s === "tech" || s === "plain") startReg = s;
+    } catch (e) { /* private mode */ }
+    setRegister(startReg);
+    regBtns.forEach(function (b) {
+      b.addEventListener("click", function () { setRegister(b.dataset.reg); });
+    });
   }
 
   /* ---- progress ------------------------------------------------------ */
