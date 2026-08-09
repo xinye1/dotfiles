@@ -1207,8 +1207,8 @@ footer a{color:var(--accent)}
           <code>footclient</code>, and the server it connects to read its colours once, at startup.
           Nothing is right again until the server restarts or you log out.</p>
           <p>The flag needs a palette named alongside it. <code>theme --restart-terminals</code> on
-          its own takes the no-argument path, prints the active palette and exits without restarting
-          anything — see phase 09.</p>
+          its own stops with the help page and the line you meant, rather than doing nothing quietly
+          — see phase 09.</p>
         </div>
       </div>
 
@@ -1374,22 +1374,22 @@ footer a{color:var(--accent)}
           <strong>0</strong>. That makes it safe in a script:
           <code>theme gruvbox --no-icons || echo failed</code>.</p>
         </div>
-        <div class="callout bad">
-          <p><strong>Both flags need a palette named alongside them.</strong> With no target,
-          <code>theme</code> takes its "just tell me the active palette" path and exits <em>before</em>
-          the flags are ever acted on — so <code>theme --restart-terminals</code> prints
-          <code>gruvbox</code> and restarts nothing, silently. Write
-          <code>theme gruvbox --restart-terminals</code>. Naming the palette you are already on is
-          fine: the switch is a no-op, and the flag still runs.</p>
+        <div class="callout">
+          <p><strong>Both flags need a palette named alongside them</strong>, and say so.
+          <code>theme --restart-terminals</code> on its own exits <strong>1</strong> with the help
+          page and the exact line you meant, filled in with the palette you are currently on. It used
+          to take the "just tell me the active palette" path instead, printing <code>gruvbox</code>
+          and restarting nothing — an error that looked precisely like success. Naming the palette
+          you are already on is fine: the switch becomes a no-op, and the flag still runs.</p>
         </div>
         <div class="plain">
           <p class="plain-label">In plain terms</p>
           <p>It is one script you run and that finishes — not a background service watching for
           changes. You type <code>theme gruvbox</code>, it edits some pointers on disk, tells a few
           programs to re-read them, and exits. Nothing keeps running afterwards.</p>
-          <p><strong>The one trap:</strong> the two options only do anything if you also name a
-          palette. On its own, <code>theme --restart-terminals</code> just prints which palette you
-          are on and stops — no error, no effect. It looks like it worked.</p>
+          <p><strong>The two options only work if you also name a palette</strong>, and the command
+          tells you so — it stops, explains, and prints the line you meant with your current palette
+          already filled in. You can copy it straight out of the error.</p>
         </div>
       </div>
 

@@ -31,6 +31,15 @@ THEMES="nord gruvbox"
 # `if` blocks for every guard below, never `&&`.
 die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
 
+# The header comment of this file, printed back as the help page. Lines 2-20
+# are the synopsis and the flags; keep that block in sync if the header moves.
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# For mistakes where knowing the correct form is the whole fix. Both go to
+# stderr: this is an error path, so `theme ... | something` must not receive
+# the help page as if it were output.
+die_usage() { printf 'theme: %s\n\n' "$*" >&2; usage >&2; exit 1; }
+
 # The active theme, read from the symlinks themselves rather than a state file,
 # so it can never disagree with reality.
 current_theme() {
@@ -193,13 +202,34 @@ for arg in "$@"; do
     case "$arg" in
         --no-icons)          do_icons=0 ;;
         --restart-terminals) restart_terminals=1 ;;
-        -h|--help)           sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)           usage; exit 0 ;;
         -*)                  die "unknown option: $arg" ;;
         *)                   target=$arg ;;
     esac
 done
 
 if [ -z "$target" ]; then
+    # Both flags only mean anything as part of a switch. Without a palette
+    # named, the no-argument path below would print the active theme and exit
+    # 0 with the flag silently discarded — which reads exactly like success,
+    # and is why `theme --restart-terminals` looked like it had restarted the
+    # terminals when it had done nothing at all. Refuse instead, and show the
+    # form that works rather than only complaining about the one that doesn't.
+    flags=""
+    if [ "$do_icons" -eq 0 ];          then flags="$flags --no-icons"; fi
+    if [ "$restart_terminals" -eq 1 ]; then flags="$flags --restart-terminals"; fi
+    if [ -n "$flags" ]; then
+        # Naming the active palette is a valid suggestion: switching to the
+        # theme already in use is a no-op that still runs the flags.
+        cur=$(current_theme) || cur=nord
+        die_usage "no palette named, so$flags would have been ignored.
+
+  These flags only apply to a switch. Naming the palette you are already on
+  is fine — the switch becomes a no-op and the flag still runs:
+
+      theme $cur$flags"
+    fi
+
     current_theme || die "cannot determine the active theme"
     exit 0
 fi

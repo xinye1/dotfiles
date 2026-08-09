@@ -224,6 +224,11 @@ theme toggle                switch to the other one          <- what the keybind
 | `--no-icons` | Skip papirus-folders. It writes into `/usr/share/icons`, so it is the one step that needs `sudo`; this is the flag to use in a script or over ssh |
 | `--restart-terminals` | Also `pkill -x foot` and re-exec `foot --server`, applying the palette to the terminal immediately — at the cost of every open shell (§9.11) |
 
+**Both flags require a palette to be named** — they only mean anything as part of a switch. `theme
+--restart-terminals` on its own exits 1 with the help page and the corrected line, rather than
+taking the no-argument path and discarding the flag. Naming the palette already active is fine: the
+switch is a no-op and the flag still runs.
+
 **How it finds what to switch.** It walks the repo for symlinks whose target matches
 `*-nord`, `*-nord.*`, `*-gruvbox` or `*-gruvbox.*` and repoints each at its sibling. Nothing is
 hardcoded, so adding a themed application means adding two fragments and a symlink and changing no
@@ -694,7 +699,7 @@ $ foot --server
 So a reload spawns a process that dies on the spot. This is not the swayidle shape.
 
 **Two `foot --server` processes can nonetheless be alive at once, and that is not a leak.**
-`pkill -x foot` — which `theme --restart-terminals` runs — makes the old server release its
+`pkill -x foot` — which `theme <name> --restart-terminals` runs — makes the old server release its
 listening socket, but it stays up serving the windows already attached to it and exits when the last
 one closes. A replacement server then takes the socket. During that overlap `pgrep -a foot` shows
 two, the older one holding real memory and an open `foot-wayland-shm-buffer-pool`. It is draining,
@@ -707,7 +712,7 @@ ls -l $XDG_RUNTIME_DIR/foot-wayland-1.sock     # its mtime marks the live one
 
 **Do not add `pkill -x foot` to the `exec_always` line.** It is unnecessary — nothing leaks — and it
 would kill every open terminal on every `swaymsg reload`. That destructiveness is precisely why
-`theme --restart-terminals` is opt-in.
+`theme <name> --restart-terminals` is opt-in.
 
 ### 9.3 azote rewrites `~/.azotebg`
 

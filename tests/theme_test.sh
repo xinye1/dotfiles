@@ -96,7 +96,10 @@ fixture() { # fixture <starting-theme>
     : > "$R/mako/.config/mako/colors-gruvbox"
     point_at "$1"
 
-    for c in swaymsg sway makoctl; do
+    # pkill and foot are stubbed for safety, not for assertions: --restart-terminals
+    # runs `pkill -x foot`, and with the real binary on PATH a test would kill the
+    # terminals of whoever ran the suite.
+    for c in swaymsg sway makoctl pkill foot; do
         printf '#!/bin/sh\nexit 1\n' > "$T/stub/$c"
         chmod +x "$T/stub/$c"
     done
@@ -171,6 +174,36 @@ run bogus
 exited   'exits 1'      1
 contains 'names it'     "$out" "unknown theme 'bogus'"
 all_point_at 'nothing moved' nord
+
+echo
+echo "a flag with no palette named is refused, not silently ignored"
+fixture nord
+run --restart-terminals
+exited   'exits 1'                    1
+contains 'names the ignored flag'     "$out" '--restart-terminals'
+contains 'suggests the active palette' "$out" 'theme nord --restart-terminals'
+contains 'prints the help page'       "$out" 'theme nord|gruvbox    switch'
+all_point_at 'nothing moved'          nord
+
+fixture gruvbox
+run --no-icons
+exited   'exits 1 for --no-icons too' 1
+contains 'names that flag'            "$out" '--no-icons'
+all_point_at 'nothing moved'          gruvbox
+
+# The bare no-argument form must keep working — it is how you ask which
+# palette is live, and the check above must not swallow it.
+fixture gruvbox
+run
+exited 'bare `theme` still exits 0' 0
+equals 'and still just prints the name' "$out" 'gruvbox'
+
+# ...and the form the error recommends must actually be accepted.
+fixture nord
+run gruvbox --restart-terminals
+exited   'the suggested form works'     0
+contains 'and reaches the restart step' "$out" 'foot --server restarted'
+all_point_at 'having switched'          gruvbox
 
 echo
 echo "a missing sibling aborts before anything is flipped"
