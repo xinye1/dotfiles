@@ -387,8 +387,10 @@ footer a{color:var(--accent)}
         <h4 class="mech-title">Two kinds of symlink, two different owners</h4>
         <p>The repo is a set of packages, each one mirroring the layout under <code>$HOME</code>.
         <strong>stow</strong> links a package's contents into <code>$HOME</code> — that happens once,
-        at install. Inside the repo, a second and completely separate set of links picks which colour
-        fragment is live, and <strong>theme</strong> moves those — that happens whenever you switch.</p>
+        at install, and those links are tracked. Inside the repo, a second and completely separate
+        set of links picks which colour fragment is live, and <strong>theme</strong> writes those —
+        whenever you switch. Those are <strong>gitignored</strong>, along with the one-word
+        <code>.theme</code> file they are derived from.</p>
 
         <figure class="fig">
           <svg viewBox="0 0 720 310" role="img"
@@ -410,7 +412,7 @@ footer a{color:var(--accent)}
 
             <rect class="box" x="30" y="126" width="132" height="32" rx="4"/>
             <text class="t" x="96" y="147" text-anchor="middle">colors.css</text>
-            <text class="s" x="96" y="176" text-anchor="middle">the switched link</text>
+            <text class="s" x="96" y="176" text-anchor="middle">pointer · gitignored</text>
 
             <polyline class="edge acc" points="162,140 176,140 176,120 186,120" marker-end="url(#o1-acc)"/>
             <polyline class="edge was" points="162,148 176,148 176,172 186,172" marker-end="url(#o1-dim)"/>
@@ -444,10 +446,12 @@ footer a{color:var(--accent)}
             <text class="s" x="406" y="282">stow — links the repo into $HOME, once at install</text>
           </svg>
           <figcaption>
-            The two never touch the same link, which is the whole reason switching palettes cannot
+            The two never touch the same link. That is the whole reason switching palettes cannot
             disturb the stow layout — and why a <code>theme-nord</code> / <code>theme-gruvbox</code>
-            stow package would be a mistake. It would put the switch on the crossing arrow instead of
-            the internal one.
+            stow package would be a mistake: it would put the switch on the crossing arrow instead of
+            the internal one. It is also what makes switching invisible to git — only the internal
+            links move, and those are ignored. The trade: they are absent from a fresh clone until
+            <code>theme &lt;name&gt;</code> writes them, so it runs before <code>stow</code>.
           </figcaption>
         </figure>
       </div>
@@ -774,9 +778,41 @@ footer a{color:var(--accent)}
     <section class="phase" id="p4" data-title="Stow">
       <div class="phase-head"><span class="phase-num">04</span><h2 class="phase-title">Stow the packages</h2></div>
       <p class="phase-note">
-        Always dry-run first. Stow exits <code>0</code> even when it links to the wrong place, so the
-        exit code proves nothing — the dry run's output is the real check.
+        Create the theme pointers first, then always dry-run. Stow exits <code>0</code> even when it
+        links to the wrong place, so the exit code proves nothing — the dry run's output is the real
+        check.
       </p>
+
+      <div class="step">
+        <label>
+          <div class="step-top">
+            <input type="checkbox" data-id="p4-pointers">
+            <span class="step-title">Create the theme pointers — <em>before</em> stowing</span>
+          </div>
+        </label>
+        <div class="cmd">
+          <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
+<pre><span class="p">❯</span> cd ~/repos/dotfiles
+<span class="p">❯</span> sh bin/.local/bin/theme nord --no-icons   <span class="c"># or gruvbox; must say "17 pointers"</span></pre>
+        </div>
+        <div class="step-body">
+          <p>Every colour-bearing config includes a theme-neutral filename — <code>colors.css</code>,
+          <code>theme.env</code>, <code>.gtkrc-2.0</code> and so on. Those are gitignored, so a fresh
+          clone <strong>does not have them</strong>; this command creates all 17 from the fragments
+          that are tracked. Run it from the repo by path — <code>theme</code> is not on
+          <code>PATH</code> until <code>bin</code> is stowed.</p>
+          <p><strong>Order matters.</strong> The unfolded packages (<code>gtk</code>,
+          <code>alacritty</code>, <code>vim</code>) link file-by-file, so a pointer created after
+          <code>stow</code> exists in the repo and is missing from <code>~</code> until
+          <code>stow -R &lt;pkg&gt;</code>. Doing it in this order avoids that entirely.</p>
+        </div>
+        <div class="callout">
+          <p><strong>Why they aren't in the repo.</strong> Which palette is on is a property of this
+          machine, not of the configuration. When the pointers were tracked, every switch produced a
+          17-file commit. They and the one-word <code>.theme</code> file are ignored now, so
+          switching leaves git completely untouched — at the cost of this one bootstrap step.</p>
+        </div>
+      </div>
 
       <div class="step">
         <label>
@@ -1143,8 +1179,9 @@ footer a{color:var(--accent)}
       <div class="phase-head"><span class="phase-num">08</span><h2 class="phase-title">Switching palettes</h2></div>
       <p class="phase-note">
         Every colour in the setup is a named <em>role</em>, defined twice — once per palette — in a
-        pair of fragments inside the package that owns it. A tracked symlink picks which fragment is
-        live. Switching is flipping 17 of those symlinks.
+        pair of fragments inside the package that owns it. One word in <code>.theme</code> says which
+        palette is on, and 17 gitignored pointers are derived from it. Switching rewrites those
+        pointers and nothing git can see.
       </p>
 
       <div class="step">
@@ -1237,17 +1274,20 @@ footer a{color:var(--accent)}
         <label>
           <div class="step-top">
             <input type="checkbox" data-id="p8-commit">
-            <span class="step-title">Commit the flipped symlinks</span>
+            <span class="step-title">Confirm the switch changed nothing in git</span>
           </div>
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="p">❯</span> git -C ~/repos/dotfiles status --short   <span class="c"># 17 lines, all symlinks</span></pre>
+<pre><span class="p">❯</span> git -C ~/repos/dotfiles status --short   <span class="c"># unchanged by the switch</span></pre>
         </div>
         <div class="step-body">
-          <p>The symlinks are tracked, so the active palette is part of the repo's state. From a
-          clean tree a switch produces exactly 17 modified paths and nothing else. Commit them or
-          <code>git checkout .</code> — leaving them dirty makes every later diff noisy.</p>
+          <p>Which palette is on is a property of this machine, not of the configuration, so there is
+          nothing to commit. <code>.theme</code> and all 17 pointers are gitignored and a switch
+          leaves the tree byte-for-byte as it was.</p>
+          <p>If a switch <em>does</em> dirty the tree, the explicit list in <code>.gitignore</code>
+          has fallen behind a newly added themed file — <code>sh tests/theme_test.sh</code> checks
+          that list against the fragments on disk and fails when it has.</p>
         </div>
       </div>
 
@@ -1260,17 +1300,16 @@ footer a{color:var(--accent)}
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="p">❯</span> theme                                    <span class="c"># what does it think is active?</span>
-<span class="p">❯</span> cd ~/repos/dotfiles &amp;&amp; git status --short  <span class="c"># 17 lines, or 0 — never between</span>
-<span class="p">❯</span> theme nord --no-icons &amp;&amp; theme gruvbox --no-icons</pre>
+<pre><span class="p">❯</span> theme                          <span class="c"># what .theme says, or a pointer if it is gone</span>
+<span class="p">❯</span> theme nord --no-icons          <span class="c"># re-apply: repairs every pointer, reports how many</span></pre>
         </div>
         <div class="step-body">
-          <p>A switch is all-or-nothing by construction: every fragment is checked to exist
-          <em>before</em> any symlink moves, so a missing one aborts having changed nothing and names
-          what's missing. If the tree shows some number other than 17 or 0 modified paths, something
-          outside the switcher edited a symlink.</p>
-          <p>Switching away and back re-flips all 17 from a known state. It is safe to run at any
-          time and cannot half-apply.</p>
+          <p>A switch is all-or-nothing by construction: every fragment is checked to have a
+          counterpart <em>before</em> any pointer is written, so a missing one aborts having changed
+          nothing and names what's missing.</p>
+          <p>Re-applying the palette you are already on is the repair — it sets every pointer to what
+          it should be rather than flipping it, so it fixes a deleted or wrong one and reports how
+          many it had to touch. <code>0 updated</code> means nothing was wrong.</p>
         </div>
       </div>
 
@@ -1285,15 +1324,18 @@ footer a{color:var(--accent)}
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
 <pre><span class="p">❯</span> cd ~/repos/dotfiles/&lt;pkg&gt;/.config/&lt;app&gt;
 <span class="p">❯</span> <span class="c"># write colors-nord.ext and colors-gruvbox.ext — same role names in both</span>
-<span class="p">❯</span> ln -sfn colors-nord.ext colors.ext       <span class="c"># relative and bare, never a path</span>
 <span class="p">❯</span> <span class="c"># point the app's config at colors.ext with its own include directive</span>
-<span class="p">❯</span> theme gruvbox --no-icons                 <span class="c"># must now say 18</span></pre>
+<span class="p">❯</span> theme gruvbox --no-icons                 <span class="c"># must now say 18 pointers</span>
+<span class="p">❯</span> <span class="c"># add &lt;pkg&gt;/.config/&lt;app&gt;/colors.ext to .gitignore — the test enforces it</span></pre>
         </div>
         <div class="step-body">
-          <p>No code changes — the switcher finds its work by filename. The count going up by one is
-          the confirmation; if it doesn't, the name doesn't match
-          <code>&lt;base&gt;-nord.&lt;ext&gt;</code> / <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code>
-          and the file will be <strong>silently</strong> left on one palette forever.</p>
+          <p>No code changes, and no pointer to create — the switcher finds its work by scanning for
+          fragments and writes the pointer itself. The count going up by one is the confirmation; if
+          it doesn't, the name doesn't match <code>&lt;base&gt;-nord.&lt;ext&gt;</code> /
+          <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code> and the file will be <strong>silently</strong>
+          left on one palette forever.</p>
+          <p>The new pointer must be added to <code>.gitignore</code> by hand, or switching starts
+          dirtying the tree again. <code>tests/theme_test.sh</code> fails until it is.</p>
           <p>If the package is unfolded — <code>alacritty</code>, <code>gtk</code>, <code>vim</code>,
           <code>bin</code> — the new files need <code>stow -R &lt;pkg&gt;</code> before they exist in
           <code>~</code> at all.</p>
@@ -1318,9 +1360,9 @@ footer a{color:var(--accent)}
       </div>
 
       <div class="callout">
-        <p><strong>Adding a themed application</strong> means adding two fragments and a symlink, and
-        changing no code — the switcher discovers its work by filename. The sharp edge is the same
-        fact from the other side: a file <em>not</em> named
+        <p><strong>Adding a themed application</strong> means adding two fragments and one
+        <code>.gitignore</code> line, and changing no code — the switcher discovers its work by
+        filename. The sharp edge is the same fact from the other side: a file <em>not</em> named
         <code>&lt;base&gt;-nord.&lt;ext&gt;</code> / <code>&lt;base&gt;-gruvbox.&lt;ext&gt;</code> is
         silently never switched. There is no manifest to fall out of step with, and none to complain
         either.</p>
@@ -1350,7 +1392,7 @@ footer a{color:var(--accent)}
       <div class="mech">
         <h4 class="mech-title">A1 · <code>theme</code> — the command surface</h4>
         <div class="tech">
-          <p>One POSIX <code>sh</code> script, about 240 lines, at
+          <p>One POSIX <code>sh</code> script, about 290 lines, at
           <code>bin/.local/bin/theme</code> in the repo and <code>~/.local/bin/theme</code> on your
           <code>PATH</code> — the same file, linked there by <code>stow bin</code>. It calls nothing
           exotic: <code>find</code>, <code>grep</code>, <code>sed</code>, <code>awk</code>,
@@ -1405,20 +1447,22 @@ footer a{color:var(--accent)}
               <thead><tr><th>#</th><th>Step</th><th>What it does</th></tr></thead>
               <tbody>
                 <tr><td>1</td><td>parse</td><td>Flags off the argument list; the remaining bare word is the target.</td></tr>
-                <tr><td>2</td><td><code>current_theme</code></td><td><code>readlink</code> on <code>sway/.config/sway/theme.env</code>. This is the only place "what is active" is ever read from.</td></tr>
+                <tr><td>2</td><td><code>current_theme</code></td><td>Read <code>.theme</code>. If it is missing, fall back to a pointer's link target so the answer is never lost.</td></tr>
                 <tr><td>3</td><td>resolve</td><td><code>toggle</code> becomes the other name; the target is checked against the known list.</td></tr>
                 <tr><td>4</td><td><code>check_roles</code></td><td>The two <code>theme-*.env</code> must declare identical variable names, and the two <code>colors-*.conf</code> identical <code>set $var</code> names. Refuses if not.</td></tr>
-                <tr><td>5</td><td>pre-flight</td><td>For every themed symlink, compute the sibling it would move to and assert it exists. Collects <em>all</em> misses and aborts naming them.</td></tr>
-                <tr><td>6</td><td>flip</td><td><code>ln -sfn</code> per link, then print the count. It must say <strong>17</strong>.</td></tr>
+                <tr><td>5</td><td>pre-flight</td><td>Every fragment must have a counterpart in the other palette — checked <em>both</em> ways, so an orphan is caught whichever side it is on. Collects all misses and aborts naming them.</td></tr>
+                <tr><td>6</td><td>apply</td><td>Set each pointer to what it should be — creating it if absent — then write <code>.theme</code> and print <strong>17 pointers</strong> and how many needed changing.</td></tr>
                 <tr><td>7</td><td><code>reload_desktop</code></td><td><code>sway --validate</code>, then <code>swaymsg reload</code>; then <code>makoctl reload</code>.</td></tr>
                 <tr><td>8</td><td><code>reload_icons</code></td><td>Source <code>theme-&lt;name&gt;.env</code>, and if the folder colour differs, <code>sudo papirus-folders</code>. Skipped under <code>--no-icons</code>, or printed as a line to run yourself when there is no terminal for the password prompt.</td></tr>
                 <tr><td>9</td><td>terminals</td><td>Only with <code>--restart-terminals</code>: <code>pkill -x foot</code>, then <code>foot --server</code>.</td></tr>
-                <tr><td>10</td><td>advisory</td><td>What has <em>not</em> repainted yet, and the reminder that 17 tracked symlinks are now dirty in git.</td></tr>
+                <tr><td>10</td><td>advisory</td><td>What has <em>not</em> repainted yet. Nothing about git — a switch leaves the tree untouched.</td></tr>
               </tbody>
             </table>
           </div>
           <p>Steps 7–9 are the only ones that touch anything outside the repo, and none of them can
-          run unless step 6 completed.</p>
+          run unless step 6 completed. Step 6 is a <em>convergence</em>, not a flip: it sets each
+          pointer to the right value rather than moving it from the old one, which is what lets the
+          same command bootstrap a fresh clone and repair a damaged pointer.</p>
         </div>
         <div class="plain">
           <p class="plain-label">In plain terms</p>
@@ -1436,9 +1480,13 @@ footer a{color:var(--accent)}
         <h4 class="mech-title">B2 · How it finds its work — filenames, not a manifest</h4>
         <div class="tech">
           <p>There is no list of applications anywhere in the script. It searches the repo for
-          symlinks whose <em>target</em> ends in <code>-nord</code>, <code>-gruvbox</code>, or those
-          with an extension, and rewrites the name in place with shell parameter expansion — which is
-          why both shapes work:</p>
+          <em>fragments</em> — regular files whose name ends in <code>-nord</code> or
+          <code>-gruvbox</code>, with or without an extension — and derives each one's neutral name
+          with shell parameter expansion, which is why both shapes work:</p>
+          <p>It scans for fragments rather than for pointers deliberately. The pointers are
+          gitignored, so on a fresh clone <em>none of them exist</em>; anything that looked for them
+          would find no work to do. The fragments are the tracked half, so they are the half worth
+          asking.</p>
         </div>
 
         <figure class="fig">
@@ -1462,8 +1510,8 @@ footer a{color:var(--accent)}
 
             <rect class="box" x="248" y="100" width="160" height="52" rx="5"/>
             <text class="t" x="328" y="122" text-anchor="middle">colors.css</text>
-            <text class="s" x="328" y="139" text-anchor="middle">symlink · tracked</text>
-            <text class="note" x="328" y="176" text-anchor="middle">theme moves only this link</text>
+            <text class="s" x="328" y="139" text-anchor="middle">pointer · gitignored</text>
+            <text class="note" x="328" y="176" text-anchor="middle">theme writes only this link</text>
 
             <polyline class="edge was" points="408,118 452,118 452,58 514,58" marker-end="url(#f1-dim)"/>
             <text class="lab" x="483" y="50" text-anchor="middle">before</text>
@@ -1480,11 +1528,12 @@ footer a{color:var(--accent)}
             <text class="s" x="613" y="207" text-anchor="middle">13 roles · Gruvbox hexes</text>
           </svg>
           <figcaption>
-            One application, one indirection. <code>style.css</code> names
-            <code>colors.css</code> and never changes; <code>colors.css</code> is the symlink, and a
-            switch re-points it at the sibling fragment. Seventeen of these move together. The
-            fragments must be named with the <code>-nord</code> / <code>-gruvbox</code> suffix, or
-            the search that finds them never sees the pair.
+            One application, one indirection. <code>style.css</code> names <code>colors.css</code>
+            and never changes; <code>colors.css</code> is the pointer, and a switch writes it to the
+            chosen fragment. Seventeen of these move together, and every one is gitignored — which is
+            why switching leaves no trace in the repo. The fragments must carry the
+            <code>-nord</code> / <code>-gruvbox</code> suffix, or the search that finds them never
+            sees the pair.
           </figcaption>
         </figure>
 
@@ -1497,10 +1546,10 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
         </div>
         <div class="tech">
           <p>This cuts both ways, and the second way is the sharp one. Adding a themed application is
-          two fragments and a symlink with <strong>no code change</strong> — the count simply goes
-          from 17 to 18. But a file misnamed by one character is not an error: it is invisible. It
-          will sit on one palette forever, and nothing will ever mention it, because nothing knows it
-          was meant to exist.</p>
+          two fragments with <strong>no code change and no pointer to create</strong> — the count
+          simply goes from 17 to 18. But a file misnamed by one character is not an error: it is
+          invisible. It will sit on one palette forever, and nothing will ever mention it, because
+          nothing knows it was meant to exist.</p>
           <p>That is why phase 08 tells you to read the printed count. The count is the only feedback
           this design can give you.</p>
         </div>
@@ -1518,24 +1567,36 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
 
       <!-- ---------------------------------------------------------------- -->
       <div class="mech">
-        <h4 class="mech-title">B3 · Where "the active palette" is stored — nowhere</h4>
+        <h4 class="mech-title">B3 · Where "the active palette" is stored — one word, untracked</h4>
         <div class="tech">
-          <p>There is no state file, no environment variable, no cache. <code>theme</code> with no
-          argument runs <code>readlink</code> on <code>sway/.config/sway/theme.env</code> and reports
-          what it points at. The recorded state cannot drift from the real state because there is no
-          recorded state — the symlink <em>is</em> both.</p>
-          <p>Since all 17 symlinks are tracked in git, the active palette is part of the repo's
-          committed state. From a clean tree a switch leaves exactly 17 modified paths, all symlinks.
-          Any other number means something outside the switcher moved one.</p>
+          <p><code>.theme</code> at the repo root holds one word: <code>nord</code> or
+          <code>gruvbox</code>. That is the entire configuration. The 17 pointers are
+          <em>derived</em> from it, not sources of truth in their own right, which is why re-applying
+          repairs them and why a fresh clone can be brought up from nothing.</p>
+          <p><strong><code>.theme</code> and all 17 pointers are gitignored.</strong> Which palette is
+          on is a property of this machine right now, not of the configuration, so changing it leaves
+          <code>git status</code> byte-for-byte as it was. Switching is an operational act; it should
+          never have produced a commit, and no longer does.</p>
+          <p>The pointers are still readable as a fallback: with <code>.theme</code> missing —
+          a tree from before it existed, or one where it was deleted — <code>theme</code> reads a
+          pointer's link target instead, so the answer is never actually lost.</p>
+          <p>The cost is the one thing to remember: a clone has no pointers at all until
+          <code>theme &lt;name&gt;</code> creates them, so it must run <strong>before
+          <code>stow</code></strong> — the unfolded packages link file-by-file and would otherwise
+          miss them.</p>
         </div>
         <div class="plain">
           <p class="plain-label">In plain terms</p>
-          <p>Nothing writes down which palette is on. "Which one is active" is answered by looking at
-          where a pointer points, so the answer can never be stale or disagree with what you are
-          actually seeing.</p>
-          <p>It is the same idea as a <em>production</em> alias in a model registry: there is no
-          separate table saying which model is live — live is defined as whatever the pointer points
-          at. You move the pointer to deploy, and you ask the pointer to find out.</p>
+          <p>One small file records which palette you are on. Everything else — all seventeen
+          pointers — is regenerated from it, the way you would regenerate a set of outputs from a
+          config rather than editing each one by hand.</p>
+          <p><strong>Why it is set up this way:</strong> changing your desktop's colours is a
+          preference, not a change to the project. It used to produce a seventeen-file commit every
+          time, which is like committing a notebook's output cells — noise that buries the real
+          changes. Both the config file and the generated pointers are now ignored by git, so
+          switching is invisible to it.</p>
+          <p>The one consequence: a fresh clone arrives with the generated files absent, so you run
+          <code>theme nord</code> once to produce them — before <code>stow</code>, not after.</p>
         </div>
       </div>
 
@@ -1548,7 +1609,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
               <thead><tr><th>Rail</th><th>Stops</th><th>How it shows up</th></tr></thead>
               <tbody>
                 <tr><td><code>check_roles</code></td><td>A role defined in one palette but not the other</td><td>Refuses to switch, names the two files</td></tr>
-                <tr><td>pre-flight</td><td>A missing fragment aborting mid-flip</td><td>Refuses, lists every missing file at once</td></tr>
+                <tr><td>pre-flight</td><td>A fragment with no counterpart, in either palette</td><td>Refuses, lists every missing file at once</td></tr>
                 <tr><td><code>sway --validate</code></td><td>Reloading a config that will not parse</td><td>Refuses to reload; the running desktop is untouched</td></tr>
                 <tr><td><code>set -eu</code></td><td>A failed step being stepped over</td><td>Stops at the failure</td></tr>
               </tbody>
@@ -1605,7 +1666,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
             <line class="edge" x1="164" y1="151" x2="200" y2="151" marker-end="url(#f2-dim)"/>
 
             <rect class="box" x="206" y="127" width="168" height="48" rx="5"/>
-            <text class="t" x="290" y="148" text-anchor="middle">17 symlinks flipped</text>
+            <text class="t" x="290" y="148" text-anchor="middle">17 pointers written</text>
             <text class="s" x="290" y="164" text-anchor="middle">after every check passed</text>
 
             <polyline class="edge acc" points="374,143 420,143 420,59 494,59" marker-end="url(#f2-acc)"/>
@@ -1658,7 +1719,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
             </table>
           </div>
           <p><code>import-gsettings</code> is doing more than it looks. It reads
-          <code>~/.config/gtk-3.0/settings.ini</code> — itself one of the 17 flipped symlinks — and
+          <code>~/.config/gtk-3.0/settings.ini</code> — itself one of the 17 pointers — and
           pushes the theme, icon, cursor and font names into gsettings. It also derives
           <code>color-scheme</code> from <code>gtk-application-prefer-dark-theme</code>, which is the
           <em>only</em> key libadwaita (GTK 4) apps consult to decide light versus dark. Without that

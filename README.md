@@ -37,9 +37,12 @@ theme toggle     # the other one — bound to $mod+Shift+t
 
 No colour is written as a hex in an application config. Every one is a **role** (`bg`, `accent`,
 `critical`, …) defined twice, once per palette, in a pair of fragments inside the package that owns
-it. `theme` flips the 17 tracked symlinks that select which fragment is live, then reloads sway,
-waybar, mako and gsettings. It touches sway, waybar, foot, alacritty, fuzzel, mako, gtklock,
-nwg-drawer, vim and the whole GTK stack.
+it. The active palette is one word in `.theme` at the repo root; from it `theme` points 17
+symlinks at the right fragments and reloads sway, waybar, mako and gsettings. It touches sway,
+waybar, foot, alacritty, fuzzel, mako, gtklock, nwg-drawer, vim and the whole GTK stack.
+
+**Switching is an operational change, not a repo one.** `.theme` and the 17 pointers are
+gitignored, so changing palette leaves `git status` completely untouched.
 
 Stow is deliberately *not* how the switch happens — a second package writing into `~/.config/waybar`
 would unfold it. See **[PLAYBOOK.md §3.3](PLAYBOOK.md)** for the mechanism, the flags, and what does
@@ -66,8 +69,13 @@ sh tests/theme_test.sh
 ```sh
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
+sh bin/.local/bin/theme nord --no-icons         # or gruvbox — creates the theme pointers
 stow bash vim alacritty foot starship htop bin  # or one at a time: stow vim
 ```
+
+**Run `theme` before `stow`.** The theme pointers are gitignored, so a fresh clone does not have
+them; `theme` creates them. The unfolded packages link file-by-file, so pointers created after
+`stow` would need `stow -R` to appear.
 
 `bin` puts `theme` on `PATH`. It is **not** folded — `~/.local/bin` is a real directory holding
 untracked binaries — so a script added to the package later needs `stow -R bin` before it appears.

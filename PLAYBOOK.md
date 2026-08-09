@@ -101,12 +101,17 @@ theme-neutral **symlink** that the package's main config includes:
 ```
 waybar/.config/waybar/colors-nord.css       one fragment per theme
 waybar/.config/waybar/colors-gruvbox.css
-waybar/.config/waybar/colors.css  ->  colors-nord.css     tracked symlink; `theme` flips it
+waybar/.config/waybar/colors.css  ->  colors-nord.css     pointer; gitignored, `theme` writes it
 ```
 
-There are 17 such symlinks, one per colour-bearing file. They are **committed**, so the active
-theme is part of the repo's state and `git status` after a switch shows exactly 17 modified
-symlinks and nothing else.
+There are 17 such pointers, one per colour-bearing file, and they are **not tracked**. The active
+palette is one word in `.theme` at the repo root — also untracked — and every pointer is derived
+from it. So a switch changes nothing git can see: `git status` after switching is byte-for-byte
+what it was before.
+
+That is deliberate. Which palette is on is a property of this machine right now, not of the
+configuration, and it used to force a 17-file commit every time the mood changed. The cost is that
+a fresh clone has no pointers at all until `theme <name>` creates them — see §3.4.
 
 Two of the fragment pairs are the canonical listing of the roles:
 
@@ -229,14 +234,22 @@ theme toggle                switch to the other one          <- what the keybind
 taking the no-argument path and discarding the flag. Naming the palette already active is fine: the
 switch is a no-op and the flag still runs.
 
-**How it finds what to switch.** It walks the repo for symlinks whose target matches
-`*-nord`, `*-nord.*`, `*-gruvbox` or `*-gruvbox.*` and repoints each at its sibling. Nothing is
-hardcoded, so adding a themed application means adding two fragments and a symlink and changing no
-code. The corollary is the sharp edge: **a themed file not named to that pattern is silently not
-switched.** There is no manifest to fall out of step with, and equally no manifest to complain.
+**How it finds what to switch.** It walks the repo for **fragments** — regular files named
+`*-nord`, `*-nord.*`, `*-gruvbox` or `*-gruvbox.*` — derives each one's theme-neutral name, and
+points that at the chosen palette's sibling. Scanning for fragments rather than for pointers is what
+lets it run on a clone where no pointer exists yet. Nothing is hardcoded, so adding a themed
+application means adding two fragments and changing no code. The corollary is the sharp edge:
+**a themed file not named to that pattern is silently not switched.** There is no manifest to fall
+out of step with, and equally no manifest to complain.
 
-The active theme is read back from `sway/.config/sway/theme.env`'s own link target rather than from
-a state file, so it cannot disagree with reality.
+The active palette is read from `.theme`. If that file is missing — a tree written before it
+existed, or one where it was deleted — it falls back to reading a pointer's link target, so the
+answer is never lost.
+
+**Applying is idempotent, not a flip.** Each pointer is set to what it *should* be rather than
+flipped from what it was. So the same command bootstraps a fresh clone, repairs a deleted or wrong
+pointer, and picks up a themed file added since the last run. `theme <the palette you are already
+on>` is therefore a useful repair, not a no-op.
 
 Before it flips anything it checks that both palettes define the same role names, in
 `theme-*.env` and in `colors-*.conf`, and refuses if they differ. That guard exists because of §9.10.
@@ -247,15 +260,16 @@ the obvious design and is wrong: a second package writing into `~/.config/waybar
 property described in §5.2. Flipping a symlink *inside* the package leaves fold state untouched.
 This is why §5.2's table is unchanged by the theming work.
 
-**The symlinks are committed.** From a clean tree, a switch leaves exactly 17 modified paths and
-nothing else:
+**Nothing about a switch is tracked.** `.theme` and all 17 pointers are gitignored, so:
 
 ```sh
 theme gruvbox --no-icons
-git -C ~/repos/dotfiles status --short    # 17 lines, every one a symlink
+git -C ~/repos/dotfiles status --short    # unchanged — switching is not a repo operation
 ```
 
-Commit them (or `git checkout .`) — leaving them dirty makes every later diff noisy.
+If a switch ever *does* dirty the tree, the explicit list in `.gitignore` has fallen behind a newly
+added themed file. `tests/theme_test.sh` checks that list against the fragments on disk and fails
+when it has.
 
 **What a switch does *not* update immediately:**
 
@@ -271,8 +285,8 @@ terminals, new vim sessions — is live by the time the command returns. `theme`
 
 **One invocation does all of it.** If a switch ever appears to need two runs — some packages themed,
 papirus-folders and the closing advisory missing on the first — that is a bug in `theme`, not a
-property of the design. It happened once: `switch_to()` used a loop variable named `target`, the
-same global holding the requested theme, and `sh` has no function-local scope, so `reload_icons`
+property of the design. It happened once: the apply function used a loop variable named `target`,
+the same global holding the requested theme, and `sh` has no function-local scope, so `reload_icons`
 was handed `colors-nord.ini` and `set -e` killed the script mid-run. `tests/theme_test.sh` pins this
 and the rest of the switcher's guarantees:
 
@@ -315,22 +329,25 @@ and each points somewhere specific:
 missing. Diagnose and recover:
 
 ```sh
-theme                                    # what it believes is active, read from the symlink itself
-git -C ~/repos/dotfiles status --short   # exactly 17 lines, or 0 — never a number in between
-theme nord --no-icons && theme gruvbox --no-icons   # re-flip all 17 from a known state
+theme                                    # what .theme says, falling back to a pointer
+theme nord --no-icons                    # re-apply: repairs every pointer from a known state
 ```
 
-A count other than 17 or 0 means something outside `theme` edited a symlink.
+Re-applying is the recovery. It reports `17 pointers, N updated`; anything other than `0` when you
+had not switched means something outside `theme` moved a pointer.
 
-**Adding a themed application** takes two fragments and a symlink, and no code:
+**Adding a themed application** takes two fragments and no code — not even a pointer, since `theme`
+creates it:
 
 ```sh
 cd ~/repos/dotfiles/<pkg>/.config/<app>
 # write colors-nord.<ext> and colors-gruvbox.<ext>, defining the SAME role names
-ln -sfn colors-nord.<ext> colors.<ext>       # relative and bare, never an absolute path
 # point the application's own config at colors.<ext> via its include directive
 theme gruvbox --no-icons                     # the count must go up by one
 ```
+
+Then add `<pkg>/.config/<app>/colors.<ext>` to `.gitignore`, or the new pointer will show up as an
+untracked file and switching will dirty the tree again. The test suite fails until you do.
 
 The count is the confirmation. If it does not rise, the filename does not match the pattern and that
 file is **silently** pinned to one palette forever — see §3.3. If the package is unfolded
@@ -621,9 +638,18 @@ git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 # The theme switcher, so `theme` and $mod+Shift+t work
 stow bin
 
+# Create the theme pointers. They are gitignored, so a fresh clone does not have
+# them, and every themed package needs them present BEFORE it is stowed — the
+# unfolded ones (gtk, alacritty, vim) link file-by-file and would otherwise miss
+# them, leaving each application with no colours to include.
+theme nord --no-icons          # or gruvbox; must report "17 pointers"
+
 # ~/.bashrc already exists from /etc/skel and stow will not overwrite a real file
 mv ~/.bashrc ~/.bashrc.bak && stow bash
 ```
+
+**`theme` before `stow`, always.** If you stow first, run `stow -R <pkg>` afterwards for the
+unfolded packages, or the pointers will exist in the repo and be absent from `~`.
 
 **Optional now, not required:**
 

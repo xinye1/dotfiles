@@ -10,39 +10,68 @@
 #   --no-icons            skip papirus-folders (avoids the sudo prompt)
 #
 # HOW IT WORKS
-#   Every colour-bearing config includes a theme-neutral filename which is a
-#   symlink tracked in the repo, e.g.
-#       waybar/.config/waybar/colors.css -> colors-nord.css
-#   This script finds every symlink in the repo whose target ends in
-#   `-nord.<ext>` / `-nord` (or the gruvbox equivalent) and repoints it at its
-#   sibling. Nothing is hardcoded, so adding a new themed application means
-#   adding the two fragments and the symlink — no change here.
+#   The active palette is one word in `.theme` at the repo root. That file is
+#   untracked, so switching is an operational change and never a git one.
+#   Everything else is derived from it: for each `<base>-nord.<ext>` fragment
+#   the script points an equally untracked `<base>.<ext>` symlink at the chosen
+#   palette's sibling. Those pointers are what stow links into $HOME and what
+#   applications actually read.
 #
-#   stow is deliberately NOT involved. Flipping a symlink inside the repo
-#   leaves every package's fold state untouched; switching with stow packages
-#   would unfold them. See PLAYBOOK.md.
+#   Adding a themed application means adding the two fragments and nothing
+#   else — no pointer to create, no list to update, and no change here.
 set -eu
+
+# Applying is idempotent: it sets each pointer to what it should be rather
+# than flipping it from what it was. So the same command repairs a deleted or
+# wrong pointer, and materialises the pointers on a fresh clone, where none of
+# them exist yet. That is also why `theme <the palette you are on>` is useful
+# rather than a no-op.
+#
+# stow is deliberately NOT involved. The pointers live inside the packages, so
+# every package's fold state is untouched; switching with stow packages would
+# unfold them. See PLAYBOOK.md.
 
 REPO="$HOME/repos/dotfiles"
 THEMES="nord gruvbox"
+
+# The single piece of state. Which palette is applied is a property of this
+# machine right now, not of the configuration, so it is gitignored along with
+# the pointers it drives.
+STATE="$REPO/.theme"
 
 # NOTE ON `set -e`: a bare `[ cond ] && action` is a landmine here. When the
 # test fails the whole list returns non-zero and `set -e` kills the script. Use
 # `if` blocks for every guard below, never `&&`.
 die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
 
-# The header comment of this file, printed back as the help page. Lines 2-20
+# The header comment of this file, printed back as the help page. Lines 2-21
 # are the synopsis and the flags; keep that block in sync if the header moves.
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # For mistakes where knowing the correct form is the whole fix. Both go to
 # stderr: this is an error path, so `theme ... | something` must not receive
 # the help page as if it were output.
 die_usage() { printf 'theme: %s\n\n' "$*" >&2; usage >&2; exit 1; }
 
-# The active theme, read from the symlinks themselves rather than a state file,
-# so it can never disagree with reality.
-current_theme() {
+# --------------------------------------------------------------- state ---
+
+read_state() {
+    if [ ! -r "$STATE" ]; then
+        return 1
+    fi
+    # `tr -d '[:space:]'`, not `tr -d ' \t\n'`: /bin/sh passes the latter
+    # through as backslash-t-n, so tr would strip literal `n` characters and
+    # quietly turn `nord` into `ord`.
+    s=$(head -n1 "$STATE" | tr -d '[:space:]')
+    case " $THEMES " in
+        *" $s "*) printf '%s\n' "$s" ;;
+        *)        return 1 ;;
+    esac
+}
+
+# Fallback for a tree written before the state file existed, or one where it
+# was deleted: the pointers themselves still record what was applied.
+infer_state() {
     t=$(readlink "$REPO/sway/.config/sway/theme.env" 2>/dev/null) || return 1
     case "$t" in
         theme-nord.env)    echo nord ;;
@@ -51,14 +80,41 @@ current_theme() {
     esac
 }
 
-# Every repo symlink pointing at a per-theme fragment.
-theme_links() {
-    find "$REPO" -name .git -prune -o -type l -print | while read -r link; do
-        linktarget=$(readlink "$link")
-        case "$linktarget" in
-            *-nord|*-nord.*|*-gruvbox|*-gruvbox.*) printf '%s\n' "$link" ;;
-        esac
-    done
+current_theme() { read_state || infer_state; }
+
+# ----------------------------------------------------------- discovery ---
+
+# Every fragment belonging to one palette. Fragments are regular files and the
+# pointers are symlinks, so `-type f` cannot pick up a pointer by mistake.
+# Scanning for fragments rather than for pointers is what lets this run on a
+# clone where no pointer exists yet.
+fragments() {
+    find "$REPO" -name .git -prune -o \
+        \( -type f \( -name "*-$1" -o -name "*-$1.*" \) \) -print
+}
+
+# The theme-neutral name a fragment belongs to — the inverse of retarget().
+# Anchored on the palette token rather than on an extension, because
+# `.gtkrc-2.0` has dots and no extension: deriving a fragment name *from* a
+# neutral name cannot be done safely, which is why discovery runs this way
+# round and never the other.
+neutral_of() {
+    case $1 in
+        *-"$2".*) printf '%s.%s' "${1%-$2.*}" "${1##*.}" ;;
+        *-"$2")   printf '%s' "${1%-$2}" ;;
+        *)        return 1 ;;
+    esac
+}
+
+# Rename one fragment path from theme $2 to theme $3. Pure POSIX parameter
+# expansion rather than sed, so that `.gtkrc-2.0-nord` (no extension) and
+# `colors-nord.css` (extension) are both handled unambiguously.
+retarget() {
+    case $1 in
+        *-"$2".*) printf '%s-%s.%s' "${1%-$2.*}" "$3" "${1##*.}" ;;
+        *-"$2")   printf '%s-%s' "${1%-$2}" "$3" ;;
+        *)        return 1 ;;
+    esac
 }
 
 # Both palettes must define the same role names. A role defined in only one of
@@ -83,70 +139,66 @@ check_roles() {
     fi
 }
 
-# Rename one fragment path from theme $from to theme $to. Pure POSIX parameter
-# expansion rather than sed, so that `.gtkrc-2.0-nord` (no extension) and
-# `colors-nord.css` (extension) are both handled unambiguously.
-retarget() {
-    case $1 in
-        *-"$2".*) printf '%s-%s.%s' "${1%-$2.*}" "$3" "${1##*.}" ;;
-        *-"$2")   printf '%s-%s' "${1%-$2}" "$3" ;;
-        *)        return 1 ;;
-    esac
-}
-
-switch_to() {
+# Bring every pointer, and the state file, into line with $1.
+apply_theme() {
     to=$1
-    from=$(current_theme) || die "cannot determine the active theme; is sway/.config/sway/theme.env a symlink?"
-    if [ "$to" = "$from" ]; then
-        echo "Already $to."
-        return 0
-    fi
-
     check_roles
 
-    # Pre-flight: validate every sibling BEFORE flipping anything. The old code
-    # checked existence inside the flip loop, so a missing fragment aborted
-    # mid-switch with some symlinks already repointed and some not — and if
-    # sway/theme.env happened to flip before the failing one, `current_theme`
-    # would then read as `$to` and a re-run would report "Already $to" and
-    # exit 0 on a half-themed desktop. Collect every missing fragment rather
-    # than dying on the first: forgetting one sibling of a themed file often
-    # means forgetting several, and reporting them all in one pass beats
-    # discovering them one `theme` invocation at a time.
+    # Pre-flight in both directions, before writing anything. A fragment with
+    # no counterpart is the failure this cannot afford to half-apply: the
+    # pointer would be left on the other palette, silently, forever. Collect
+    # every offender rather than dying on the first — forgetting one sibling
+    # usually means forgetting several.
+    #
     # NOTE ON VARIABLE NAMES: sh has no function-local scope, so every name set
-    # here is global. The loop variable below was once called `target` — the
-    # same name the option parser uses for the requested theme. `switch_to`
-    # therefore returned with `target` holding the *last symlink's old target*
-    # (`colors-nord.ini`), and `reload_icons "$target"` sourced
-    # `theme-colors-nord.ini.env`, which does not exist. Under `set -e` that
-    # killed the script after the symlinks had flipped but before
-    # papirus-folders ran, so a switch took two invocations. Do not reuse a
-    # caller's variable name in a function here; `oldtarget` pairs with
-    # `newtarget` and collides with nothing.
+    # here is global. A loop variable here was once called `target`, the same
+    # name the option parser uses for the requested palette, which left this
+    # function returning with `target` holding a filename and made a switch
+    # take two invocations. Do not reuse a caller's variable name.
     missing=""
-    for link in $(theme_links); do
-        oldtarget=$(readlink "$link")
-        newtarget=$(retarget "$oldtarget" "$from" "$to") || continue
-        if [ ! -e "$(dirname "$link")/$newtarget" ]; then
+    for frag in $(fragments nord); do
+        want=$(retarget "$frag" nord gruvbox) || continue
+        if [ ! -e "$want" ]; then
             missing="$missing
-  $(dirname "$link")/$newtarget"
+  $want"
+        fi
+    done
+    for frag in $(fragments gruvbox); do
+        want=$(retarget "$frag" gruvbox nord) || continue
+        if [ ! -e "$want" ]; then
+            missing="$missing
+  $want"
         fi
     done
     if [ -n "$missing" ]; then
-        die "missing fragment(s), nothing switched:$missing"
+        die "fragment(s) with no counterpart, nothing applied:$missing"
     fi
 
-    # `for` over command substitution, not a `while read` pipeline: the counter
-    # must survive the loop, and a pipeline would run it in a subshell. Safe
-    # because no path in this repo contains whitespace.
+    # `for` over command substitution, not a `while read` pipeline: the
+    # counters must survive the loop, and a pipeline would run it in a
+    # subshell. Safe because no path in this repo contains whitespace.
     n=0
-    for link in $(theme_links); do
-        oldtarget=$(readlink "$link")
-        newtarget=$(retarget "$oldtarget" "$from" "$to") || continue
-        ln -sfn "$newtarget" "$link"
+    changed=0
+    for frag in $(fragments nord); do
+        want=$(retarget "$frag" nord "$to")   || continue
+        neutral=$(neutral_of "$frag" nord)    || continue
         n=$((n + 1))
+        # Pointers are relative and bare — a path would break the moment stow
+        # folded the directory somewhere else.
+        base=${want##*/}
+        if [ "$(readlink "$neutral" 2>/dev/null || true)" != "$base" ]; then
+            ln -sfn "$base" "$neutral"
+            changed=$((changed + 1))
+        fi
     done
-    echo "Switched $n symlinks: $from -> $to"
+
+    printf '%s\n' "$to" > "$STATE"
+
+    if [ "$changed" -eq 0 ]; then
+        echo "Applied $to: $n pointers, already correct"
+    else
+        echo "Applied $to: $n pointers, $changed updated"
+    fi
 }
 
 reload_desktop() {
@@ -219,18 +271,16 @@ if [ -z "$target" ]; then
     if [ "$do_icons" -eq 0 ];          then flags="$flags --no-icons"; fi
     if [ "$restart_terminals" -eq 1 ]; then flags="$flags --restart-terminals"; fi
     if [ -n "$flags" ]; then
-        # Naming the active palette is a valid suggestion: switching to the
-        # theme already in use is a no-op that still runs the flags.
         cur=$(current_theme) || cur=nord
         die_usage "no palette named, so$flags would have been ignored.
 
-  These flags only apply to a switch. Naming the palette you are already on
-  is fine — the switch becomes a no-op and the flag still runs:
+  These flags only apply to applying a palette. Naming the one you are already
+  on is fine — re-applying is idempotent, and the flag still runs:
 
       theme $cur$flags"
     fi
 
-    current_theme || die "cannot determine the active theme"
+    current_theme || die "cannot determine the active theme; no $STATE and no pointers to read"
     exit 0
 fi
 
@@ -246,7 +296,7 @@ case " $THEMES " in
     *) die "unknown theme '$target' (known: $THEMES)" ;;
 esac
 
-switch_to "$target"
+apply_theme "$target"
 reload_desktop
 if [ "$do_icons" -eq 1 ]; then
     reload_icons "$target"
@@ -265,5 +315,3 @@ else
     echo "              Re-run with --restart-terminals, or log out."
 fi
 echo "  GTK apps    already-running ones keep the old theme; restart them."
-echo
-echo "The flipped symlinks are uncommitted; \`git -C $REPO status\` to see them."

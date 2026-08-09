@@ -88,13 +88,22 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   `waybar/.config/waybar/colors-{nord,gruvbox}.css` (GTK), `sway/.config/sway/colors-*.conf` (sway)
   and `sway/.config/sway/theme-*.env` (shell). Note *Nord* and *Nordic* are different schemes; the
   GTK theme is genuinely named `Nordic` and the palette is Nord.
-- **Switching is `theme <name>`** (`bin/.local/bin/theme`, bound to `$mod+Shift+t`). It flips the
-  17 theme symlinks inside each package (9 are named `colors.*`; the other 8 are `gtk.css` ×2,
-  `settings.ini` ×2, `xsettingsd.conf`, `.gtkrc-2.0`, `theme.env`, `colorscheme.vim` — don't grep for
-  `colors.*` expecting to find all 17). Never switch by editing configs, and never introduce
-  a theme stow package — a second package writing into a folded target would unfold it.
-- A new themed file must be named `<base>-nord.<ext>` / `<base>-gruvbox.<ext>` with a
-  `<base>.<ext>` symlink, or `theme` will not find it — and will not warn.
+- **Switching is `theme <name>`** (`bin/.local/bin/theme`, bound to `$mod+Shift+t`). Never switch by
+  editing configs, and never introduce a theme stow package — a second package writing into a folded
+  target would unfold it.
+- **Switching is not a repo change.** The active palette is one word in `.theme` at the repo root.
+  From it `theme` derives 17 pointer symlinks (`colors.css`, `.gtkrc-2.0`, `theme.env`, …), one per
+  themed file. `.theme` **and all 17 pointers are gitignored**, so switching leaves `git status`
+  untouched. If a switch ever dirties the tree, the `.gitignore` list has fallen behind — which
+  `tests/theme_test.sh` checks against the fragments on disk.
+- **The pointers do not exist in a fresh clone.** `theme <name>` creates them, so it must run
+  **before `stow`** — the unfolded packages (`gtk`, `alacritty`, `vim`) link file-by-file and would
+  otherwise miss them. Applying is idempotent: re-running repairs a deleted or wrong pointer and
+  picks up a themed file added since.
+- A new themed file needs only the pair `<base>-nord.<ext>` / `<base>-gruvbox.<ext>`; `theme`
+  creates the pointer. Name it anything else and it is silently never themed — `theme` finds its
+  work by scanning for `*-nord`/`*-nord.*` **fragments**, not by any list. The printed count going
+  from 17 to 18 is the confirmation.
 - Don't run `theme` without `--no-icons` in a non-interactive context: papirus-folders needs `sudo`.
 - `~/.config/alacritty/themes` (an untracked clone of alacritty/alacritty-theme) is **optional now**
   — `alacritty.toml` imports its own `colors.toml` fragment. Not managed here either way.
