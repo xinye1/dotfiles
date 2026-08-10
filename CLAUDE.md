@@ -37,6 +37,16 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   sway `$variables` therefore **cannot cross that ordering** — a `$role` in a binding in `default`
   is parsed before `theme` defines it and fails with `Invalid border color $accent`. Anything in an
   earlier file that needs a colour must call a script that sources `theme.env` at runtime.
+- **`vim.pack` writes `nvim-pack-lock.json` into `~/.config/nvim`**, not into the data dir where the
+  plugin code goes — and `nvim` is folded, so that is *the repo*. It is **tracked on purpose**: a
+  pinned revision belongs to the configuration, unlike `.theme`. So `:lua vim.pack.update()` dirties
+  the tree by design and the lockfile diff is meant to be committed. Don't "fix" it by gitignoring —
+  that would put untracked content inside a folded package, which is the thing §5.2 forbids.
+- **A plugin that themes itself will silently diverge from the palette.** lualine's default
+  `theme = 'auto'` reads `g:colors_name` and loads its *own* bundled theme of that name — it ships
+  both `nord` and `gruvbox`, so it always finds one and paints the bar a few shades off the waybar
+  above it, erroring never. `nvim/.config/nvim/statusline.lua` hands it a table built from the
+  thirteen roles instead. Apply the same rule to any future self-theming plugin.
 - **GTK CSS renders an undefined `@name` as black, with no error.** No warning, no fallback — a
   widget just turns black. This is why `theme` refuses to switch when the two palettes define
   different role sets; that refusal is the guard working.
@@ -92,8 +102,8 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   editing configs, and never introduce a theme stow package — a second package writing into a folded
   target would unfold it.
 - **Switching is not a repo change.** The active palette is one word in `.theme` at the repo root.
-  From it `theme` derives 17 pointer symlinks (`colors.css`, `.gtkrc-2.0`, `theme.env`, …), one per
-  themed file. `.theme` **and all 17 pointers are gitignored**, so switching leaves `git status`
+  From it `theme` derives 18 pointer symlinks (`colors.css`, `.gtkrc-2.0`, `theme.env`, …), one per
+  themed file. `.theme` **and all 18 pointers are gitignored**, so switching leaves `git status`
   untouched. If a switch ever dirties the tree, the `.gitignore` list has fallen behind — which
   `tests/theme_test.sh` checks against the fragments on disk.
 - **The pointers do not exist in a fresh clone.** `theme <name>` creates them, so it must run

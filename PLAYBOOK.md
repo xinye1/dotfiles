@@ -104,13 +104,13 @@ waybar/.config/waybar/colors-gruvbox.css
 waybar/.config/waybar/colors.css  ->  colors-nord.css     pointer; gitignored, `theme` writes it
 ```
 
-There are 17 such pointers, one per colour-bearing file, and they are **not tracked**. The active
+There are 18 such pointers, one per colour-bearing file, and they are **not tracked**. The active
 palette is one word in `.theme` at the repo root — also untracked — and every pointer is derived
 from it. So a switch changes nothing git can see: `git status` after switching is byte-for-byte
 what it was before.
 
 That is deliberate. Which palette is on is a property of this machine right now, not of the
-configuration, and it used to force a 17-file commit every time the mood changed. The cost is that
+configuration, and it used to force an 18-file commit every time the mood changed. The cost is that
 a fresh clone has no pointers at all until `theme <name>` creates them — see §3.4.
 
 Two of the fragment pairs are the canonical listing of the roles:
@@ -126,9 +126,21 @@ Two of the fragment pairs are the canonical listing of the roles:
 sway needs a third copy, `sway/.config/sway/colors-{nord,gruvbox}.conf`, as `set $role` lines: sway
 has no shell and cannot source the `.env`. All three must agree, and §3.1 is the authority.
 
-Everything else (foot, fuzzel, mako, alacritty, vim, the GTK settings files) spells the values in
-its own key syntax, inside a fragment. **A hex inlined in a main config is now a bug** — it will
+Everything else (foot, fuzzel, mako, alacritty, vim, nvim, the GTK settings files) spells the values
+in its own key syntax, inside a fragment. **A hex inlined in a main config is now a bug** — it will
 survive a theme switch and stand out against everything around it.
+
+nvim is the one that carries the roles furthest. Its fragments are a Lua *table* of the thirteen,
+and `nvim/.config/nvim/highlights.lua` — palette-neutral, holding no colour at all — decides which
+role paints which highlight group. It is the same split as `colors-nord.css` versus `style.css`, and
+it means nvim renders the actual palette rather than some plugin author's reading of Nord.
+
+`statusline.lua` extends that to lualine, and is the one place where the trap is worth naming.
+lualine's default `theme = 'auto'` reads `g:colors_name` and loads its own bundled theme of that
+name — and it bundles both `nord` and `gruvbox`, so it would find a match every time and paint the
+bar a few shades off the waybar directly above it, with nothing erroring to say so. **Handing
+lualine a table built from the thirteen roles is what prevents that**, and the same reasoning
+applies to any future plugin that offers to theme itself.
 
 ---
 
@@ -260,7 +272,7 @@ the obvious design and is wrong: a second package writing into `~/.config/waybar
 property described in §5.2. Flipping a symlink *inside* the package leaves fold state untouched.
 This is why §5.2's table is unchanged by the theming work.
 
-**Nothing about a switch is tracked.** `.theme` and all 17 pointers are gitignored, so:
+**Nothing about a switch is tracked.** `.theme` and all 18 pointers are gitignored, so:
 
 ```sh
 theme gruvbox --no-icons
@@ -333,7 +345,7 @@ theme                                    # what .theme says, falling back to a p
 theme nord --no-icons                    # re-apply: repairs every pointer from a known state
 ```
 
-Re-applying is the recovery. It reports `17 pointers, N updated`; anything other than `0` when you
+Re-applying is the recovery. It reports `18 pointers, N updated`; anything other than `0` when you
 had not switched means something outside `theme` moved a pointer.
 
 **Adding a themed application** takes two fragments and no code — not even a pointer, since `theme`
@@ -386,6 +398,7 @@ file is **silently** pinned to one palette forever — see §3.3. If the package
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `kanshi` | repo | Display hotplug profiles |
 | `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
+| `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
 
 **Why the gruvbox GTK theme is not the AUR package.** `gruvbox-gtk-theme-git` depends on
 `gtk-engine-murrine`, which on a current Arch pulls in a **from-source `gtk2` build** — and gtk2 is
@@ -425,6 +438,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | Package | Folded? | Reason |
 |---|---|---|
 | `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, the `colorscheme.lua` pointer and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
@@ -635,6 +649,21 @@ git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lig
 git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
 git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 
+# nvim: nothing to run. Its colourschemes are written from the §3.1 roles in
+# nvim/.config/nvim/colorscheme-{nord,gruvbox}.lua, so there is no colorscheme
+# clone to forget, and lualine installs itself: `vim.pack.add` in init.lua
+# fetches it on the FIRST LAUNCH, which is therefore the one launch that needs
+# network. Offline, nvim still opens — it falls back to the built-in
+# statusline, already themed.
+#
+# Plugin versions are pinned in the TRACKED nvim/.config/nvim/nvim-pack-lock.json,
+# so a fresh clone installs the same revisions this machine runs. Updating is
+# deliberate — `:lua vim.pack.update()` — and DOES dirty the tree: the lockfile
+# is the diff, and committing it is how a version bump gets recorded. That is
+# the exact opposite of `theme`, where a switch must never show up in git; the
+# difference is that a plugin revision is part of the configuration and the
+# active palette is not.
+
 # The theme switcher, so `theme` and $mod+Shift+t work
 stow bin
 
@@ -642,7 +671,7 @@ stow bin
 # them, and every themed package needs them present BEFORE it is stowed — the
 # unfolded ones (gtk, alacritty, vim) link file-by-file and would otherwise miss
 # them, leaving each application with no colours to include.
-theme nord --no-icons          # or gruvbox; must report "17 pointers"
+theme nord --no-icons          # or gruvbox; must report "18 pointers"
 
 # ~/.bashrc already exists from /etc/skel and stow will not overwrite a real file
 mv ~/.bashrc ~/.bashrc.bak && stow bash

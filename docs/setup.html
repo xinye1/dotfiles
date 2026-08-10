@@ -793,12 +793,12 @@ footer a{color:var(--accent)}
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
 <pre><span class="p">❯</span> cd ~/repos/dotfiles
-<span class="p">❯</span> sh bin/.local/bin/theme nord --no-icons   <span class="c"># or gruvbox; must say "17 pointers"</span></pre>
+<span class="p">❯</span> sh bin/.local/bin/theme nord --no-icons   <span class="c"># or gruvbox; must say "18 pointers"</span></pre>
         </div>
         <div class="step-body">
           <p>Every colour-bearing config includes a theme-neutral filename — <code>colors.css</code>,
           <code>theme.env</code>, <code>.gtkrc-2.0</code> and so on. Those are gitignored, so a fresh
-          clone <strong>does not have them</strong>; this command creates all 17 from the fragments
+          clone <strong>does not have them</strong>; this command creates all 18 from the fragments
           that are tracked. Run it from the repo by path — <code>theme</code> is not on
           <code>PATH</code> until <code>bin</code> is stowed.</p>
           <p><strong>Order matters.</strong> The unfolded packages (<code>gtk</code>,
@@ -809,7 +809,7 @@ footer a{color:var(--accent)}
         <div class="callout">
           <p><strong>Why they aren't in the repo.</strong> Which palette is on is a property of this
           machine, not of the configuration. When the pointers were tracked, every switch produced a
-          17-file commit. They and the one-word <code>.theme</code> file are ignored now, so
+          18-file commit. They and the one-word <code>.theme</code> file are ignored now, so
           switching leaves git completely untouched — at the cost of this one bootstrap step.</p>
         </div>
       </div>
@@ -824,7 +824,7 @@ footer a{color:var(--accent)}
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
 <pre><span class="p">❯</span> cd ~/repos/dotfiles
-<span class="p">❯</span> stow -n -v bash vim bin starship alacritty foot htop waybar \
+<span class="p">❯</span> stow -n -v bash vim nvim bin starship alacritty foot htop waybar \
         sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
         </div>
         <div class="step-body">
@@ -842,7 +842,7 @@ footer a{color:var(--accent)}
         </label>
         <div class="cmd">
           <div class="cmd-bar"><span class="cmd-label">shell</span><button class="copy" type="button">copy</button></div>
-<pre><span class="p">❯</span> stow bash vim bin starship alacritty foot htop waybar \
+<pre><span class="p">❯</span> stow bash vim nvim bin starship alacritty foot htop waybar \
         sway kanshi gtk mako fuzzel nwg-drawer gtklock</pre>
         </div>
       </div>
@@ -951,6 +951,21 @@ footer a{color:var(--accent)}
           <p><code>.vimrc</code> guards the colorscheme <code>source</code> with
           <code>filereadable</code>, so vim still starts on a machine without these — it just opens
           uncoloured rather than erroring on every launch.</p>
+          <p><strong>nvim needs no step here.</strong> Its two colourschemes are written from the
+          thirteen roles rather than cloned, and its one plugin — lualine, plus the icon set —
+          installs itself: <code>init.lua</code> calls <code>vim.pack.add</code>, Neovim 0.12's
+          built-in manager, which fetches on first launch. That one launch needs network; offline,
+          nvim opens with the built-in statusline, already themed. Update deliberately with
+          <code>:lua vim.pack.update()</code>.</p>
+          <p>The plugin code lands in <code>~/.local/share/nvim/</code>. The one thing
+          <code>vim.pack</code> writes into the config directory is
+          <code>nvim-pack-lock.json</code>, pinning each plugin to a revision — and because the
+          <code>nvim</code> package is folded, that file lands in the repo, where it is
+          <strong>tracked on purpose</strong>. A pinned revision belongs to the configuration, not
+          to this machine, so unlike <code>.theme</code> it should be in git.</p>
+          <p><strong>So <code>:lua vim.pack.update()</code> dirties the tree</strong> — deliberately.
+          That lockfile diff is the record of the version bump, and committing it is what lets a
+          fresh clone install the same revisions you are running.</p>
         </div>
       </div>
 
@@ -1283,7 +1298,7 @@ footer a{color:var(--accent)}
         </div>
         <div class="step-body">
           <p>Which palette is on is a property of this machine, not of the configuration, so there is
-          nothing to commit. <code>.theme</code> and all 17 pointers are gitignored and a switch
+          nothing to commit. <code>.theme</code> and all 18 pointers are gitignored and a switch
           leaves the tree byte-for-byte as it was.</p>
           <p>If a switch <em>does</em> dirty the tree, the explicit list in <code>.gitignore</code>
           has fallen behind a newly added themed file — <code>sh tests/theme_test.sh</code> checks
@@ -1451,7 +1466,7 @@ footer a{color:var(--accent)}
                 <tr><td>3</td><td>resolve</td><td><code>toggle</code> becomes the other name; the target is checked against the known list.</td></tr>
                 <tr><td>4</td><td><code>check_roles</code></td><td>The two <code>theme-*.env</code> must declare identical variable names, and the two <code>colors-*.conf</code> identical <code>set $var</code> names. Refuses if not.</td></tr>
                 <tr><td>5</td><td>pre-flight</td><td>Every fragment must have a counterpart in the other palette — checked <em>both</em> ways, so an orphan is caught whichever side it is on. Collects all misses and aborts naming them.</td></tr>
-                <tr><td>6</td><td>apply</td><td>Set each pointer to what it should be — creating it if absent — then write <code>.theme</code> and print <strong>17 pointers</strong> and how many needed changing.</td></tr>
+                <tr><td>6</td><td>apply</td><td>Set each pointer to what it should be — creating it if absent — then write <code>.theme</code> and print <strong>18 pointers</strong> and how many needed changing.</td></tr>
                 <tr><td>7</td><td><code>reload_desktop</code></td><td><code>sway --validate</code>, then <code>swaymsg reload</code>; then <code>makoctl reload</code>.</td></tr>
                 <tr><td>8</td><td><code>reload_icons</code></td><td>Source <code>theme-&lt;name&gt;.env</code>, and if the folder colour differs, <code>sudo papirus-folders</code>. Skipped under <code>--no-icons</code>, or printed as a line to run yourself when there is no terminal for the password prompt.</td></tr>
                 <tr><td>9</td><td>terminals</td><td>Only with <code>--restart-terminals</code>: <code>pkill -x foot</code>, then <code>foot --server</code>.</td></tr>
@@ -1570,10 +1585,10 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
         <h4 class="mech-title">B3 · Where "the active palette" is stored — one word, untracked</h4>
         <div class="tech">
           <p><code>.theme</code> at the repo root holds one word: <code>nord</code> or
-          <code>gruvbox</code>. That is the entire configuration. The 17 pointers are
+          <code>gruvbox</code>. That is the entire configuration. The 18 pointers are
           <em>derived</em> from it, not sources of truth in their own right, which is why re-applying
           repairs them and why a fresh clone can be brought up from nothing.</p>
-          <p><strong><code>.theme</code> and all 17 pointers are gitignored.</strong> Which palette is
+          <p><strong><code>.theme</code> and all 18 pointers are gitignored.</strong> Which palette is
           on is a property of this machine right now, not of the configuration, so changing it leaves
           <code>git status</code> byte-for-byte as it was. Switching is an operational act; it should
           never have produced a commit, and no longer does.</p>
@@ -1587,11 +1602,11 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
         </div>
         <div class="plain">
           <p class="plain-label">In plain terms</p>
-          <p>One small file records which palette you are on. Everything else — all seventeen
+          <p>One small file records which palette you are on. Everything else — all eighteen
           pointers — is regenerated from it, the way you would regenerate a set of outputs from a
           config rather than editing each one by hand.</p>
           <p><strong>Why it is set up this way:</strong> changing your desktop's colours is a
-          preference, not a change to the project. It used to produce a seventeen-file commit every
+          preference, not a change to the project. It used to produce a eighteen-file commit every
           time, which is like committing a notebook's output cells — noise that buries the real
           changes. Both the config file and the generated pointers are now ignored by git, so
           switching is invisible to it.</p>
@@ -1646,7 +1661,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
 
         <figure class="fig">
           <svg viewBox="0 0 720 300" role="img"
-               aria-label="After one theme command flips seventeen symlinks, surfaces repaint at three different speeds: sway, waybar, nwg-drawer, gsettings and mako repaint immediately on reload; gtklock, fuzzel, vim and the screenshot and keyhint scripts are correct at their next launch; foot terminals and already-running GTK apps need a restart.">
+               aria-label="After one theme command flips eighteen symlinks, surfaces repaint at three different speeds: sway, waybar, nwg-drawer, gsettings and mako repaint immediately on reload; gtklock, fuzzel, vim and nvim and the screenshot and keyhint scripts are correct at their next launch; foot terminals and already-running GTK apps need a restart.">
             <defs>
               <marker id="f2-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
                 <path class="mk" d="M0,0 L10,5 L0,10 z"/>
@@ -1666,7 +1681,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
             <line class="edge" x1="164" y1="151" x2="200" y2="151" marker-end="url(#f2-dim)"/>
 
             <rect class="box" x="206" y="127" width="168" height="48" rx="5"/>
-            <text class="t" x="290" y="148" text-anchor="middle">17 pointers written</text>
+            <text class="t" x="290" y="148" text-anchor="middle">18 pointers written</text>
             <text class="s" x="290" y="164" text-anchor="middle">after every check passed</text>
 
             <polyline class="edge acc" points="374,143 420,143 420,59 494,59" marker-end="url(#f2-acc)"/>
@@ -1685,7 +1700,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
 
             <rect class="box" x="500" y="118" width="206" height="66" rx="5"/>
             <text class="hd" x="514" y="138">correct next time</text>
-            <text class="s" x="514" y="155">gtklock · fuzzel · vim</text>
+            <text class="s" x="514" y="155">gtklock · fuzzel · vim · nvim</text>
             <text class="s" x="514" y="171">screenshot &amp; keyhint</text>
 
             <rect class="box" x="500" y="210" width="206" height="66" rx="5"/>
@@ -1711,7 +1726,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
                 <tr><td>nwg-drawer</td><td><code>exec_always</code>, so the reload re-execs it</td><td>on reload</td></tr>
                 <tr><td>GTK 3 / 4 apps</td><td><code>exec_always scripts/import-gsettings</code> pushes <code>settings.ini</code> into gsettings</td><td>on reload, for apps started after</td></tr>
                 <tr><td>mako</td><td><code>exec</code>, not <code>exec_always</code> — a reload will <em>not</em> restart it, so <code>theme</code> calls <code>makoctl reload</code> itself</td><td>on reload</td></tr>
-                <tr><td>gtklock, fuzzel, vim</td><td>They read their config at launch</td><td>next launch</td></tr>
+                <tr><td>gtklock, fuzzel, vim, nvim</td><td>They read their config at launch</td><td>next launch</td></tr>
                 <tr><td>screenshot overlay, keyhint popup</td><td>Those scripts <code>source</code> <code>theme.env</code> when they run</td><td>next invocation</td></tr>
                 <tr><td>foot</td><td>No config-reload signal exists at all</td><td><strong>server restart or logout</strong></td></tr>
                 <tr><td>Running GTK apps</td><td>They read <code>settings.ini</code> once, at startup</td><td><strong>restart the app</strong></td></tr>
@@ -1719,7 +1734,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
             </table>
           </div>
           <p><code>import-gsettings</code> is doing more than it looks. It reads
-          <code>~/.config/gtk-3.0/settings.ini</code> — itself one of the 17 pointers — and
+          <code>~/.config/gtk-3.0/settings.ini</code> — itself one of the 18 pointers — and
           pushes the theme, icon, cursor and font names into gsettings. It also derives
           <code>color-scheme</code> from <code>gtk-application-prefer-dark-theme</code>, which is the
           <em>only</em> key libadwaita (GTK 4) apps consult to decide light versus dark. Without that
@@ -1738,7 +1753,7 @@ colors         -&gt; colors-gruvbox       <span class="c"># mako</span></pre>
           three groups:</p>
           <p><strong>Reload and they are correct</strong> (the bar, window borders, desktop,
           notifications, the app grid) — one command handles all of these.
-          <strong>Correct next time you open them</strong> (lock screen, launcher, vim, the
+          <strong>Correct next time you open them</strong> (lock screen, launcher, vim and nvim, the
           screenshot overlay) — nothing to do.
           <strong>Stuck until restarted</strong> (terminals, and any GTK app already open) — these
           read their colours once when they started and have no way to be told otherwise.</p>

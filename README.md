@@ -9,6 +9,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 |--------------|-----------------------------------------------------------------|
 | `bash`       | `~/.bashrc`, `~/.config/dircolors`                              |
 | `vim`        | `~/.vimrc`, `~/.vim/colorscheme*.vim`                           |
+| `nvim`       | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua`, `colorscheme*.lua` |
 | `bin`        | `~/.local/bin/theme` — the palette switcher                     |
 | `alacritty`  | `~/.config/alacritty/alacritty.toml`                            |
 | `foot`       | `~/.config/foot/foot.ini`                                       |
@@ -37,11 +38,11 @@ theme toggle     # the other one — bound to $mod+Shift+t
 
 No colour is written as a hex in an application config. Every one is a **role** (`bg`, `accent`,
 `critical`, …) defined twice, once per palette, in a pair of fragments inside the package that owns
-it. The active palette is one word in `.theme` at the repo root; from it `theme` points 17
+it. The active palette is one word in `.theme` at the repo root; from it `theme` points 18
 symlinks at the right fragments and reloads sway, waybar, mako and gsettings. It touches sway,
-waybar, foot, alacritty, fuzzel, mako, gtklock, nwg-drawer, vim and the whole GTK stack.
+waybar, foot, alacritty, fuzzel, mako, gtklock, nwg-drawer, vim, nvim and the whole GTK stack.
 
-**Switching is an operational change, not a repo one.** `.theme` and the 17 pointers are
+**Switching is an operational change, not a repo one.** `.theme` and the 18 pointers are
 gitignored, so changing palette leaves `git status` completely untouched.
 
 Stow is deliberately *not* how the switch happens — a second package writing into `~/.config/waybar`
@@ -70,7 +71,7 @@ sh tests/theme_test.sh
 git clone https://github.com/xinye1/dotfiles.git
 cd dotfiles
 sh bin/.local/bin/theme nord --no-icons         # or gruvbox — creates the theme pointers
-stow bash vim alacritty foot starship htop bin  # or one at a time: stow vim
+stow bash vim nvim alacritty foot starship htop bin  # or one at a time: stow nvim
 ```
 
 **Run `theme` before `stow`.** The theme pointers are gitignored, so a fresh clone does not have
@@ -145,6 +146,15 @@ so the package works on a machine where neither is installed yet.
   git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
   git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
   ```
+* **nvim plugins need no step here.** `init.lua` uses `vim.pack`, Neovim 0.12's built-in
+  manager, so lualine and nvim-web-devicons install themselves on first launch — that one
+  launch needs network; offline, nvim opens with the built-in statusline instead. The plugin
+  code lands in `~/.local/share/nvim/`, and their revisions are pinned in the tracked
+  `nvim/.config/nvim/nvim-pack-lock.json`, so a fresh clone gets the same versions.
+  `:lua vim.pack.update()` updates them, and unlike a theme switch it **does** dirty the
+  tree — the lockfile diff is the record of the bump, and is meant to be committed.
+  nvim's colourschemes are not plugins at all: both are written from the thirteen roles,
+  and lualine is themed from them too.
 
 ### Desktop packages
 

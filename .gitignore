@@ -30,6 +30,7 @@ gtk/.config/xsettingsd/xsettingsd.conf
 gtk/.gtkrc-2.0
 gtklock/.config/gtklock/colors.css
 mako/.config/mako/colors
+nvim/.config/nvim/colorscheme.lua
 nwg-drawer/.config/nwg-drawer/colors.css
 sway/.config/sway/colors.conf
 sway/.config/sway/theme.env
