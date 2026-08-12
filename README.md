@@ -14,6 +14,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `alacritty`  | `~/.config/alacritty/alacritty.toml`                            |
 | `foot`       | `~/.config/foot/foot.ini`                                       |
 | `starship`   | `~/.config/starship.toml`                                       |
+| `claude`     | `~/.claude/statusline.py` — the Claude Code status line          |
 | `htop`       | `~/.config/htop/htoprc`                                         |
 | `waybar`     | `~/.config/waybar/` — `config`, `style.css`, `scripts/`         |
 | `sway`       | `~/.config/sway/` — `config`, `config.d/`, `scripts/`           |
