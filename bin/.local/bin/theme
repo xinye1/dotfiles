@@ -33,6 +33,40 @@ def die(msg):
     raise SystemExit(1)
 
 
+def state_file():
+    """Where the active palette is remembered.
+
+    $XDG_STATE_HOME (default ~/.local/state), not the repo. Which palette is
+    applied is a property of this machine right now, not of the configuration,
+    and state does not belong in a source tree — putting it there also made the
+    checkout load-bearing for something that has nothing to do with the repo.
+    """
+    base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
+    return Path(base).expanduser() / "theme" / "palette"
+
+
+def read_state(root):
+    """The remembered palette, migrating the old in-repo .theme if present."""
+    path = state_file()
+    if path.is_file():
+        return path.read_text().strip() or None
+    legacy = root / ".theme"
+    if legacy.is_file():
+        name = legacy.read_text().strip()
+        if name:
+            write_state(name)
+            legacy.unlink()          # migrate once, then stop looking here
+            print(f"  migrated .theme -> {path}")
+            return name
+    return None
+
+
+def write_state(name):
+    path = state_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(name + "\n")
+
+
 def repo_root():
     """The repo, found from this script even when it is a stow symlink."""
     here = Path(__file__).resolve()          # .../dotfiles/bin/.local/bin/theme
@@ -120,7 +154,7 @@ def apply_theme(root, name, data):
         elif out.exists() and out.read_text() == rendered:
             continue
         out.write_text(rendered)
-    (root / ".theme").write_text(name + "\n")
+    write_state(name)
     print(f"  {len(pending)} files rendered from palettes.toml [{name}]")
 
 
@@ -180,11 +214,11 @@ def main(argv):
         else:
             die("give at most one palette")
 
-    state = root / ".theme"
     if name is None:
-        name = state.read_text().strip() if state.is_file() else None
+        name = read_state(root)
         if name is None:
-            die(f"no palette given and no .theme yet; try: theme {sorted(data)[0]}")
+            die(f"no palette given and none remembered yet; "
+                f"try: theme {sorted(data)[0]}")
     if name not in data:
         die(f"no palette named '{name}' (have: {', '.join(sorted(data))})")
 

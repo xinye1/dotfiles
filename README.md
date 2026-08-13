@@ -12,6 +12,7 @@ stow bin                            # puts `theme` on $PATH via ~/.local/bin
 stow bash vim nvim alacritty foot starship htop claude
 stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
 sh tests/theme_test.sh              # 15 assertions, in a sandbox; touches nothing live
+sh tests/check_consumers.sh         # asks the apps themselves; reads the live config
 ```
 
 Full desktop, including the steps that cannot be stowed: **[PLAYBOOK.md](PLAYBOOK.md)**.
@@ -35,7 +36,8 @@ build artefact. Editing one is pointless — the next switch overwrites it. This
 makes "did switching dirty the tree?" a question with a permanent answer of no.
 
 **Nothing is clever that could be obvious.** Stow does the linking; no bespoke installer. `theme`
-renders and reloads; it does not manage state beyond one word in `.theme`. The one genuinely
+renders and reloads; it does not manage state beyond one word in
+`$XDG_STATE_HOME/theme/palette`. The one genuinely
 surprising rule — six GTK files that cannot carry the `.gen` marker — is written down in
 `.gitignore` next to the entries themselves, because a rule you have to remember is a rule that
 will be broken.
@@ -87,9 +89,11 @@ theme nord         # switch
 theme --list       # what is available
 ```
 
-Switching is an operational change, never a repo change: the active
-palette is one word in `.theme`, and every file `theme` writes is gitignored. If a switch ever
-dirties `git status`, something has broken the naming scheme — `tests/theme_test.sh` asserts it.
+Switching is an operational change, never a repo change. The active palette is one word in
+`$XDG_STATE_HOME/theme/palette` (default `~/.local/state/theme/palette`) — outside the repo, because
+it is state about this machine rather than configuration — and every file `theme` writes is
+gitignored. If a switch ever dirties `git status`, something has broken the naming scheme;
+`tests/theme_test.sh` asserts it.
 
 ## Adding a colour
 

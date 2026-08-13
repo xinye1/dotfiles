@@ -38,7 +38,7 @@ gtk/.config/gtk-4.0/settings.ini
 gtk/.config/xsettingsd/xsettingsd.conf
 gtk/.gtkrc-2.0
 
-# Which palette is applied is a property of this machine right now, not of the
-# configuration, so `theme <name>` must stay an operational change and never a
-# git one.
-.theme
+# The active palette used to be recorded here as `.theme`. It now lives in
+# $XDG_STATE_HOME/theme/palette (default ~/.local/state), because which palette
+# is applied is state belonging to this machine, not to the configuration, and
+# state does not belong in a source tree. `theme` migrates the old file once.
