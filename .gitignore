@@ -8,32 +8,37 @@ htop/.config/htop/htoprc.tmp.*
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
 
-# Theme state, and the pointers derived from it.
+__pycache__/
+
+# ---------------------------------------------------------------------------
+# Rendered palette files.
 #
-# Which palette is applied is a property of this machine right now, not of the
-# configuration, so `theme <name>` must be an operational change and never a git
-# one. `.theme` holds the one word; every path below is a symlink `theme`
-# (re)points at that palette's fragment, and recreates from scratch on a clone.
+# `theme` renders every *.tmpl against palettes.toml. The output is a build
+# artefact: editing one is pointless, since the next switch overwrites it.
 #
-# Listed one by one because the names are semantic, not lexical — no glob catches
-# `colors.css`, `.gtkrc-2.0` and `theme.env` without also catching tracked files.
-# tests/theme_test.sh fails if this list falls behind the fragments on disk.
-.theme
-alacritty/.config/alacritty/colors.toml
-foot/.config/foot/colors.ini
-fuzzel/.config/fuzzel/colors.ini
+# This used to be twenty-two paths listed one by one, because a pointer had to
+# take the exact filename an application's include names and no glob could
+# catch that set without also catching tracked files. Generation chooses the
+# output name, so a glob can.
+*.gen
+*.gen.*
+
+# ...but not the templates they are rendered from, whose names necessarily
+# contain the same marker: colors.gen.css.tmpl renders to colors.gen.css.
+!*.tmpl
+
+# The exception, and the reason it is an exception: these six are read by GTK
+# and xsettingsd at a fixed path, so their rendered output cannot carry the
+# .gen marker. The list is structural rather than growing — it can only change
+# if an application with a hardcoded config filename joins the desktop.
 gtk/.config/gtk-3.0/gtk.css
 gtk/.config/gtk-3.0/settings.ini
 gtk/.config/gtk-4.0/gtk.css
 gtk/.config/gtk-4.0/settings.ini
 gtk/.config/xsettingsd/xsettingsd.conf
 gtk/.gtkrc-2.0
-gtklock/.config/gtklock/colors.css
-mako/.config/mako/colors
-nvim/.config/nvim/colorscheme.lua
-nwg-drawer/.config/nwg-drawer/colors.css
-sway/.config/sway/colors.conf
-sway/.config/sway/theme.env
-vim/.vim/colorscheme.vim
-waybar/.config/waybar/colors.css
-waybar/.config/waybar/colors.json
+
+# Which palette is applied is a property of this machine right now, not of the
+# configuration, so `theme <name>` must stay an operational change and never a
+# git one.
+.theme

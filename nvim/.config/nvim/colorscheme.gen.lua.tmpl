@@ -1,0 +1,25 @@
+-- Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+-- the thirteen theme roles, for Neovim.
+--
+-- role names. Which group each role paints lives in highlights.lua.
+--
+-- Unlike vim's fragment there is no `set background=dark` here: that existed
+-- these are literal hexes — and Neovim's default is dark anyway.
+
+local apply = dofile(vim.fn.stdpath('config') .. '/highlights.lua')
+
+apply('{{palette}}', {
+  bg        = '{{bg}}',
+  surface   = '{{surface}}',
+  sel       = '{{sel}}',
+  muted     = '{{muted}}',
+  fg        = '{{fg}}',
+  fg_bright = '{{fg_bright}}',
+  accent    = '{{accent}}',
+  accent2   = '{{accent2}}',
+  indicator = '{{indicator}}',
+  critical  = '{{critical}}',
+  warning   = '{{warning}}',
+  success   = '{{success}}',
+  desktop   = '{{desktop}}',
+})

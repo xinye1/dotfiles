@@ -1,0 +1,49 @@
+/* Generated from palettes.toml by `theme` — do not edit; edit the .tmpl. */
+/* GTK4 / libadwaita user overrides.
+ *
+ * This is the file that actually matters for modern apps. libadwaita apps
+ * ignore gtk-theme-name entirely, and would render in stock Adwaita dark
+ * against an otherwise themed desktop. Redefining libadwaita's named colours
+ * here is the supported way to reach them.
+ *
+ * CAUTION: nwg-look's "export-gtk4-symlinks" replaces this file with a symlink
+ * into /usr/share/themes/. Check `ls -la ~/.config/gtk-4.0/` and re-run
+ * `stow -R gtk` if it has been clobbered. */
+
+@define-color window_bg_color        {{bg}};
+@define-color window_fg_color        {{fg}};
+@define-color view_bg_color          {{surface}};
+@define-color view_fg_color          {{fg}};
+@define-color headerbar_bg_color     {{surface}};
+@define-color headerbar_fg_color     {{fg_bright}};
+@define-color sidebar_bg_color       {{bg}};
+@define-color sidebar_fg_color       {{fg}};
+@define-color card_bg_color          {{surface}};
+@define-color card_fg_color          {{fg}};
+@define-color popover_bg_color       {{surface}};
+@define-color popover_fg_color       {{fg}};
+@define-color dialog_bg_color        {{surface}};
+@define-color dialog_fg_color        {{fg}};
+
+@define-color accent_bg_color        {{accent}};
+@define-color accent_fg_color        {{bg}};
+@define-color accent_color           {{accent}};
+
+@define-color destructive_bg_color   {{critical}};
+@define-color destructive_fg_color   {{fg_bright}};
+@define-color destructive_color      {{critical}};
+
+@define-color success_bg_color       {{success}};
+@define-color success_fg_color       {{bg}};
+@define-color success_color          {{success}};
+
+@define-color warning_bg_color       {{warning}};
+@define-color warning_fg_color       {{bg}};
+@define-color warning_color          {{warning}};
+
+@define-color error_bg_color         {{critical}};
+@define-color error_fg_color         {{fg_bright}};
+@define-color error_color            {{critical}};
+
+@define-color theme_selected_bg_color {{accent}};
+@define-color theme_selected_fg_color {{bg}};

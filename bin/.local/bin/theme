@@ -1,317 +1,188 @@
-#!/bin/sh
-# theme — switch the desktop between Nord and Gruvbox Dark.
-#
-#   theme                 print the active theme
-#   theme nord|gruvbox    switch
-#   theme toggle          switch to the other one          ($mod+Shift+t)
-#
-#   --restart-terminals   also restart `foot --server`, applying the palette to
-#                         foot immediately at the cost of every open shell
-#   --no-icons            skip papirus-folders (avoids the sudo prompt)
-#
-# HOW IT WORKS
-#   The active palette is one word in `.theme` at the repo root. That file is
-#   untracked, so switching is an operational change and never a git one.
-#   Everything else is derived from it: for each `<base>-nord.<ext>` fragment
-#   the script points an equally untracked `<base>.<ext>` symlink at the chosen
-#   palette's sibling. Those pointers are what stow links into $HOME and what
-#   applications actually read.
-#
-#   Adding a themed application means adding the two fragments and nothing
-#   else — no pointer to create, no list to update, and no change here.
-set -eu
+#!/usr/bin/env python3
+"""theme — switch the desktop palette.
 
-# Applying is idempotent: it sets each pointer to what it should be rather
-# than flipping it from what it was. So the same command repairs a deleted or
-# wrong pointer, and materialises the pointers on a fresh clone, where none of
-# them exist yet. That is also why `theme <the palette you are on>` is useful
-# rather than a no-op.
-#
-# stow is deliberately NOT involved. The pointers live inside the packages, so
-# every package's fold state is untouched; switching with stow packages would
-# unfold them. See PLAYBOOK.md.
+    theme              re-apply the current palette
+    theme <name>       switch to <name>
+    theme --list       list the palettes
+    theme --no-icons   skip papirus-folders (it needs sudo; use in scripts)
 
-REPO="$HOME/repos/dotfiles"
-THEMES="nord gruvbox"
+Every colour in the desktop comes from palettes.toml. Each `*.tmpl` in the repo
+is rendered against the chosen palette and written beside itself with `.tmpl`
+stripped: `colors.gen.css.tmpl` -> `colors.gen.css`. The rendered files are
+build artefacts — git ignores them, and editing one is pointless because the
+next switch overwrites it. Edit the template, or the table.
 
-# The single piece of state. Which palette is applied is a property of this
-# machine right now, not of the configuration, so it is gitignored along with
-# the pointers it drives.
-STATE="$REPO/.theme"
+Why Python, when this was sh: rendering needs a TOML parser and templating, and
+sh has neither. sh also has no function-local variables, which cost this script
+a real bug once (CLAUDE.md records it).
+"""
 
-# NOTE ON `set -e`: a bare `[ cond ] && action` is a landmine here. When the
-# test fails the whole list returns non-zero and `set -e` kills the script. Use
-# `if` blocks for every guard below, never `&&`.
-die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
 
-# The header comment of this file, printed back as the help page. Lines 2-21
-# are the synopsis and the flags; keep that block in sync if the header moves.
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
+PLACEHOLDER = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 
-# For mistakes where knowing the correct form is the whole fix. Both go to
-# stderr: this is an error path, so `theme ... | something` must not receive
-# the help page as if it were output.
-die_usage() { printf 'theme: %s\n\n' "$*" >&2; usage >&2; exit 1; }
 
-# --------------------------------------------------------------- state ---
+def die(msg):
+    print(f"theme: {msg}", file=sys.stderr)
+    raise SystemExit(1)
 
-read_state() {
-    if [ ! -r "$STATE" ]; then
-        return 1
-    fi
-    # `tr -d '[:space:]'`, not `tr -d ' \t\n'`: /bin/sh passes the latter
-    # through as backslash-t-n, so tr would strip literal `n` characters and
-    # quietly turn `nord` into `ord`.
-    s=$(head -n1 "$STATE" | tr -d '[:space:]')
-    case " $THEMES " in
-        *" $s "*) printf '%s\n' "$s" ;;
-        *)        return 1 ;;
-    esac
-}
 
-# Fallback for a tree written before the state file existed, or one where it
-# was deleted: the pointers themselves still record what was applied.
-infer_state() {
-    t=$(readlink "$REPO/sway/.config/sway/theme.env" 2>/dev/null) || return 1
-    case "$t" in
-        theme-nord.env)    echo nord ;;
-        theme-gruvbox.env) echo gruvbox ;;
-        *) return 1 ;;
-    esac
-}
+def repo_root():
+    """The repo, found from this script even when it is a stow symlink."""
+    here = Path(__file__).resolve()          # .../dotfiles/bin/.local/bin/theme
+    root = here.parents[3]
+    if not (root / "palettes.toml").is_file():
+        die(f"cannot find palettes.toml above {here}")
+    return root
 
-current_theme() { read_state || infer_state; }
 
-# ----------------------------------------------------------- discovery ---
+def flatten(palette, prefix=""):
+    """{'ansi': {'normal_red': '#x'}} -> {'ansi_normal_red': '#x'}"""
+    out = {}
+    for key, val in palette.items():
+        if isinstance(val, dict):
+            out.update(flatten(val, f"{prefix}{key}_"))
+        else:
+            out[f"{prefix}{key}"] = val
+    return out
 
-# Every fragment belonging to one palette. Fragments are regular files and the
-# pointers are symlinks, so `-type f` cannot pick up a pointer by mistake.
-# Scanning for fragments rather than for pointers is what lets this run on a
-# clone where no pointer exists yet.
-fragments() {
-    find "$REPO" -name .git -prune -o \
-        \( -type f \( -name "*-$1" -o -name "*-$1.*" \) \) -print
-}
 
-# The theme-neutral name a fragment belongs to — the inverse of retarget().
-# Anchored on the palette token rather than on an extension, because
-# `.gtkrc-2.0` has dots and no extension: deriving a fragment name *from* a
-# neutral name cannot be done safely, which is why discovery runs this way
-# round and never the other.
-neutral_of() {
-    case $1 in
-        *-"$2".*) printf '%s.%s' "${1%-$2.*}" "${1##*.}" ;;
-        *-"$2")   printf '%s' "${1%-$2}" ;;
-        *)        return 1 ;;
-    esac
-}
+def load_palettes(root):
+    with open(root / "palettes.toml", "rb") as fh:
+        data = tomllib.load(fh)
+    names = sorted(data)
+    if len(names) < 2:
+        die("palettes.toml defines fewer than two palettes")
+    # Every palette must carry the same keys. This is why the old runtime
+    # role-parity check is gone: a role missing from one palette is now a
+    # missing key, named here, instead of a colour that renders as silent
+    # black in GTK CSS.
+    shapes = {n: set(flatten(data[n])) for n in names}
+    first = names[0]
+    for other in names[1:]:
+        missing, extra = shapes[first] - shapes[other], shapes[other] - shapes[first]
+        if missing or extra:
+            die(f"{other} and {first} define different keys: "
+                f"missing={sorted(missing)} extra={sorted(extra)}")
+    return data
 
-# Rename one fragment path from theme $2 to theme $3. Pure POSIX parameter
-# expansion rather than sed, so that `.gtkrc-2.0-nord` (no extension) and
-# `colors-nord.css` (extension) are both handled unambiguously.
-retarget() {
-    case $1 in
-        *-"$2".*) printf '%s-%s.%s' "${1%-$2.*}" "$3" "${1##*.}" ;;
-        *-"$2")   printf '%s-%s' "${1%-$2}" "$3" ;;
-        *)        return 1 ;;
-    esac
-}
 
-# Both palettes must define the same role names. A role defined in only one of
-# them renders as black in GTK CSS with no error, which is near-impossible to
-# diagnose from the symptom — so refuse to switch instead.
-#
-# Plain string comparison rather than `diff <(...) <(...)`: process substitution
-# is a bashism, and this script is /bin/sh. (On Arch /bin/sh happens to be bash,
-# so it would work today — but the shebang says sh, so it stays sh.)
-check_roles() {
-    d="$REPO/sway/.config/sway"
-    a=$(grep -oE '^[A-Z_]+=' "$d/theme-nord.env" | sort)
-    b=$(grep -oE '^[A-Z_]+=' "$d/theme-gruvbox.env" | sort)
-    if [ "$a" != "$b" ]; then
-        die "theme-nord.env and theme-gruvbox.env define different roles"
-    fi
+def bindings(palette, name):
+    """Every key, plus:
 
-    an=$(grep -oE '^set \$[a-z_]+' "$d/colors-nord.conf" | sort)
-    bn=$(grep -oE '^set \$[a-z_]+' "$d/colors-gruvbox.conf" | sort)
-    if [ "$an" != "$bn" ]; then
-        die "colors-nord.conf and colors-gruvbox.conf define different roles"
-    fi
-}
+    `<key>_hex`  the colour without its leading # — foot and fuzzel want that.
+    `palette`    the palette's own name — vim and nvim name their colourscheme
+                 rather than listing its colours.
+    """
+    flat = flatten(palette)
+    out = dict(flat, palette=name)
+    for key, val in flat.items():
+        if isinstance(val, str) and val.startswith("#"):
+            out[f"{key}_hex"] = val[1:]
+    return out
 
-# Bring every pointer, and the state file, into line with $1.
-apply_theme() {
-    to=$1
-    check_roles
 
-    # Pre-flight in both directions, before writing anything. A fragment with
-    # no counterpart is the failure this cannot afford to half-apply: the
-    # pointer would be left on the other palette, silently, forever. Collect
-    # every offender rather than dying on the first — forgetting one sibling
-    # usually means forgetting several.
-    #
-    # NOTE ON VARIABLE NAMES: sh has no function-local scope, so every name set
-    # here is global. A loop variable here was once called `target`, the same
-    # name the option parser uses for the requested palette, which left this
-    # function returning with `target` holding a filename and made a switch
-    # take two invocations. Do not reuse a caller's variable name.
-    missing=""
-    for frag in $(fragments nord); do
-        want=$(retarget "$frag" nord gruvbox) || continue
-        if [ ! -e "$want" ]; then
-            missing="$missing
-  $want"
-        fi
-    done
-    for frag in $(fragments gruvbox); do
-        want=$(retarget "$frag" gruvbox nord) || continue
-        if [ ! -e "$want" ]; then
-            missing="$missing
-  $want"
-        fi
-    done
-    if [ -n "$missing" ]; then
-        die "fragment(s) with no counterpart, nothing applied:$missing"
-    fi
+def render(text, values, where):
+    def sub(match):
+        key = match.group(1)
+        if key not in values:
+            die(f"{where}: no such role '{key}' in this palette")
+        return values[key]
+    return PLACEHOLDER.sub(sub, text)
 
-    # `for` over command substitution, not a `while read` pipeline: the
-    # counters must survive the loop, and a pipeline would run it in a
-    # subshell. Safe because no path in this repo contains whitespace.
-    n=0
-    changed=0
-    for frag in $(fragments nord); do
-        want=$(retarget "$frag" nord "$to")   || continue
-        neutral=$(neutral_of "$frag" nord)    || continue
-        n=$((n + 1))
-        # Pointers are relative and bare — a path would break the moment stow
-        # folded the directory somewhere else.
-        base=${want##*/}
-        if [ "$(readlink "$neutral" 2>/dev/null || true)" != "$base" ]; then
-            ln -sfn "$base" "$neutral"
-            changed=$((changed + 1))
-        fi
-    done
 
-    printf '%s\n' "$to" > "$STATE"
+def apply_theme(root, name, data):
+    values = bindings(data[name], name)
+    count = 0
+    for tmpl in sorted(p for p in root.rglob("*.tmpl") if ".git" not in p.parts):
+        out = tmpl.with_suffix("")            # strip .tmpl; the rest is the name
+        rendered = render(tmpl.read_text(), values, tmpl.relative_to(root))
+        # Never write THROUGH a symlink. A leftover pointer from the old scheme
+        # would carry the write to its target and silently edit a tracked file.
+        if out.is_symlink():
+            out.unlink()
+        elif out.exists() and out.read_text() == rendered:
+            count += 1
+            continue
+        out.write_text(rendered)
+        count += 1
+    (root / ".theme").write_text(name + "\n")
+    print(f"  {count} files rendered from palettes.toml [{name}]")
 
-    if [ "$changed" -eq 0 ]; then
-        echo "Applied $to: $n pointers, already correct"
-    else
-        echo "Applied $to: $n pointers, $changed updated"
-    fi
-}
 
-reload_desktop() {
-    # sway reload also restarts waybar (it owns the bar process), re-runs
-    # scripts/import-gsettings (pushing the new GTK/icon/cursor names into
-    # gsettings, which is what libadwaita apps read), and re-execs nwg-drawer.
-    if command -v swaymsg >/dev/null 2>&1 && swaymsg -t get_version >/dev/null 2>&1; then
-        sway --validate -c "$HOME/.config/sway/config" || die "sway config is invalid; not reloading"
-        swaymsg reload >/dev/null
-        echo "  sway, waybar, nwg-drawer, gsettings  reloaded"
-    else
-        echo "  sway not running; skipped"
-    fi
+def run_ok(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
+
+def reload_desktop(home):
+    """sway reload also restarts waybar, re-runs import-gsettings and nwg-drawer."""
+    if shutil.which("swaymsg") and run_ok(["swaymsg", "-t", "get_version"]):
+        if not run_ok(["sway", "--validate", "-c", str(home / ".config/sway/config")]):
+            die("sway config is invalid; not reloading")
+        subprocess.run(["swaymsg", "reload"], capture_output=True)
+        print("  sway, waybar, nwg-drawer, gsettings  reloaded")
+    else:
+        print("  sway not running; skipped")
     # mako is exec'd, not exec_always'd, so a sway reload does not restart it.
-    if command -v makoctl >/dev/null 2>&1 && makoctl reload 2>/dev/null; then
-        echo "  mako                                  reloaded"
-    fi
-}
+    if shutil.which("makoctl") and run_ok(["makoctl", "reload"]):
+        print("  mako                                  reloaded")
 
-reload_icons() {
-    # Guard rather than let `.` fail: sourcing a missing file under `set -e`
-    # aborts the script with a bare "No such file or directory" naming a
-    # nonsense path, which says nothing about where the bad name came from.
-    env_file="$REPO/sway/.config/sway/theme-$1.env"
-    if [ ! -f "$env_file" ]; then
-        die "no palette named '$1' (expected $env_file)"
-    fi
-    . "$env_file"
-    command -v papirus-folders >/dev/null 2>&1 || return 0
 
-    # `papirus-folders -l` marks the active colour with a leading "> ".
-    active=$(papirus-folders -l 2>/dev/null | awk '/^ *>/ {print $2}')
-    if [ "$active" = "$PAPIRUS_FOLDER" ]; then
-        return 0
-    fi
+def reload_icons(values):
+    """papirus-folders writes into /usr/share/icons — the one step needing root."""
+    wanted = values.get("papirus_folder")
+    if not wanted or not shutil.which("papirus-folders"):
+        return
+    listing = subprocess.run(["papirus-folders", "-l"], capture_output=True, text=True)
+    for line in listing.stdout.splitlines():
+        if line.strip().startswith(">") and line.split()[-1] == wanted:
+            return                            # already this colour
+    if not sys.stdin.isatty():
+        print("  papirus-folders needs sudo; skipped (not a terminal)")
+        return
+    subprocess.run(["sudo", "papirus-folders", "-C", wanted, "--theme", "Papirus-Dark"])
 
-    # Writes into /usr/share/icons, so it is the one step needing root and the
-    # one thing that cannot be stowed. Skip rather than hang when there is no
-    # terminal to prompt on.
-    if [ ! -t 0 ]; then
-        echo "  papirus-folders  SKIPPED (no tty for sudo); run: sudo papirus-folders -C $PAPIRUS_FOLDER -t Papirus-Dark"
-        return 0
-    fi
-    echo "  papirus-folders -> $PAPIRUS_FOLDER (needs sudo)"
-    sudo papirus-folders -C "$PAPIRUS_FOLDER" -t Papirus-Dark >/dev/null
-}
 
-do_icons=1
-restart_terminals=0
-target=""
-for arg in "$@"; do
-    case "$arg" in
-        --no-icons)          do_icons=0 ;;
-        --restart-terminals) restart_terminals=1 ;;
-        -h|--help)           usage; exit 0 ;;
-        -*)                  die "unknown option: $arg" ;;
-        *)                   target=$arg ;;
-    esac
-done
+def main(argv):
+    root = repo_root()
+    data = load_palettes(root)
+    want_icons, name = True, None
+    for arg in argv:
+        if arg == "--no-icons":
+            want_icons = False
+        elif arg == "--list":
+            print("\n".join(sorted(data)))
+            return 0
+        elif arg.startswith("-"):
+            die(f"unknown option {arg}")
+        elif name is None:
+            name = arg
+        else:
+            die("give at most one palette")
 
-if [ -z "$target" ]; then
-    # Both flags only mean anything as part of a switch. Without a palette
-    # named, the no-argument path below would print the active theme and exit
-    # 0 with the flag silently discarded — which reads exactly like success,
-    # and is why `theme --restart-terminals` looked like it had restarted the
-    # terminals when it had done nothing at all. Refuse instead, and show the
-    # form that works rather than only complaining about the one that doesn't.
-    flags=""
-    if [ "$do_icons" -eq 0 ];          then flags="$flags --no-icons"; fi
-    if [ "$restart_terminals" -eq 1 ]; then flags="$flags --restart-terminals"; fi
-    if [ -n "$flags" ]; then
-        cur=$(current_theme) || cur=nord
-        die_usage "no palette named, so$flags would have been ignored.
+    state = root / ".theme"
+    if name is None:
+        name = state.read_text().strip() if state.is_file() else None
+        if name is None:
+            die(f"no palette given and no .theme yet; try: theme {sorted(data)[0]}")
+    if name not in data:
+        die(f"no palette named '{name}' (have: {', '.join(sorted(data))})")
 
-  These flags only apply to applying a palette. Naming the one you are already
-  on is fine — re-applying is idempotent, and the flag still runs:
+    apply_theme(root, name, data)
+    reload_desktop(Path(os.path.expanduser("~")))
+    if want_icons:
+        reload_icons(bindings(data[name], name))
+    return 0
 
-      theme $cur$flags"
-    fi
 
-    current_theme || die "cannot determine the active theme; no $STATE and no pointers to read"
-    exit 0
-fi
-
-if [ "$target" = toggle ]; then
-    case $(current_theme) in
-        nord) target=gruvbox ;;
-        *)    target=nord ;;
-    esac
-fi
-
-case " $THEMES " in
-    *" $target "*) ;;
-    *) die "unknown theme '$target' (known: $THEMES)" ;;
-esac
-
-apply_theme "$target"
-reload_desktop
-if [ "$do_icons" -eq 1 ]; then
-    reload_icons "$target"
-fi
-
-if [ "$restart_terminals" -eq 1 ]; then
-    pkill -x foot 2>/dev/null || true
-    foot --server >/dev/null 2>&1 &
-    echo "  foot --server restarted"
-else
-    # foot has no config-reload signal: SIGUSR1/2 only pick between the
-    # [colors-dark] and [colors-light] blocks loaded at startup.
-    echo
-    echo "Not yet showing the new palette:"
-    echo "  foot        open terminals and the running server keep the old colours."
-    echo "              Re-run with --restart-terminals, or log out."
-fi
-echo "  GTK apps    already-running ones keep the old theme; restart them."
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
