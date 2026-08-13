@@ -7,13 +7,12 @@
     // (stacked "\n" formats, or "rotate": 270 for long text) or thi2 is ignored.
     "width": 45,
     "spacing": 0, // Gaps between modules (in px)
-    // The clock module lives in colors.json — a symlink to colors-nord.json or
     // colors-gruvbox.json, flipped by ~/.local/bin/theme — because its calendar
     // tooltip carries inline Pango colours and JSON has no variables.
     //
     // waybar's include gives precedence to the INCLUDING file, so `clock` must
     // NOT also be defined here or the fragment would be ignored entirely.
-    "include": ["~/.config/waybar/colors.json"],
+    "include": ["~/.config/waybar/colors.gen.json"],
     // See `man waybar` for more configuration options
 
 // Configuration - modules-left

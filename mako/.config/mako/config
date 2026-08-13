@@ -5,10 +5,9 @@
 
 font=JetBrains Mono 11
 
-# Palette. `colors` is a symlink to colors-nord or colors-gruvbox;
 # ~/.local/bin/theme flips it, then runs `makoctl reload` — mako is exec'd
 # rather than exec_always'd in sway, so a sway reload does NOT restart it.
-include=~/.config/mako/colors
+include=~/.config/mako/colors.gen
 
 width=315
 height=200

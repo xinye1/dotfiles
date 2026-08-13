@@ -1,10 +1,9 @@
 [general]
 import = [
-    # `colors.toml` is a symlink to colors-nord.toml or colors-gruvbox.toml;
     # ~/.local/bin/theme flips it. Both live in this package, so alacritty no
     # longer depends on the untracked ~/.config/alacritty/themes clone for its
     # palette — the clone is only needed if you want other schemes to hand.
-    "~/.config/alacritty/colors.toml"
+    "~/.config/alacritty/colors.gen.toml"
 ]
 
 [font.offset]

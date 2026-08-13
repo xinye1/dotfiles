@@ -2,9 +2,8 @@
 
 # Set the font
 font="JetBrainsMono Nerd Font"
-# Section headers use the accent role. theme.env is a symlink switched by
 # ~/.local/bin/theme, so this follows the active palette.
-. "$HOME/.config/sway/theme.env"
+. "$HOME/.config/sway/theme.gen.env"
 header="$ACCENT"
 
 cheat=(

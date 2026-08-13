@@ -134,6 +134,15 @@ else
     no "no tracked config carries a literal hex" "$(echo "$stray" | tr '\n' ' ')"
 fi
 
+# Every colour file an application includes must be one a template produces.
+# This is the assertion that would have caught a repointing being reverted: the
+# include still named `colors.css`, no template produced it any more, and
+# nothing failed loudly because sway and GTK treat a missing include as a
+# warning rather than an error.
+python3 "$REPO/tests/check_includes.py" "$REPO" \
+  && ok "every include names a file a template renders" \
+  || no "every include names a file a template renders"
+
 # Switching is an operational change, never a git one.
 if [ -d "$REPO/.git" ]; then
     before=$(cd "$REPO" && git status --porcelain | sort | md5sum)
