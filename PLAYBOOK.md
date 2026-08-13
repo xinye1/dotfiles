@@ -207,12 +207,12 @@ theme --list       # what is available
 theme --no-icons   # skip papirus-folders, which needs sudo
 ```
 
-`theme` renders every template, writes the palette name to `.theme`,
+`theme` renders every template, records the palette in `$XDG_STATE_HOME/theme/palette`,
 then reloads: `sway --validate` before `swaymsg reload` (which also restarts waybar, re-runs
 `import-gsettings` and re-execs nwg-drawer), then `makoctl reload` separately, because mako is
 `exec`'d rather than `exec_always`'d and a sway reload does not restart it.
 
-**Switching is not a repo change.** `.theme` and every rendered file are gitignored, so a switch
+**Switching is not a repo change.** The state file lives outside the repo and every rendered file is gitignored, so a switch
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,

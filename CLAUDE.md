@@ -39,7 +39,7 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   earlier file that needs a colour must call a script that sources `theme.gen.env` at runtime.
 - **`vim.pack` writes `nvim-pack-lock.json` into `~/.config/nvim`**, not into the data dir where the
   plugin code goes — and `nvim` is folded, so that is *the repo*. It is **tracked on purpose**: a
-  pinned revision belongs to the configuration, unlike `.theme`. So `:lua vim.pack.update()` dirties
+  pinned revision belongs to the configuration, unlike the active palette. So `:lua vim.pack.update()` dirties
   the tree by design and the lockfile diff is meant to be committed. Don't "fix" it by gitignoring —
   that would put untracked content inside a folded package. Note §5.2 now records one standing
   exception to that rule — the rendered `*.gen.*` palette files — and it is an exception precisely
@@ -78,8 +78,14 @@ No build. `stow -n -v <pkg>` (dry run) is the verification step for a package �
 One test suite, for the one thing here with real logic:
 
 ```sh
-sh tests/theme_test.sh
+sh tests/theme_test.sh        # sandboxed; never touches the live desktop
+sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 ```
+
+`check_consumers.sh` is the one that would have caught the two breakages that
+reached the desktop: it asks waybar, foot, sway, vim and nvim whether they
+accept what was rendered, rather than inspecting the files from outside. It
+briefly starts a second waybar.
 
 **Run it after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under a fake `$HOME`
 and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live desktop. `tests/` is a
@@ -106,7 +112,8 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   a shortcut is for something you do often, and changing palette is not. Never switch by
   editing configs, and never introduce a theme stow package — a second package writing into a folded
   target would unfold it.
-- **Switching is not a repo change.** `.theme` holds the active palette; it and every rendered file
+- **Switching is not a repo change.** `$XDG_STATE_HOME/theme/palette` holds the active palette,
+  outside the repo because it is machine state, not configuration; every rendered file
   are gitignored, so a switch leaves `git status` untouched. If a switch ever dirties the tree the
   naming scheme has been broken, which `tests/theme_test.sh` asserts.
 - **`theme` must run before `stow` on a fresh clone** — rendered files don't exist in a clone, and
