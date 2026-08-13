@@ -21,7 +21,8 @@ COMMENT_MARKERS = {
     ".json": (None, r'^\s*//'),      # waybar's JSON accepts // comments
 }
 DEFAULT_COMMENT = r'^\s*#'
-HEX = re.compile(r'#[0-9a-fA-F]{6}\b')
+# 3-, 4-, 6- and 8-digit forms are all legal CSS/GTK colours.
+HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
 SKIP_PREFIX = ("tests/", "docs/")
 SKIP_EXACT = {"palettes.toml"}
 

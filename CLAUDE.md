@@ -78,8 +78,7 @@ No build. `stow -n -v <pkg>` (dry run) is the verification step for a package â€
 One test suite, for the one thing here with real logic:
 
 ```sh
-sh tests/theme_test.sh                                  # the copy in the repo
-THEME_BIN=~/.local/bin/theme sh tests/theme_test.sh     # the installed symlink
+sh tests/theme_test.sh
 ```
 
 **Run it after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under a fake `$HOME`

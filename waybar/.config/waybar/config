@@ -7,7 +7,7 @@
     // (stacked "\n" formats, or "rotate": 270 for long text) or thi2 is ignored.
     "width": 45,
     "spacing": 0, // Gaps between modules (in px)
-    // colors-gruvbox.json, flipped by ~/.local/bin/theme — because its calendar
+    // colors.gen.json, rendered by ~/.local/bin/theme — because its calendar
     // tooltip carries inline Pango colours and JSON has no variables.
     //
     // waybar's include gives precedence to the INCLUDING file, so `clock` must

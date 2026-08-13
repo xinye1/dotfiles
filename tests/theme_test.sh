@@ -4,8 +4,7 @@
 # Runs against a throwaway copy of the repo under a fake $HOME, with swaymsg,
 # sway and makoctl stubbed to fail, so it never touches the live desktop.
 #
-#   sh tests/theme_test.sh                                # the copy in the repo
-#   THEME_BIN=~/.local/bin/theme sh tests/theme_test.sh   # the installed symlink
+#   sh tests/theme_test.sh
 #
 # What is worth testing changed with the mechanism. The old suite guarded the
 # eighteen pointers and the hand-written ignore list; neither exists now. What
@@ -16,7 +15,19 @@
 set -eu
 
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-THEME_BIN=${THEME_BIN:-$REPO/bin/.local/bin/theme}
+
+# REPO is derived from this script's location, so running a COPY of it from
+# somewhere else resolves it somewhere else too -- from /tmp it resolves to /,
+# and the `cp -r "$REPO"` below then copies the entire filesystem into a tmpfs.
+# That is not hypothetical; it filled a 16G /tmp. Refuse unless REPO really is
+# the repo.
+for marker in palettes.toml bin/.local/bin/theme .stowrc; do
+    [ -e "$REPO/$marker" ] || {
+        printf 'theme_test: %s does not look like the dotfiles repo (no %s).\n' "$REPO" "$marker" >&2
+        printf 'theme_test: run this script from inside the repo, not a copy.\n' >&2
+        exit 2
+    }
+done
 pass=0; fail=0
 
 ok()   { pass=$((pass+1)); printf '  ok    %s\n' "$1"; }
@@ -35,12 +46,24 @@ for stub in swaymsg sway makoctl papirus-folders; do
     printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/$stub"
     chmod +x "$WORK/bin/$stub"
 done
+HOME_REAL=$HOME
 PATH=$WORK/bin:$PATH
 export PATH HOME=$WORK
 
 theme() { python3 "$SANDBOX/bin/.local/bin/theme" "$@" 2>&1; }
 
 printf '\ntheme\n'
+
+# The installed script is checked, but never used to RENDER: it resolves its
+# repo from its own path, so rendering through it would write to the live tree.
+# `--list` proves the symlink and the interpreter are good without doing that.
+if [ -x "$HOME_REAL/.local/bin/theme" ]; then
+    if "$HOME_REAL/.local/bin/theme" --list >/dev/null 2>&1; then
+        ok "the installed ~/.local/bin/theme runs"
+    else
+        no "the installed ~/.local/bin/theme runs"
+    fi
+fi
 
 # --- the CLI contract -------------------------------------------------------
 out=$(theme --list | tr '\n' ' ' | sed 's/ *$//')
@@ -133,7 +156,7 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
 # it. A banner written in the wrong comment syntax renders fine and fails at
 # the consumer: `#` is a comment in most of these formats and in neither JSON
 # nor legacy vimscript, and that is how the bar disappeared.
-python3 "$REPO/tests/check_syntax.py" "$REPO" \
+python3 "$REPO/tests/check_syntax.py" "$SANDBOX" \
   && ok "every rendered file parses for its consumer" \
   || no "every rendered file parses for its consumer"
 

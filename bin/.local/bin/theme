@@ -136,8 +136,11 @@ def reload_desktop(home):
     if shutil.which("swaymsg") and run_ok(["swaymsg", "-t", "get_version"]):
         if not run_ok(["sway", "--validate", "-c", str(home / ".config/sway/config")]):
             die("sway config is invalid; not reloading")
-        subprocess.run(["swaymsg", "reload"], capture_output=True)
-        print("  sway, waybar, nwg-drawer, gsettings  reloaded")
+        if run_ok(["swaymsg", "reload"]):
+            print("  sway, waybar, nwg-drawer, gsettings  reloaded")
+        else:
+            print("  swaymsg reload FAILED; the rendered files are in place "
+                  "but the desktop still shows the old palette")
     else:
         print("  sway not running; skipped")
     # mako is exec'd, not exec_always'd, so a sway reload does not restart it.
