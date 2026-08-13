@@ -9,7 +9,6 @@
 /* -----------------------------------------------------------------------------
  * Palette
  *
- * `colors.css` is a symlink to colors-nord.css or colors-gruvbox.css;
  * ~/.local/bin/theme flips it. Never write a hex below — use a role.
  *
  * Role convention, shared with sway's colors.conf and every other config here:
@@ -17,7 +16,7 @@
  *   warning  warning               critical  urgent
  * -------------------------------------------------------------------------- */
 
-@import url("colors.css");
+@import url("colors.gen.css");
 
 /* -----------------------------------------------------------------------------
  * Keyframes

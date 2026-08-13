@@ -42,14 +42,13 @@ end
 
 --==== Colours ====
 --
--- colorscheme.lua is a symlink switched by ~/.local/bin/theme, exactly like
 -- vim's colorscheme.vim. Guarded so a tree where `theme` has not been run yet
 -- starts nvim instead of erroring on every launch.
 --
 -- termguicolors is set next to the highlights in highlights.lua, not here: it
 -- must be on before they are defined, and a fragment that only works when
 -- sourced from this file is a trap for whoever reads it next.
-local palette = vim.fn.stdpath('config') .. '/colorscheme.lua'
+local palette = vim.fn.stdpath('config') .. '/colorscheme.gen.lua'
 if vim.uv.fs_stat(palette) then
   dofile(palette)
 end

@@ -1,10 +1,9 @@
 /* nwg-drawer — the application grid on $mod+Shift+d.
  *
- * Palette: `colors.css` is a symlink to colors-nord.css or colors-gruvbox.css;
  * ~/.local/bin/theme flips it. nwg-drawer runs resident (-r), and sway's
  * exec_always re-execs it on reload, so the switch applies automatically. */
 
-@import url("colors.css");
+@import url("colors.gen.css");
 
 window {
     background-color: alpha(@bg, 0.9);

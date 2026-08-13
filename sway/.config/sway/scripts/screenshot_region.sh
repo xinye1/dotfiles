@@ -11,7 +11,7 @@
 # sidesteps parse ordering completely.
 set -eu
 
-. "$HOME/.config/sway/theme.env"
+. "$HOME/.config/sway/theme.gen.env"
 
 # slurp exits non-zero when the selection is cancelled with Escape. Bail out
 # rather than handing grim an empty geometry, which the previous inline

@@ -1,0 +1,86 @@
+# The palette table. This file is the source of truth for every colour in
+# the desktop: nothing else may contain a literal hex value.
+#
+# Each palette defines exactly the same keys. A key present in one and
+# missing from the other is a render-time error naming the role and the
+# palette -- which is why the old runtime role-parity check is gone.
+
+[nord]
+bg = "#2e3440"
+surface = "#3b4252"
+sel = "#434c5e"
+muted = "#4c566a"
+fg = "#d8dee9"
+fg_bright = "#eceff4"
+accent = "#88c0d0"
+accent2 = "#5e81ac"
+indicator = "#8fbcbb"
+critical = "#bf616a"
+warning = "#ebcb8b"
+success = "#a3be8c"
+desktop = "#272b33"
+
+# Not colours, but per-palette all the same.
+gtk_theme_name = "Nordic"
+papirus_folder = "nordic"
+
+# The 16-colour terminal ramp, shared by alacritty and foot. Previously
+# duplicated across both, with a comment asking that they be kept in step
+# by hand; now they render from here.
+[nord.ansi]
+bright_black = "#4c566a"
+bright_blue = "#81a1c1"
+bright_cyan = "#8fbcbb"
+bright_green = "#a3be8c"
+bright_magenta = "#b48ead"
+bright_red = "#bf616a"
+bright_white = "#eceff4"
+bright_yellow = "#ebcb8b"
+normal_black = "#3b4252"
+normal_blue = "#81a1c1"
+normal_cyan = "#88c0d0"
+normal_green = "#a3be8c"
+normal_magenta = "#b48ead"
+normal_red = "#bf616a"
+normal_white = "#e5e9f0"
+normal_yellow = "#ebcb8b"
+
+[gruvbox]
+bg = "#282828"
+surface = "#3c3836"
+sel = "#504945"
+muted = "#7c6f64"
+fg = "#ebdbb2"
+fg_bright = "#fbf1c7"
+accent = "#fabd2f"
+accent2 = "#d65d0e"
+indicator = "#8ec07c"
+critical = "#fb4934"
+warning = "#fe8019"
+success = "#b8bb26"
+desktop = "#1d2021"
+
+# Not colours, but per-palette all the same.
+gtk_theme_name = "Colloid-Yellow-Dark-Gruvbox"
+papirus_folder = "yellow"
+
+# The 16-colour terminal ramp, shared by alacritty and foot. Previously
+# duplicated across both, with a comment asking that they be kept in step
+# by hand; now they render from here.
+[gruvbox.ansi]
+bright_black = "#928374"
+bright_blue = "#83a598"
+bright_cyan = "#8ec07c"
+bright_green = "#b8bb26"
+bright_magenta = "#d3869b"
+bright_red = "#fb4934"
+bright_white = "#ebdbb2"
+bright_yellow = "#fabd2f"
+normal_black = "#3c3836"
+normal_blue = "#458588"
+normal_cyan = "#689d6a"
+normal_green = "#98971a"
+normal_magenta = "#b16286"
+normal_red = "#cc241d"
+normal_white = "#a89984"
+normal_yellow = "#d79921"

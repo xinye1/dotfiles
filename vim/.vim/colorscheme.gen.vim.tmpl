@@ -1,0 +1,12 @@
+" Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+" vim and lightline colours.
+"
+" Requires the colourscheme plugin named after the palette in
+" ~/.vim/pack/plugins/start/ -- see PLAYBOOK.md §8.
+" `background=dark` must be set before the colorscheme.
+" choose between its light and dark variants, and defaults to light.
+
+set termguicolors
+set background=dark
+colorscheme {{palette}}
+let g:lightline = { 'colorscheme': '{{palette}}' }

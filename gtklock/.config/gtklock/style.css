@@ -1,13 +1,12 @@
 /* gtklock — the lock screen ($mod+f1, and on idle/before-sleep).
  *
- * Palette: `colors.css` is a symlink to colors-nord.css or colors-gruvbox.css;
  * ~/.local/bin/theme flips it. gtklock reads its style at launch, so a switch
  * applies to the next lock with no reload needed.
  *
  * The background was a 22M image sitting in this config dir; it now lives in
  * ~/Pictures/wallpapers and this is a solid @bg, matching the desktop. */
 
-@import url("colors.css");
+@import url("colors.gen.css");
 
 * {
   border: none;

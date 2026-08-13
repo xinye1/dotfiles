@@ -271,7 +271,6 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
 # Theme
 #
     # Switch between the Nord and Gruvbox palettes. See ~/.local/bin/theme.
-    bindsym $mod+Shift+t exec theme toggle
 
 #
 # Screenshots

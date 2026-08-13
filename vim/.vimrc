@@ -5,11 +5,10 @@
 syntax enable " enable syntax processing
 filetype plugin indent on
 
-" Palette. colorscheme.vim is a symlink switched by ~/.local/bin/theme.
 " Guarded so a machine without the clones from PLAYBOOK.md §8 still starts vim
 " instead of erroring on every launch.
-if filereadable(expand('~/.vim/colorscheme.vim'))
-  source ~/.vim/colorscheme.vim
+if filereadable(expand('~/.vim/colorscheme.gen.vim'))
+  source ~/.vim/colorscheme.gen.vim
 endif
 
 "==== Spaces & tabs ====
@@ -70,5 +69,4 @@ nmap <Leader>P "+P
 " "autocmd FileType python match Excess /\%120v.*/
 " autocmd FileType python set nowrap
 " augroup END
-
 

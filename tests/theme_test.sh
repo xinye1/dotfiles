@@ -1,329 +1,186 @@
 #!/bin/sh
-# theme_test.sh — regression tests for bin/.local/bin/theme.
+# Tests for `theme` and the palette table.
 #
-#   sh tests/theme_test.sh              test the copy in this repo
-#   THEME_BIN=~/.local/bin/theme sh tests/theme_test.sh   test the installed one
+# Runs against a throwaway copy of the repo under a fake $HOME, with swaymsg,
+# sway and makoctl stubbed to fail, so it never touches the live desktop.
 #
-# HOW IT AVOIDS TOUCHING THE LIVE DESKTOP
-#   `theme` derives REPO from $HOME, so each case runs with HOME pointed at a
-#   throwaway tree containing a miniature of the real repo — the same fragment
-#   shapes (`colors-nord.ini` with an extension, `.gtkrc-2.0-nord` and mako's
-#   `colors-nord` without one), just five pairs instead of seventeen.
+#   sh tests/theme_test.sh
 #
-#   PATH is replaced with a stub directory in which swaymsg, sway and makoctl
-#   all exit 1, so reload_desktop takes its "sway not running" branch and never
-#   reaches `swaymsg reload`. pkill and foot are stubbed for safety rather than
-#   for assertions: --restart-terminals runs `pkill -x foot`, and with the real
-#   binary on PATH a test would kill the terminals of whoever ran the suite.
-#   stdin is /dev/null, so reload_icons takes its "no tty for sudo" branch and
-#   prints $PAPIRUS_FOLDER instead of calling sudo — that printed value is the
-#   observable proving reload_icons was handed the palette name rather than
-#   some other variable's contents.
-#
-# WHAT THIS PINS
-#   The switcher's contract: `.theme` is the single source of truth, the
-#   pointers are derived from it and from the fragments on disk, applying is
-#   idempotent and repairs damage, and nothing half-applies. Two of these
-#   started as real bugs — a switch that needed two invocations, and a flag
-#   that was silently discarded — and both have a case here.
-#
-# NOT COVERED
-#   The `[ ! -f "$env_file" ]` guard in reload_icons is unreachable from the
-#   CLI (the palette name is validated against $THEMES first). It is a backstop
-#   for a future caller, deliberately left untested rather than reached by a
-#   contrived edit to the script under test.
+# What is worth testing changed with the mechanism. The old suite guarded the
+# eighteen pointers and the hand-written ignore list; neither exists now. What
+# can still go wrong is a template referring to a role no palette defines, the
+# two palettes drifting apart, a literal hex sneaking back into a config, or a
+# switch dirtying the tree.
+
 set -eu
 
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SCRIPT=${THEME_BIN:-$here/../bin/.local/bin/theme}
-REALREPO=$(CDPATH= cd -- "$here/.." && pwd)
+REPO=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-[ -r "$SCRIPT" ] || { printf 'theme_test: cannot read %s\n' "$SCRIPT" >&2; exit 2; }
+# REPO is derived from this script's location, so running a COPY of it from
+# somewhere else resolves it somewhere else too -- from /tmp it resolves to /,
+# and the `cp -r "$REPO"` below then copies the entire filesystem into a tmpfs.
+# That is not hypothetical; it filled a 16G /tmp. Refuse unless REPO really is
+# the repo.
+for marker in palettes.toml bin/.local/bin/theme .stowrc; do
+    [ -e "$REPO/$marker" ] || {
+        printf 'theme_test: %s does not look like the dotfiles repo (no %s).\n' "$REPO" "$marker" >&2
+        printf 'theme_test: run this script from inside the repo, not a copy.\n' >&2
+        exit 2
+    }
+done
+pass=0; fail=0
 
-pass=0
-fail=0
+ok()   { pass=$((pass+1)); printf '  ok    %s\n' "$1"; }
+no()   { fail=$((fail+1)); printf '  FAIL  %s\n' "$1"; [ $# -lt 2 ] || printf '        %s\n' "$2"; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "got '$2', want '$3'"; fi; }
 
-ok() { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
-no() {
-    fail=$((fail + 1))
-    printf '  FAIL  %s\n' "$1"
-    if [ $# -ge 2 ]; then printf '        %s\n' "$2"; fi
-}
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+cp -r "$REPO" "$WORK/dotfiles"
+rm -rf "$WORK/dotfiles/.git"
+SANDBOX=$WORK/dotfiles
 
-contains()  { case "$2" in *"$3"*) ok "$1" ;; *) no "$1" "expected to contain: $3" ;; esac; }
-excludes()  { case "$2" in *"$3"*) no "$1" "should not contain: $3" ;; *) ok "$1" ;; esac; }
-equals()    { if [ "$2" = "$3" ]; then ok "$1"; else no "$1" "want '$3', got '$2'"; fi; }
-exited()    { if [ "$rc" = "$2" ]; then ok "$1"; else no "$1" "want exit $2, got $rc"; fi; }
+# Stubs: the desktop must never be touched by a test run.
+mkdir -p "$WORK/bin"
+for stub in swaymsg sway makoctl papirus-folders; do
+    printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/$stub"
+    chmod +x "$WORK/bin/$stub"
+done
+HOME_REAL=$HOME
+PATH=$WORK/bin:$PATH
+export PATH HOME=$WORK
 
-# ---------------------------------------------------------------- fixture ---
+theme() { python3 "$SANDBOX/bin/.local/bin/theme" "$@" 2>&1; }
 
-T=""
-cleanup() { if [ -n "$T" ]; then rm -rf "$T"; fi; }
-trap cleanup EXIT INT TERM
+printf '\ntheme\n'
 
-pointers() {
-    printf '%s\n' \
-        "$D/theme.env" \
-        "$D/colors.conf" \
-        "$R/foot/.config/foot/colors.ini" \
-        "$R/gtk/.gtkrc-2.0" \
-        "$R/mako/.config/mako/colors"
-}
-
-# A clone as git would leave it: fragments only. No pointers, no state — the
-# state the switcher has to be able to bootstrap from.
-fixture_bare() {
-    cleanup
-    T=$(mktemp -d)
-    R=$T/repos/dotfiles
-    D=$R/sway/.config/sway
-    mkdir -p "$D" "$R/foot/.config/foot" "$R/gtk" "$R/mako/.config/mako" "$T/stub"
-
-    # Same variable names in both, as check_roles requires.
-    printf 'BG=#2E3440\nPAPIRUS_FOLDER=nordic\nGTK_THEME_NAME=Nordic\n'  > "$D/theme-nord.env"
-    printf 'BG=#282828\nPAPIRUS_FOLDER=yellow\nGTK_THEME_NAME=Colloid\n' > "$D/theme-gruvbox.env"
-    printf 'set $bg #2E3440\n' > "$D/colors-nord.conf"
-    printf 'set $bg #282828\n' > "$D/colors-gruvbox.conf"
-    : > "$R/foot/.config/foot/colors-nord.ini"
-    : > "$R/foot/.config/foot/colors-gruvbox.ini"
-    : > "$R/gtk/.gtkrc-2.0-nord"
-    : > "$R/gtk/.gtkrc-2.0-gruvbox"
-    : > "$R/mako/.config/mako/colors-nord"
-    : > "$R/mako/.config/mako/colors-gruvbox"
-
-    for c in swaymsg sway makoctl pkill foot; do
-        printf '#!/bin/sh\nexit 1\n' > "$T/stub/$c"
-        chmod +x "$T/stub/$c"
-    done
-    # Silent, so reload_icons sees no active colour and always takes the
-    # "would change it" path.
-    printf '#!/bin/sh\nexit 0\n' > "$T/stub/papirus-folders"
-    chmod +x "$T/stub/papirus-folders"
-}
-
-# A tree with a palette already applied: pointers in place and state written.
-fixture() { # fixture <applied-theme>
-    fixture_bare
-    point_at "$1"
-    printf '%s\n' "$1" > "$R/.theme"
-}
-
-point_at() { # point_at <theme>
-    ln -sfn "theme-$1.env"   "$D/theme.env"
-    ln -sfn "colors-$1.conf" "$D/colors.conf"
-    ln -sfn "colors-$1.ini"  "$R/foot/.config/foot/colors.ini"
-    ln -sfn ".gtkrc-2.0-$1"  "$R/gtk/.gtkrc-2.0"
-    ln -sfn "colors-$1"      "$R/mako/.config/mako/colors"
-}
-
-run() { # run [args...] -> sets $out and $rc
-    out=$(HOME=$T PATH=$T/stub:/usr/bin:/bin sh "$SCRIPT" "$@" </dev/null 2>&1) && rc=0 || rc=$?
-}
-
-all_point_at() { # all_point_at <desc> <theme>
-    bad=""
-    for l in $(pointers); do
-        t=$(readlink "$l" 2>/dev/null || true)
-        case "$t" in
-            *"$2"*) ;;
-            *) bad="$bad $(basename "$l")->${t:-MISSING}" ;;
-        esac
-    done
-    if [ -z "$bad" ]; then ok "$1"; else no "$1" "not on $2:$bad"; fi
-}
-
-state_is() { # state_is <desc> <theme>
-    s=$(cat "$R/.theme" 2>/dev/null || true)
-    equals "$1" "$s" "$2"
-}
-
-# ------------------------------------------------------------------ cases ---
-
-echo
-echo "theme_test: $SCRIPT"
-echo
-
-echo "a clone with no pointers and no state bootstraps from the fragments"
-fixture_bare
-run gruvbox
-exited   'exits 0'                       0
-contains 'creates every pointer'         "$out" 'Applied gruvbox: 5 pointers, 5 updated'
-contains 'reload_icons gets the palette' "$out" 'yellow'
-excludes 'no missing-file error'         "$out" 'No such file or directory'
-all_point_at 'both extension and extensionless pointers exist' gruvbox
-state_is 'and the state file is written' gruvbox
-
-echo
-echo "one invocation completes the whole switch"
-fixture nord
-run gruvbox
-exited   'exits 0'                       0
-contains 'moves every pointer'           "$out" 'Applied gruvbox: 5 pointers, 5 updated'
-contains 'reload_icons gets the palette' "$out" 'yellow'
-excludes 'no mangled fragment path'      "$out" '.env.env'
-all_point_at 'every pointer moved'       gruvbox
-state_is 'state follows'                 gruvbox
-
-echo
-echo "re-applying the palette already on is idempotent, not a no-op"
-fixture gruvbox
-run gruvbox
-exited   'exits 0'                    0
-contains 'says nothing needed doing'  "$out" 'Applied gruvbox: 5 pointers, already correct'
-contains 'still runs the icon step'   "$out" 'yellow'
-all_point_at 'nothing moved'          gruvbox
-
-echo
-echo "re-applying repairs a pointer that was deleted or corrupted"
-fixture gruvbox
-rm "$R/foot/.config/foot/colors.ini"
-ln -sfn colors-nord.ini "$R/mako/.config/mako/colors"
-run gruvbox
-exited   'exits 0'                  0
-contains 'repairs exactly the two'  "$out" 'Applied gruvbox: 5 pointers, 2 updated'
-all_point_at 'all consistent again' gruvbox
-
-echo
-echo "the state file is the source of truth for the active palette"
-fixture gruvbox
-run
-exited 'exits 0' 0
-equals 'reports what .theme says' "$out" 'gruvbox'
-
-# Trees written before .theme existed must keep working, so the pointers are
-# the documented fallback — but only the fallback.
-fixture_bare
-point_at nord
-run
-exited 'exits 0 with no state file'      0
-equals 'falls back to reading a pointer' "$out" 'nord'
-
-fixture_bare
-run
-exited 'exits 1 with neither'  1
-contains 'and says why'        "$out" 'cannot determine the active theme'
-
-echo
-echo "toggle flips to the other palette"
-fixture nord
-run toggle
-exited   'exits 0'             0
-contains 'switches to gruvbox' "$out" 'Applied gruvbox'
-all_point_at 'every pointer moved' gruvbox
-state_is 'state follows' gruvbox
-
-echo
-echo "a flag with no palette named is refused, not silently ignored"
-fixture nord
-run --restart-terminals
-exited   'exits 1'                     1
-contains 'names the ignored flag'      "$out" '--restart-terminals'
-contains 'suggests the active palette' "$out" 'theme nord --restart-terminals'
-contains 'prints the help page'        "$out" 'theme nord|gruvbox    switch'
-all_point_at 'nothing moved'           nord
-
-fixture gruvbox
-run --no-icons
-exited   'exits 1 for --no-icons too' 1
-contains 'names that flag'            "$out" '--no-icons'
-
-fixture nord
-run gruvbox --restart-terminals
-exited   'the suggested form works'     0
-contains 'and reaches the restart step' "$out" 'foot --server restarted'
-all_point_at 'having switched'          gruvbox
-
-echo
-echo "an unknown palette is rejected"
-fixture nord
-run bogus
-exited   'exits 1'      1
-contains 'names it'     "$out" "unknown theme 'bogus'"
-all_point_at 'nothing moved' nord
-state_is 'state untouched' nord
-
-echo
-echo "a fragment with no counterpart aborts before anything is written"
-fixture nord
-rm "$R/foot/.config/foot/colors-gruvbox.ini"
-run gruvbox
-exited   'exits 1'                   1
-contains 'says nothing applied'      "$out" 'no counterpart, nothing applied'
-contains 'names the absent file'     "$out" 'colors-gruvbox.ini'
-all_point_at 'the tree is untouched' nord
-state_is 'state untouched'           nord
-
-# The other direction: a fragment added for one palette only is invisible to
-# nord-driven discovery, so it needs its own check or it would switch cleanly
-# and leave that application stranded forever.
-fixture nord
-: > "$R/mako/.config/mako/extra-gruvbox"
-run gruvbox
-exited   'an orphan gruvbox fragment is caught too' 1
-contains 'naming the missing nord side'             "$out" 'extra-nord'
-all_point_at 'the tree is untouched'                nord
-
-echo
-echo "palettes defining different roles refuse to switch"
-fixture nord
-printf 'EXTRA=#ffffff\n' >> "$D/theme-gruvbox.env"
-run gruvbox
-exited   'exits 1'                   1
-contains 'names the two env files'   "$out" 'theme-nord.env and theme-gruvbox.env define different roles'
-all_point_at 'the tree is untouched' nord
-
-fixture nord
-printf 'set $extra #ffffff\n' >> "$D/colors-gruvbox.conf"
-run gruvbox
-exited   'exits 1'                   1
-contains 'names the two conf files'  "$out" 'colors-nord.conf and colors-gruvbox.conf define different roles'
-all_point_at 'the tree is untouched' nord
-
-# ------------------------------------------------------- the real repo ---
-#
-# The point of the state file is that switching never dirties the tree. That
-# only holds if every pointer, and the state file, are actually ignored — and
-# that list is maintained by hand in .gitignore, so it is exactly the kind of
-# thing that silently falls behind when a themed application is added.
-echo
-echo "in the real repo, nothing the switcher writes is tracked"
-if git -C "$REALREPO" rev-parse --git-dir >/dev/null 2>&1; then
-    unignored=""
-    tracked=""
-    for frag in $(find "$REALREPO" -name .git -prune -o \
-                    \( -type f \( -name '*-nord' -o -name '*-nord.*' \) \) -print); do
-        case $frag in
-            *-nord.*) neutral="${frag%-nord.*}.${frag##*.}" ;;
-            *-nord)   neutral="${frag%-nord}" ;;
-            *)        continue ;;
-        esac
-        rel=${neutral#"$REALREPO"/}
-        if ! git -C "$REALREPO" check-ignore -q "$rel"; then
-            unignored="$unignored $rel"
-        fi
-        if git -C "$REALREPO" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
-            tracked="$tracked $rel"
-        fi
-    done
-    if [ -z "$unignored" ]; then ok 'every pointer is gitignored'; else no 'every pointer is gitignored' "not ignored:$unignored"; fi
-    if [ -z "$tracked" ];   then ok 'no pointer is tracked';       else no 'no pointer is tracked' "still tracked:$tracked"; fi
-
-    if git -C "$REALREPO" check-ignore -q .theme; then ok '.theme is gitignored'; else no '.theme is gitignored'; fi
-    if git -C "$REALREPO" ls-files --error-unmatch .theme >/dev/null 2>&1; then
-        no '.theme is not tracked'
+# The installed script is checked, but never used to RENDER: it resolves its
+# repo from its own path, so rendering through it would write to the live tree.
+# `--list` proves the symlink and the interpreter are good without doing that.
+if [ -x "$HOME_REAL/.local/bin/theme" ]; then
+    if "$HOME_REAL/.local/bin/theme" --list >/dev/null 2>&1; then
+        ok "the installed ~/.local/bin/theme runs"
     else
-        ok '.theme is not tracked'
+        no "the installed ~/.local/bin/theme runs"
     fi
-else
-    echo "  --    skipped (not a git work tree)"
 fi
 
-# ----------------------------------------------------------------- result ---
+# --- the CLI contract -------------------------------------------------------
+out=$(theme --list | tr '\n' ' ' | sed 's/ *$//')
+check "--list names both palettes" "$out" "gruvbox nord"
 
-echo
-if [ "$fail" -eq 0 ]; then
-    printf 'PASS  %s assertions\n' "$pass"
+if theme --no-icons no-such-palette >/dev/null 2>&1; then
+    no "unknown palette exits non-zero"
 else
-    printf 'FAIL  %s of %s assertions\n' "$fail" "$((pass + fail))"
+    ok "unknown palette exits non-zero"
 fi
+out=$(theme --no-icons no-such-palette || true)
+case $out in
+    *gruvbox*nord*) ok "unknown palette names the valid ones" ;;
+    *)              no "unknown palette names the valid ones" "$out" ;;
+esac
+
+# --- rendering --------------------------------------------------------------
+for p in nord gruvbox; do
+    if theme --no-icons "$p" >/dev/null 2>&1; then
+        ok "renders $p"
+    else
+        no "renders $p" "$(theme --no-icons "$p")"
+    fi
+done
+
+# Every placeholder in every template must resolve in every palette. `theme`
+# dies naming the role when one does not, so a clean run over both is the test.
+missing=$(theme --no-icons nord; theme --no-icons gruvbox)
+case $missing in
+    *"no such role"*) no "every placeholder resolves in both palettes" "$missing" ;;
+    *)                ok "every placeholder resolves in both palettes" ;;
+esac
+
+# Deterministic: rendering twice must produce identical bytes.
+theme --no-icons gruvbox >/dev/null
+sum1=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
+theme --no-icons gruvbox >/dev/null
+sum2=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
+check "rendering is deterministic" "$sum1" "$sum2"
+
+# Switching and switching back must return the original bytes.
+theme --no-icons nord >/dev/null
+theme --no-icons gruvbox >/dev/null
+sum3=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
+check "switching round-trips" "$sum3" "$sum1"
+
+# --- the palette table ------------------------------------------------------
+printf '\npalettes.toml\n'
+
+python3 - "$SANDBOX" <<'PY' && ok "both palettes define exactly the same keys" || no "both palettes define exactly the same keys"
+import sys, tomllib
+d = tomllib.load(open(sys.argv[1] + "/palettes.toml", "rb"))
+def flat(p, pre=""):
+    o = {}
+    for k, v in p.items():
+        o.update(flat(v, f"{pre}{k}_")) if isinstance(v, dict) else o.update({f"{pre}{k}": v})
+    return o
+shapes = {n: set(flat(t)) for n, t in d.items()}
+first = next(iter(shapes))
+sys.exit(0 if all(s == shapes[first] for s in shapes.values()) else 1)
+PY
+
+# A role defined in only one palette renders as black in GTK CSS with no error,
+# which is why this is a test and not a comment. Simulate the drift.
+python3 - "$WORK" "$SANDBOX" <<'PY' >/dev/null 2>&1 && no "a role missing from one palette is refused" || ok "a role missing from one palette is refused"
+import sys, shutil, subprocess, tomllib, pathlib
+work, sandbox = sys.argv[1], sys.argv[2]
+broken = pathlib.Path(work) / "broken"
+shutil.copytree(sandbox, broken, dirs_exist_ok=True)
+p = broken / "palettes.toml"
+text = p.read_text().replace('indicator = ', 'indicator_renamed = ', 1)
+p.write_text(text)
+r = subprocess.run([sys.executable, str(broken / "bin/.local/bin/theme"),
+                    "--no-icons", "nord"], capture_output=True)
+sys.exit(r.returncode)
+PY
+
+# --- the standing rule: no literal colour outside the table -----------------
+printf '\nconventions\n'
+python3 "$REPO/tests/check_hex.py" "$REPO" \
+  && ok "no tracked config carries a literal hex" \
+  || no "no tracked config carries a literal hex"
+
+# Every colour file an application includes must be one a template produces.
+# This is the assertion that would have caught a repointing being reverted: the
+# include still named `colors.css`, no template produced it any more, and
+# nothing failed loudly because sway and GTK treat a missing include as a
+# warning rather than an error.
+# Every rendered file must be syntactically acceptable to the tool that reads
+# it. A banner written in the wrong comment syntax renders fine and fails at
+# the consumer: `#` is a comment in most of these formats and in neither JSON
+# nor legacy vimscript, and that is how the bar disappeared.
+python3 "$REPO/tests/check_syntax.py" "$SANDBOX" \
+  && ok "every rendered file parses for its consumer" \
+  || no "every rendered file parses for its consumer"
+
+python3 "$REPO/tests/check_includes.py" "$REPO" \
+  && ok "every include names a file a template renders" \
+  || no "every include names a file a template renders"
+
+# Switching is an operational change, never a git one. Asserted against a
+# sandbox repo with its own .git -- doing this in $REPO renders into the live
+# tree (the packages are symlinked into ~) and overwrites .theme, so the
+# "restore" read back the value it had just clobbered and left the user on a
+# different palette. Silently.
+(
+  cd "$SANDBOX"
+  git init -q . 2>/dev/null
+  git add -A >/dev/null 2>&1
+  git -c user.email=t@t -c user.name=t commit -qm init >/dev/null 2>&1
+  python3 bin/.local/bin/theme --no-icons gruvbox >/dev/null 2>&1
+  before=$(git status --porcelain | sort | md5sum)
+  python3 bin/.local/bin/theme --no-icons nord >/dev/null 2>&1
+  after=$(git status --porcelain | sort | md5sum)
+  [ "$before" = "$after" ]
+) && ok "switching leaves git status untouched" \
+  || no "switching leaves git status untouched"
+
+printf '\n%s  %d assertions\n\n' "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))"
 [ "$fail" -eq 0 ]

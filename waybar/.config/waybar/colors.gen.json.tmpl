@@ -1,0 +1,23 @@
+// Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+{
+    "clock": {
+        "format": "󰅐\n{:%a\n%d/%m\n%H:%M}",
+        "justify": "center",
+        "format-alt": "󰅐\n{:%OI\n%M\n%p}",
+        "tooltip-format": " {:%A %d/%m}\n\n<tt>{calendar}</tt>",
+        "calendar": {
+            "on-scroll": 1,
+            "format": {
+                "months":   "<span color='{{accent}}'><b>{}</b></span>",
+                "days":     "<span color='{{fg}}'><b>{}</b></span>",
+                "weeks":    "<span color='{{muted}}'><b>W{}</b></span>",
+                "weekdays": "<span color='{{indicator}}'><b>{}</b></span>",
+                "today":    "<span color='{{warning}}'><b><u>{}</u></b></span>"
+            }
+        },
+        "actions": {
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
+        }
+    }
+}
