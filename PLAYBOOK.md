@@ -4,7 +4,7 @@ The complete technical reference for this desktop: what it is, how the pieces fi
 every way it differs from a stock EndeavourOS Sway install.
 
 It carries **two palettes**, Nord and Gruvbox Dark, and switches between them with one keystroke
-(`$mod+Shift+t`, or `theme <name>` at a shell). Nord is the default and the original; Gruvbox was
+(`theme <name>` at a shell). Nord is the default and the original; Gruvbox was
 added by making every colour in the setup a *role* rather than a hex, which is the single change
 that most of this document now turns on. §3.3 is the mechanism.
 
@@ -207,7 +207,7 @@ theme --list       # what is available
 theme --no-icons   # skip papirus-folders, which needs sudo
 ```
 
-Bound to `$mod+Shift+t`. `theme` renders every template, writes the palette name to `.theme`,
+`theme` renders every template, writes the palette name to `.theme`,
 then reloads: `sway --validate` before `swaymsg reload` (which also restarts waybar, re-runs
 `import-gsettings` and re-execs nwg-drawer), then `makoctl reload` separately, because mako is
 `exec`'d rather than `exec_always`'d and a sway reload does not restart it.
@@ -216,7 +216,8 @@ then reloads: `sway --validate` before `swaymsg reload` (which also restarts way
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
-and the three unfolded packages (`gtk`, `alacritty`, `vim`) link file-by-file — a file created
+and the unfolded packages that carry templates (`gtk`, `alacritty`, `vim` — `bin` and `claude`
+are also unfolded but carry none) link file-by-file — a file created
 after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
 §5.2.
 
@@ -444,12 +445,20 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 Not listed here. A static table duplicating `sway/.config/sway/keyboard.conf` (457 lines) is a
 table that drifts, and this desktop already answers the question two better ways:
 
-- **`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`,
-  which renders the bindings *from the live config* — it cannot be out of date.
-- `sway/.config/sway/keyboard.conf` is the source, and is commented.
+- `sway/.config/sway/keyboard.conf` holds most of them, commented.
+- `sway/.config/sway/config.d/default` holds the rest — the two files together are the source.
 
-The two worth knowing before you can read either: **`$mod+Return`** opens a terminal and
-**`$mod+Shift+t`** switches the palette.
+**`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`. Be
+aware of what that is: a *hardcoded* `cheat=()` array, inherited from stock EndeavourOS. It reads
+no config, so it can and does drift from the two files above. It is a convenience, not a source.
+
+The one worth knowing before you can read any of it: **`$mod+Return`** opens a terminal.
+
+**A binding is for something done often.** Switching palettes is not, so it has none — `theme
+<name>` at a shell is the interface. The previous binding was `$mod+Shift+t exec theme toggle`,
+which stopped working when `toggle` was dropped and failed *silently*, because a sway `exec` sends
+stderr nowhere. That is the second cost of a binding for a rare operation: nobody notices it
+rotted.
 
 ---
 
@@ -457,7 +466,8 @@ The two worth knowing before you can read either: **`$mod+Return`** opens a term
 
 ```sh
 # Tint the Papirus folder icons (writes into /usr/share/icons, so root).
-# `theme` re-runs this on every switch when the colour differs; this is just
+# `theme` re-runs this on an INTERACTIVE switch when the colour differs -- it skips
+# papirus-folders when stdin is not a tty, because it needs sudo. This is just
 # the first one. nordic for Nord, yellow for Gruvbox — see §3.2.
 sudo papirus-folders -C nordic -t Papirus-Dark
 
@@ -487,7 +497,7 @@ git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 # difference is that a plugin revision is part of the configuration and the
 # active palette is not.
 
-# The theme switcher, so `theme` and $mod+Shift+t work
+# The palette renderer, so `theme` is on $PATH
 stow bin
 
 # Render the colour files. They are gitignored, so a fresh clone does not have

@@ -98,22 +98,30 @@ def render(text, values, where):
 
 
 def apply_theme(root, name, data):
+    """Render every template, then write. In that order, deliberately.
+
+    Writing as we go would leave a tree half in one palette and half in the
+    other the moment a late template named a role this palette lacks — a state
+    no amount of re-running fixes until the template is corrected, and one the
+    desktop would happily display. Rendering everything first makes the whole
+    switch succeed or change nothing.
+    """
     values = bindings(data[name], name)
-    count = 0
+    pending = []
     for tmpl in sorted(p for p in root.rglob("*.tmpl") if ".git" not in p.parts):
         out = tmpl.with_suffix("")            # strip .tmpl; the rest is the name
-        rendered = render(tmpl.read_text(), values, tmpl.relative_to(root))
+        pending.append((out, render(tmpl.read_text(), values, tmpl.relative_to(root))))
+
+    for out, rendered in pending:
         # Never write THROUGH a symlink. A leftover pointer from the old scheme
         # would carry the write to its target and silently edit a tracked file.
         if out.is_symlink():
             out.unlink()
         elif out.exists() and out.read_text() == rendered:
-            count += 1
             continue
         out.write_text(rendered)
-        count += 1
     (root / ".theme").write_text(name + "\n")
-    print(f"  {count} files rendered from palettes.toml [{name}]")
+    print(f"  {len(pending)} files rendered from palettes.toml [{name}]")
 
 
 def run_ok(cmd):

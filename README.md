@@ -7,10 +7,11 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 ```sh
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
-theme gruvbox                       # renders every colour file; needed before stow
-stow bash vim nvim alacritty foot starship htop bin claude
+stow bin                            # puts `theme` on $PATH via ~/.local/bin
+./bin/.local/bin/theme gruvbox      # render the colours; must precede the stows below
+stow bash vim nvim alacritty foot starship htop claude
 stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
-sh tests/theme_test.sh              # 12 assertions, touches nothing live
+sh tests/theme_test.sh              # 13 assertions, in a sandbox; touches nothing live
 ```
 
 Full desktop, including the steps that cannot be stowed: **[PLAYBOOK.md](PLAYBOOK.md)**.
@@ -44,7 +45,7 @@ What this costs, stated plainly, because a reader deserves it up front:
 - You cannot theme one application differently from the rest without adding a role.
 - A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
 - `theme` must run **before** `stow` on a fresh clone, and after adding a themed file to `gtk`,
-  `alacritty` or `vim` — the three unfolded packages. See PLAYBOOK §4.
+  `alacritty` or `vim` — the unfolded packages that carry templates. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
 ## Packages
@@ -86,7 +87,7 @@ theme nord         # switch
 theme --list       # what is available
 ```
 
-Bound to `$mod+Shift+t`. Switching is an operational change, never a repo change: the active
+Switching is an operational change, never a repo change: the active
 palette is one word in `.theme`, and every file `theme` writes is gitignored. If a switch ever
 dirties `git status`, something has broken the naming scheme — `tests/theme_test.sh` asserts it.
 
@@ -109,4 +110,4 @@ foo/.config/foo/config.yml      ->  ~/.config/foo/config.yml
 foo/config.yml                  ->  ~/config.yml          (probably not what you meant)
 ```
 
-Then add it to the table above, and to PLAYBOOK §4 with its fold decision.
+Then add it to the table above, and to PLAYBOOK §5.2 with its fold decision.

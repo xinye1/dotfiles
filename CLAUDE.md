@@ -103,7 +103,8 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   `colors.gen.css.tmpl` -> `colors.gen.css`. Rendered files match `*.gen.*` and are gitignored;
   editing one is pointless. The six GTK/xsettingsd files read at a hardcoded path cannot carry the
   marker and are listed individually in `.gitignore` — that list is structural, not growing.
-- **Switching is `theme <name>`** (`bin/.local/bin/theme`, bound to `$mod+Shift+t`). Never switch by
+- **Switching is `theme <name>`** (`bin/.local/bin/theme`). It has no keybinding on purpose:
+  a shortcut is for something you do often, and changing palette is not. Never switch by
   editing configs, and never introduce a theme stow package — a second package writing into a folded
   target would unfold it.
 - **Switching is not a repo change.** `.theme` holds the active palette; it and every rendered file
@@ -112,7 +113,8 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
 - **`theme` must run before `stow` on a fresh clone** — rendered files don't exist in a clone, and
   the unfolded packages (`gtk`, `alacritty`, `vim`) link file-by-file and would miss them. Applying
   is idempotent; re-running repairs a deleted or edited artefact.
-- Don't run `theme` without `--no-icons` in a non-interactive context: papirus-folders needs `sudo`.
+- `theme` skips papirus-folders when stdin is not a tty, because it needs `sudo`; `--no-icons`
+  forces that skip in a terminal. Icon tint therefore only changes on an interactive run.
 - `~/.config/alacritty/themes` (an untracked clone of alacritty/alacritty-theme) is **optional now**
   — `alacritty.toml` imports its own rendered `colors.gen.toml`. Not managed here either way.
 - No binaries. Two wallpapers (3.3 MB and 22 MB) lived inside stock config dirs and were kept out

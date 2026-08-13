@@ -120,19 +120,9 @@ PY
 
 # --- the standing rule: no literal colour outside the table -----------------
 printf '\nconventions\n'
-# Comment lines are exempt: the rule forbids a hex as a config VALUE, and the
-# configs explain their own history in prose.
-stray=$(cd "$REPO" && git ls-files 2>/dev/null \
-        | grep -v -e '^palettes.toml$' -e '^docs/' -e '\.md$' -e '^tests/' \
-        | while read -r f; do
-            sed -E '/^[[:space:]]*(#|--|"|\/\/|\/\*|\*)/d' "$f" 2>/dev/null \
-              | grep -qEi '#[0-9a-f]{6}\b' && echo "$f"
-          done || true)
-if [ -z "$stray" ]; then
-    ok "no tracked config carries a literal hex"
-else
-    no "no tracked config carries a literal hex" "$(echo "$stray" | tr '\n' ' ')"
-fi
+python3 "$REPO/tests/check_hex.py" "$REPO" \
+  && ok "no tracked config carries a literal hex" \
+  || no "no tracked config carries a literal hex"
 
 # Every colour file an application includes must be one a template produces.
 # This is the assertion that would have caught a repointing being reverted: the
@@ -143,14 +133,23 @@ python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
 
-# Switching is an operational change, never a git one.
-if [ -d "$REPO/.git" ]; then
-    before=$(cd "$REPO" && git status --porcelain | sort | md5sum)
-    (cd "$REPO" && python3 bin/.local/bin/theme --no-icons nord >/dev/null 2>&1) || true
-    (cd "$REPO" && python3 bin/.local/bin/theme --no-icons "$(cat "$REPO/.theme" 2>/dev/null || echo gruvbox)" >/dev/null 2>&1) || true
-    after=$(cd "$REPO" && git status --porcelain | sort | md5sum)
-    check "switching leaves git status untouched" "$after" "$before"
-fi
+# Switching is an operational change, never a git one. Asserted against a
+# sandbox repo with its own .git -- doing this in $REPO renders into the live
+# tree (the packages are symlinked into ~) and overwrites .theme, so the
+# "restore" read back the value it had just clobbered and left the user on a
+# different palette. Silently.
+(
+  cd "$SANDBOX"
+  git init -q . 2>/dev/null
+  git add -A >/dev/null 2>&1
+  git -c user.email=t@t -c user.name=t commit -qm init >/dev/null 2>&1
+  python3 bin/.local/bin/theme --no-icons gruvbox >/dev/null 2>&1
+  before=$(git status --porcelain | sort | md5sum)
+  python3 bin/.local/bin/theme --no-icons nord >/dev/null 2>&1
+  after=$(git status --porcelain | sort | md5sum)
+  [ "$before" = "$after" ]
+) && ok "switching leaves git status untouched" \
+  || no "switching leaves git status untouched"
 
 printf '\n%s  %d assertions\n\n' "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))"
 [ "$fail" -eq 0 ]

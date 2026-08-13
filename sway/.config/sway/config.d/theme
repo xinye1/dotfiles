@@ -1,6 +1,7 @@
 
-# colors-gruvbox.conf; ~/.local/bin/theme flips it. The path is relative to
-# THIS file's directory (config.d/), so `../` reaches ~/.config/sway/.
+# Palette. `colors.gen.conf` is rendered from palettes.toml by ~/.local/bin/theme.
+# The path is relative to THIS file's directory (config.d/), so `../` reaches
+# ~/.config/sway/.
 #
 # This must come before anything that uses $accent and friends.
 include ../colors.gen.conf
