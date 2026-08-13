@@ -1,189 +1,112 @@
-# Dotfile collection
+# dotfiles
 
-My small collection, managed with [GNU Stow](https://www.gnu.org/software/stow/).
-
-Each top-level directory is a stow *package* whose contents mirror the layout under
-`$HOME`. Stowing a package symlinks its files into place:
-
-| Package      | Links to                                                        |
-|--------------|-----------------------------------------------------------------|
-| `bash`       | `~/.bashrc`, `~/.config/dircolors`                              |
-| `vim`        | `~/.vimrc`, `~/.vim/colorscheme*.vim`                           |
-| `nvim`       | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua`, `colorscheme*.lua` |
-| `bin`        | `~/.local/bin/theme` — the palette switcher                     |
-| `alacritty`  | `~/.config/alacritty/alacritty.toml`                            |
-| `foot`       | `~/.config/foot/foot.ini`                                       |
-| `starship`   | `~/.config/starship.toml`                                       |
-| `claude`     | `~/.claude/statusline.py` — the Claude Code status line          |
-| `htop`       | `~/.config/htop/htoprc`                                         |
-| `waybar`     | `~/.config/waybar/` — `config`, `style.css`, `scripts/`         |
-| `sway`       | `~/.config/sway/` — `config`, `config.d/`, `scripts/`           |
-| `kanshi`     | `~/.config/kanshi/config`                                       |
-| `gtk`        | `~/.config/gtk-3.0/`, `~/.config/gtk-4.0/`, `~/.config/xsettingsd/`, `~/.gtkrc-2.0`, `~/.icons/default/` |
-| `mako`       | `~/.config/mako/config`                                         |
-| `fuzzel`     | `~/.config/fuzzel/fuzzel.ini`                                   |
-| `nwg-drawer` | `~/.config/nwg-drawer/drawer.css`                               |
-| `gtklock`    | `~/.config/gtklock/`                                            |
-| `htop`       | `~/.config/htop/htoprc`                                         |
-
-## Theming
-
-The desktop carries **two palettes** — [Nord](https://www.nordtheme.com/) and
-[Gruvbox Dark](https://github.com/morhetz/gruvbox) — and switches between them with one keystroke:
+A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.com/) and
+[Gruvbox](https://github.com/morhetz/gruvbox) — switchable with one command. Managed with
+[GNU Stow](https://www.gnu.org/software/stow/).
 
 ```sh
-theme            # print the active palette
-theme gruvbox    # switch
-theme toggle     # the other one — bound to $mod+Shift+t
+git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
+cd ~/repos/dotfiles
+theme gruvbox                       # renders every colour file; needed before stow
+stow bash vim nvim alacritty foot starship htop bin claude
+stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
+sh tests/theme_test.sh              # 12 assertions, touches nothing live
 ```
 
-No colour is written as a hex in an application config. Every one is a **role** (`bg`, `accent`,
-`critical`, …) defined twice, once per palette, in a pair of fragments inside the package that owns
-it. The active palette is one word in `.theme` at the repo root; from it `theme` points 18
-symlinks at the right fragments and reloads sway, waybar, mako and gsettings. It touches sway,
-waybar, foot, alacritty, fuzzel, mako, gtklock, nwg-drawer, vim, nvim and the whole GTK stack.
+Full desktop, including the steps that cannot be stowed: **[PLAYBOOK.md](PLAYBOOK.md)**.
 
-**Switching is an operational change, not a repo one.** `.theme` and the 18 pointers are
-gitignored, so changing palette leaves `git status` completely untouched.
+## The intention
 
-Stow is deliberately *not* how the switch happens — a second package writing into `~/.config/waybar`
-would unfold it. See **[PLAYBOOK.md §3.3](PLAYBOOK.md)** for the mechanism, the flags, and what does
-not update immediately (open terminals, running GTK apps).
+This repo is optimised for **being understood six months later**, not for having every knob. Where
+those two conflict, granularity loses. Three commitments follow from that, and most of the design is
+downstream of them.
 
-* **[PLAYBOOK.md](PLAYBOOK.md)** — the full technical manual: architecture, the two palettes and
-  their role conventions, the switching model, every deviation from stock EndeavourOS and why, the
-  keybinding reference, and the gotchas. Read this one.
-* **[docs/setup.html](docs/setup.html)** — the same setup as an interactive checklist with copy
-  buttons and saved progress. Open it in a browser when rebuilding on a new machine. It opens with
-  a diagrammed map of how the construct fits together — the two kinds of symlink, folded vs
-  unfolded, and what sway owns at runtime — and phase 09 explains the switcher itself, in a
-  technical and a plain-language register you can toggle between.
+**One source of truth for every colour.** `palettes.toml` holds both palettes. Nothing else in the
+repo contains a literal hex — a test enforces it. Each themed file is a template of `{{role}}`
+placeholders that `theme` renders. The cost is that you cannot hand-tune one application's blue:
+you add or change a *role*, and it moves everywhere that role is used. That is the point. The
+desktop previously drifted into four incompatible palettes precisely because each config was
+themed by hand.
 
-`theme` is the only thing here with enough logic to get wrong twice, so it has tests. Run them after
-touching it — they use a throwaway `$HOME` and stubbed `swaymsg`, so the live desktop is untouched:
+**Generated files are disposable, and named so you can tell.** Anything matching `*.gen.*` is a
+build artefact. Editing one is pointless — the next switch overwrites it. This is what lets
+`.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to be, and what
+makes "did switching dirty the tree?" a question with a permanent answer of no.
+
+**Nothing is clever that could be obvious.** Stow does the linking; no bespoke installer. `theme`
+renders and reloads; it does not manage state beyond one word in `.theme`. The one genuinely
+surprising rule — six GTK files that cannot carry the `.gen` marker — is written down in
+`.gitignore` next to the entries themselves, because a rule you have to remember is a rule that
+will be broken.
+
+What this costs, stated plainly, because a reader deserves it up front:
+
+- You cannot theme one application differently from the rest without adding a role.
+- A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
+- `theme` must run **before** `stow` on a fresh clone, and after adding a themed file to `gtk`,
+  `alacritty` or `vim` — the three unfolded packages. See PLAYBOOK §4.
+- Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
+
+## Packages
+
+Each top-level directory is a stow *package* whose contents mirror the layout under `$HOME`.
+
+| Package | Links to |
+|---|---|
+| `bash` | `~/.bashrc`, `~/.config/dircolors` |
+| `vim` | `~/.vimrc`, `~/.vim/colorscheme.gen.vim` |
+| `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
+| `bin` | `~/.local/bin/theme` — the palette renderer |
+| `claude` | `~/.claude/statusline.py` — the Claude Code status line |
+| `alacritty` | `~/.config/alacritty/alacritty.toml` |
+| `foot` | `~/.config/foot/foot.ini` |
+| `starship` | `~/.config/starship.toml` |
+| `htop` | `~/.config/htop/htoprc` |
+| `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
+| `sway` | `~/.config/sway/` — `config`, `config.d/`, `scripts/` |
+| `kanshi` | `~/.config/kanshi/config` |
+| `gtk` | `~/.config/gtk-3.0/`, `gtk-4.0/`, `xsettingsd/`, `~/.gtkrc-2.0` |
+| `mako` | `~/.config/mako/config` |
+| `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
+| `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |
+| `gtklock` | `~/.config/gtklock/` |
+
+`docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
+would install to `~/tests/…`.
+
+`.stowrc` pins `--target=~`. Without it stow targets the repo's *parent*, which is wrong here and
+fails silently: stow exits 0 having linked to the wrong place. Diagnose by checking where the link
+landed, never by exit code.
+
+## Switching palettes
 
 ```sh
-sh tests/theme_test.sh
+theme              # re-render the current palette
+theme nord         # switch
+theme --list       # what is available
 ```
 
-## Setup
+Bound to `$mod+Shift+t`. Switching is an operational change, never a repo change: the active
+palette is one word in `.theme`, and every file `theme` writes is gitignored. If a switch ever
+dirties `git status`, something has broken the naming scheme — `tests/theme_test.sh` asserts it.
 
-```sh
-git clone https://github.com/xinye1/dotfiles.git
-cd dotfiles
-sh bin/.local/bin/theme nord --no-icons         # or gruvbox — creates the theme pointers
-stow bash vim nvim alacritty foot starship htop bin  # or one at a time: stow nvim
-```
+## Adding a colour
 
-**Run `theme` before `stow`.** The theme pointers are gitignored, so a fresh clone does not have
-them; `theme` creates them. The unfolded packages link file-by-file, so pointers created after
-`stow` would need `stow -R` to appear.
+1. Add the role to **both** palettes in `palettes.toml`. They must define identical keys; `theme`
+   refuses to render otherwise.
+2. Use `{{your_role}}` in the relevant `*.tmpl`.
+3. `theme` and look at it.
 
-`bin` puts `theme` on `PATH`. It is **not** folded — `~/.local/bin` is a real directory holding
-untracked binaries — so a script added to the package later needs `stow -R bin` before it appears.
-
-For the full desktop, see [PLAYBOOK.md](PLAYBOOK.md) — the sway/gtk packages need packages
-installed and stock configs moved aside first.
-
-`.stowrc` in this repo sets `--target=~`, so stow links into `$HOME` regardless of
-where the repo is cloned. Without it, stow would default to the repo's *parent*
-directory — which is only correct if the repo lives directly in `$HOME`.
-
-A fresh Arch install already has a `~/.bashrc` (copied from `/etc/skel`), and stow
-refuses to replace a real file with a symlink. Move it aside first:
-
-```sh
-mv ~/.bashrc ~/.bashrc.bak && stow bash
-```
-
-Useful flags:
-
-```sh
-stow -n -v vim    # dry run, show what would be linked
-stow -D vim       # unstow (remove the symlinks)
-stow -R vim       # restow (unstow then stow, picks up deletions)
-```
+Never inline a hex. A role defined in one palette and not the other used to render as silent black
+in GTK CSS; now it is a named error at render time, which is the whole reason the table exists.
 
 ## Adding a package
 
-Create a directory named after the package, then recreate the path *relative to
-`$HOME`* inside it. For example, to manage `~/.config/foo/config.yml`:
+Create a directory named after the package, then recreate the path *relative to `$HOME`* inside it:
 
 ```
-foo/.config/foo/config.yml
+foo/.config/foo/config.yml      ->  ~/.config/foo/config.yml
+foo/config.yml                  ->  ~/config.yml          (probably not what you meant)
 ```
 
-A file placed at `foo/config.yml` would end up at `~/config.yml` instead.
-
-## Dependencies
-
-Both shell dependencies are activated behind a `command -v` guard in `bash/.bashrc`,
-so the package works on a machine where neither is installed yet.
-
-* [starship](https://starship.rs) — the prompt (`starship/.config/starship.toml`).
-  Without the binary, the plain `PS1` set just above the guard stays in effect.
-  `sudo pacman -S starship`.
-* [mise](https://mise.jdx.dev) — applies a repo's `.mise.toml` tool pins on `cd`,
-  which also makes starship's language modules report the project's interpreter
-  rather than the ambient one. `sudo pacman -S mise`.
-* [alacritty-theme](https://github.com/alacritty/alacritty-theme) cloned to
-  `~/.config/alacritty/themes` — **optional now.** `alacritty.toml` used to import
-  `themes/themes/nord.toml` from this clone; it imports its own
-  `colors.toml` fragment instead, so the repo describes the colours on its own.
-  Clone it only if you want other schemes to hand — and note it ships
-  `nord.toml`, `nordic.toml`, `nordfox.toml` and `nord_light.toml`, three of
-  which are *not* Nord.
-* [foot](https://codeberg.org/dnkl/foot) — the terminal sway launches on
-  `mod+Return`. `~/.config/sway/config.d/default` sets `$term footclient` and
-  `autostart_applications` execs `foot --server`, so the daemon must be running
-  for the binding to work. `sudo pacman -S foot`. Wayland-only, hence keeping
-  `alacritty` alongside it. foot has no config-reload signal, so it is the one
-  surface that keeps its old colours after `theme` — see PLAYBOOK §9.11.
-* vim plugins, all cloned into `~/.vim/pack/plugins/start/`. `.vimrc` guards the
-  colorscheme `source` with `filereadable`, so vim still starts without them:
-
-  ```sh
-  git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
-  git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
-  git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
-  ```
-* **nvim plugins need no step here.** `init.lua` uses `vim.pack`, Neovim 0.12's built-in
-  manager, so lualine and nvim-web-devicons install themselves on first launch — that one
-  launch needs network; offline, nvim opens with the built-in statusline instead. The plugin
-  code lands in `~/.local/share/nvim/`, and their revisions are pinned in the tracked
-  `nvim/.config/nvim/nvim-pack-lock.json`, so a fresh clone gets the same versions.
-  `:lua vim.pack.update()` updates them, and unlike a theme switch it **does** dirty the
-  tree — the lockfile diff is the record of the bump, and is meant to be committed.
-  nvim's colourschemes are not plugins at all: both are written from the thirteen roles,
-  and lualine is themed from them too.
-
-### Desktop packages
-
-Needed by the `sway`, `waybar`, `gtk`, `mako`, `fuzzel` and `gtklock` packages, on top of what
-EndeavourOS Sway Community Edition already installs:
-
-```sh
-sudo pacman -S --needed ttf-jetbrains-mono-nerd kanshi papirus-icon-theme
-yay -S nordic-theme papirus-folders
-sudo papirus-folders -C nordic -t Papirus-Dark   # one-off, recolours the folder icons
-
-# The Gruvbox GTK theme — installed by hand into ~/.themes, not from the AUR
-git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
-cd /tmp/colloid && ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
-```
-
-* `nordic-theme` — the Nord GTK2/3/4 theme. Nothing in the base install provides one. Note the
-  theme is genuinely called *Nordic*; there is no GTK theme called "Nord".
-* `Colloid-Yellow-Dark-Gruvbox` — the counterpart for the Gruvbox palette. The AUR
-  `gruvbox-gtk-theme-git` was rejected: it pulls in `gtk-engine-murrine`, which wants a
-  from-source `gtk2` build. **Never pass `-l`/`--libadwaita` to that installer** — it overwrites
-  `~/.config/gtk-4.0/gtk.css`, which this repo owns.
-* `ttf-jetbrains-mono-nerd` — the *patched* font. The base install ships only
-  `ttf-nerd-fonts-symbols`, so waybar's icons render via a fontconfig fallback rather than by
-  configuration. `fc-match "JetBrainsMono Nerd Font"` must not return NotoSansMono.
-* `papirus-icon-theme` + `papirus-folders` — icons for mako, fuzzel and GTK. `theme` re-runs
-  `papirus-folders` per palette (`nordic` for Nord, `yellow` for Gruvbox — it has no gruvbox
-  colour). It writes into `/usr/share/icons`, so it is the one step needing `sudo` on every
-  switch; `theme --no-icons` skips it.
-* `kanshi` — display hotplug profiles (`kanshi` package in this repo).
-
+Then add it to the table above, and to PLAYBOOK §4 with its fold decision.

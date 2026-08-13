@@ -94,111 +94,84 @@ to set `color-scheme`.
 
 ### 2.3 Where the palette lives
 
-Every application parses its own config format, so the palette is still duplicated by necessity —
-but it is no longer duplicated *ad hoc*. Each package carries a matched **pair of fragments** and a
-theme-neutral **symlink** that the package's main config includes:
+Every application parses its own config format, so the palette must reach each of them in that
+application's own syntax. It is not, however, *written* more than once.
+
+`palettes.toml` at the repo root holds both palettes. Each themed file exists once, as a template
+of `{{role}}` placeholders, and `theme` renders it:
 
 ```
-waybar/.config/waybar/colors-nord.css       one fragment per theme
-waybar/.config/waybar/colors-gruvbox.css
-waybar/.config/waybar/colors.css  ->  colors-nord.css     pointer; gitignored, `theme` writes it
+palettes.toml                                  both palettes, one table
+waybar/.config/waybar/colors.gen.css.tmpl      @define-color bg {{bg}};
+        rendered by `theme` to
+waybar/.config/waybar/colors.gen.css           @define-color bg #282828;
+        included by
+waybar/.config/waybar/style.css                @import url("colors.gen.css");
 ```
 
-There are 18 such pointers, one per colour-bearing file, and they are **not tracked**. The active
-palette is one word in `.theme` at the repo root — also untracked — and every pointer is derived
-from it. So a switch changes nothing git can see: `git status` after switching is byte-for-byte
-what it was before.
+The include is static — `style.css` always names `colors.gen.css`, whichever palette is loaded.
+That is what makes switching a re-render rather than a reconfiguration.
 
-That is deliberate. Which palette is on is a property of this machine right now, not of the
-configuration, and it used to force an 18-file commit every time the mood changed. The cost is that
-a fresh clone has no pointers at all until `theme <name>` creates them — see §3.4.
+**Rendered files are build artefacts.** They match `*.gen.*`, git ignores them, and editing one is
+pointless because the next switch overwrites it. Six files are the exception and cannot carry the
+marker, because GTK and xsettingsd read them at a hardcoded path:
+`gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`, `xsettingsd/xsettingsd.conf` and `.gtkrc-2.0`.
+Those six are listed individually in `.gitignore`. That list is structural — it can only change if
+an application with a hardcoded config filename joins the desktop.
 
-Two of the fragment pairs are the canonical listing of the roles:
-
-- **`waybar/.config/waybar/colors-{nord,gruvbox}.css`** — the thirteen roles as GTK
-  `@define-color` names. gtklock's and nwg-drawer's fragments define the same thirteen, so a rule
-  can be moved between the three files unchanged.
-- **`sway/.config/sway/theme-{nord,gruvbox}.env`** — the same thirteen as shell variables, for the
-  things that cannot parse CSS: `scripts/screenshot_*.sh`, waybar's `keyhint.sh`, and `theme`
-  itself. It also carries the two per-theme names that are *not* colours, `PAPIRUS_FOLDER` and
-  `GTK_THEME_NAME`.
-
-sway needs a third copy, `sway/.config/sway/colors-{nord,gruvbox}.conf`, as `set $role` lines: sway
-has no shell and cannot source the `.env`. All three must agree, and §3.1 is the authority.
-
-Everything else (foot, fuzzel, mako, alacritty, vim, nvim, the GTK settings files) spells the values
-in its own key syntax, inside a fragment. **A hex inlined in a main config is now a bug** — it will
-survive a theme switch and stand out against everything around it.
-
-nvim is the one that carries the roles furthest. Its fragments are a Lua *table* of the thirteen,
-and `nvim/.config/nvim/highlights.lua` — palette-neutral, holding no colour at all — decides which
-role paints which highlight group. It is the same split as `colors-nord.css` versus `style.css`, and
-it means nvim renders the actual palette rather than some plugin author's reading of Nord.
-
-`statusline.lua` extends that to lualine, and is the one place where the trap is worth naming.
-lualine's default `theme = 'auto'` reads `g:colors_name` and loads its own bundled theme of that
-name — and it bundles both `nord` and `gruvbox`, so it would find a match every time and paint the
-bar a few shades off the waybar directly above it, with nothing erroring to say so. **Handing
-lualine a table built from the thirteen roles is what prevents that**, and the same reasoning
-applies to any future plugin that offers to theme itself.
+This replaced a scheme where each themed file was kept *twice*, once per palette, with a
+theme-neutral symlink pointing at whichever was active. The colours were written 36 times, the 18
+pointers had to be enumerated in `.gitignore` because no glob could catch names like `colors.css`
+and `.gtkrc-2.0` without also catching tracked files, and a test existed only to catch that list
+falling behind. Generation chooses the output name, so a glob can catch it.
 
 ---
 
 ## 3. The palettes
 
-```
-Nord
-Polar Night   nord0  #2E3440    nord1  #3B4252    nord2  #434C5E    nord3  #4C566A
-Snow Storm    nord4  #D8DEE9    nord5  #E5E9F0    nord6  #ECEFF4
-Frost         nord7  #8FBCBB    nord8  #88C0D0    nord9  #81A1C1    nord10 #5E81AC
-Aurora        nord11 #BF616A    nord12 #D08770    nord13 #EBCB8B    nord14 #A3BE8C    nord15 #B48EAD
-```
-
-```
-Gruvbox Dark
-Backgrounds   bg0_h  #1D2021    bg0    #282828    bg1    #3C3836    bg2    #504945    bg4 #7C6F64
-Foregrounds   fg0    #FBF1C7    fg1    #EBDBB2    fg4    #A89984    gray   #928374
-Neutral       red #CC241D  green #98971A  yellow #D79921  blue #458588  purple #B16286  aqua #689D6A  orange #D65D0E
-Bright        red #FB4934  green #B8BB26  yellow #FABD2F  blue #83A598  purple #D3869B  aqua #8EC07C  orange #FE8019
-```
-
-The two are not interchangeable in temperature. Nord's accent is a cool frost blue with the warning
-colour a long way off in yellow; gruvbox's accent *is* the yellow, with warning one hue step away in
-orange. Warning states therefore read as **hotter** under Gruvbox rather than as a different colour.
-That is a property of gruvbox, not a mistake in the mapping.
-
 ### 3.1 Role convention
 
 **This section is the point of the whole document.** The desktop drifted into four incompatible
-palettes because each config was themed ad hoc; it now carries two palettes only because every
-colour is named by role. Adding anything new means picking a row from this table and supplying
-**both** values — never choosing a colour that looks nice in isolation, and never adding a role to
-one palette alone (§9.10):
+palettes because each config was themed ad hoc. It now carries two palettes *only* because every
+colour is named by role.
 
-| Role | Nord | Gruvbox | Used by |
-|---|---|---|---|
-| `bg` | `nord0` `#2E3440` | `bg0` `#282828` | window bg, waybar bg, terminal bg, gtklock bg |
-| `surface` | `nord1` `#3B4252` | `bg1` `#3C3836` | mako body, popovers, cards, fuzzel-adjacent chrome |
-| `sel` | `nord2` `#434C5E` | `bg2` `#504945` | fuzzel selection, terminal selection bg |
-| `muted` | `nord3` `#4C566A` | `bg4` `#7C6F64` | unfocused border and text, placeholders, calendar weeks |
-| `fg` | `nord4` `#D8DEE9` | `fg1` `#EBDBB2` | body text everywhere |
-| `fg_bright` | `nord6` `#ECEFF4` | `fg0` `#FBF1C7` | focused window title, active text |
-| **`accent`** | `nord8` `#88C0D0` | `yellow` `#FABD2F` | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
-| `accent2` | `nord10` `#5E81AC` | `neutral orange` `#D65D0E` | focused-inactive border, calendar weekdays, gtklock buttons, waybar mode |
-| `indicator` | `nord7` `#8FBCBB` | `aqua` `#8EC07C` | sway split indicator — where the next window will open |
-| **`critical`** | `nord11` `#BF616A` | `red` `#FB4934` | urgent window, critical CPU/battery, destructive actions |
-| `warning` | `nord13` `#EBCB8B` | `orange` `#FE8019` | warning states, "today" in the calendar, idle inhibitor on |
-| `success` | `nord14` `#A3BE8C` | `green` `#B8BB26` | battery charging, success states |
-| `desktop` | `#272B33` | `bg0_h` `#1D2021` | the wallpaper-less background, one shade below `bg` |
+The values live in `palettes.toml`; this is what the roles are **for**. Adding a colour means
+picking a row, or adding one to both palettes — never choosing a colour that looks nice in
+isolation.
 
-`desktop` is the one row that is not drawn from the palette on the Nord side: Nord has nothing below
-`nord0`, so it is a hand-darkened `nord0`. Gruvbox ships exactly this idea as `bg0_h`, so no
-off-palette value is needed there. It earns the exception — the desktop being darker than the window
-background is what turns the gaps into visible channels and lets `smart_borders on` be safe.
+| Role | What it is for |
+|---|---|
+| `bg` | window bg, waybar bg, terminal bg, gtklock bg |
+| `surface` | mako body, popovers, cards, fuzzel-adjacent chrome |
+| `sel` | fuzzel selection, terminal selection bg |
+| `muted` | unfocused border and text, placeholders, calendar weeks |
+| `fg` | body text everywhere |
+| `fg_bright` | focused window title, active text |
+| **`accent`** | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
+| `accent2` | focused-inactive border, calendar weekdays, gtklock buttons, waybar mode |
+| `indicator` | sway split indicator — where the next window will open |
+| **`critical`** | urgent window, critical CPU/battery, destructive actions |
+| `warning` | warning states, "today" in the calendar, idle inhibitor on |
+| `success` | battery charging, success states |
+| `desktop` | the wallpaper-less background, one shade below `bg` |
 
-Two per-theme names in `theme-*.env` are not colours and still have to be chosen per palette:
-`GTK_THEME_NAME` (`Nordic` / `Colloid-Yellow-Dark-Gruvbox`) and `PAPIRUS_FOLDER` (`nordic` /
-`yellow` — see §3.2).
+`desktop` being darker than `bg` is what turns the gaps between windows into visible channels, and
+is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
+hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
+
+Two per-palette values are not colours and still have to be chosen per palette: `gtk_theme_name`
+and `papirus_folder`. They live in the same table.
+
+A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
+role colours; the other eight are not, and are shared by alacritty and foot. They used to be
+duplicated across both applications with a comment asking that they be kept in step by hand.
+
+**Both palettes must define exactly the same keys.** `theme` refuses to render otherwise. This
+matters more than it looks: an undefined `@name` in GTK CSS renders as **black, with no warning**,
+which is near-impossible to diagnose from the symptom. The old code checked role parity at runtime
+with a bespoke comparison; one table with two sections makes the failure a missing key, named at
+render time.
+
 
 ### 3.2 Nord is not Nordic
 
@@ -216,154 +189,42 @@ blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml`
   `#5E81AC` (nord10), `#81A1C1` (nord9) and `#ECEFF4` (nord6). Use `-C nordic`.
 
 **The parallel gruvbox trap: papirus-folders has no gruvbox colour at all.** `papirus-folders -l`
-lists 25 names and gruvbox is not among them, so `PAPIRUS_FOLDER=yellow` in `theme-gruvbox.env` is a
+lists 25 names and gruvbox is not among them, so `papirus_folder = "yellow"` in `palettes.toml` is a
 *stand-in*, chosen because gruvbox's signature accent is its yellow. It is the one place in the
 setup where the Gruvbox theme is approximated rather than matched. Do not "fix" it by inventing a
 hex — papirus-folders only accepts names from its own list.
 
 **The GTK themes are asymmetric too.** Nord's is `Nordic` in `/usr/share/themes` from the AUR;
 Gruvbox's is `Colloid-Yellow-Dark-Gruvbox` in **`~/.themes`**, installed by hand (§4.2, §8). Both
-names are read out of `theme-*.env` as `GTK_THEME_NAME`, so nothing else needs to know where they
-live — but `ls /usr/share/themes` will not find the gruvbox one, and that is not a fault.
+names are `gtk_theme_name` in `palettes.toml`, so nothing else needs to know where they live — but `ls /usr/share/themes` will not find the gruvbox one, and that is not a fault.
 
 ### 3.3 Switching
 
-`theme` (`bin/.local/bin/theme` → `~/.local/bin/theme`, bound to **`$mod+Shift+t`**):
-
 ```sh
-theme                       print the active theme
-theme nord | theme gruvbox  switch to a named theme
-theme toggle                switch to the other one          <- what the keybinding runs
+theme              # re-render the current palette
+theme nord         # switch
+theme --list       # what is available
+theme --no-icons   # skip papirus-folders, which needs sudo
 ```
 
-| Flag | Effect |
-|---|---|
-| `--no-icons` | Skip papirus-folders. It writes into `/usr/share/icons`, so it is the one step that needs `sudo`; this is the flag to use in a script or over ssh |
-| `--restart-terminals` | Also `pkill -x foot` and re-exec `foot --server`, applying the palette to the terminal immediately — at the cost of every open shell (§9.11) |
+Bound to `$mod+Shift+t`. `theme` renders every template, writes the palette name to `.theme`,
+then reloads: `sway --validate` before `swaymsg reload` (which also restarts waybar, re-runs
+`import-gsettings` and re-execs nwg-drawer), then `makoctl reload` separately, because mako is
+`exec`'d rather than `exec_always`'d and a sway reload does not restart it.
 
-**Both flags require a palette to be named** — they only mean anything as part of a switch. `theme
---restart-terminals` on its own exits 1 with the help page and the corrected line, rather than
-taking the no-argument path and discarding the flag. Naming the palette already active is fine: the
-switch is a no-op and the flag still runs.
+**Switching is not a repo change.** `.theme` and every rendered file are gitignored, so a switch
+leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
-**How it finds what to switch.** It walks the repo for **fragments** — regular files named
-`*-nord`, `*-nord.*`, `*-gruvbox` or `*-gruvbox.*` — derives each one's theme-neutral name, and
-points that at the chosen palette's sibling. Scanning for fragments rather than for pointers is what
-lets it run on a clone where no pointer exists yet. Nothing is hardcoded, so adding a themed
-application means adding two fragments and changing no code. The corollary is the sharp edge:
-**a themed file not named to that pattern is silently not switched.** There is no manifest to fall
-out of step with, and equally no manifest to complain.
+**`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
+and the three unfolded packages (`gtk`, `alacritty`, `vim`) link file-by-file — a file created
+after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
+§5.2.
 
-The active palette is read from `.theme`. If that file is missing — a tree written before it
-existed, or one where it was deleted — it falls back to reading a pointer's link target, so the
-answer is never lost.
+Applying is idempotent: re-running repairs a deleted or edited artefact.
 
-**Applying is idempotent, not a flip.** Each pointer is set to what it *should* be rather than
-flipped from what it was. So the same command bootstraps a fresh clone, repairs a deleted or wrong
-pointer, and picks up a themed file added since the last run. `theme <the palette you are already
-on>` is therefore a useful repair, not a no-op.
-
-Before it flips anything it checks that both palettes define the same role names, in
-`theme-*.env` and in `colors-*.conf`, and refuses if they differ. That guard exists because of §9.10.
-
-**stow is deliberately not involved.** A `theme-nord` / `theme-gruvbox` pair of stow packages was
-the obvious design and is wrong: a second package writing into `~/.config/waybar` forces stow to
-**unfold** that directory, and every themed package would lose the "new files appear for free"
-property described in §5.2. Flipping a symlink *inside* the package leaves fold state untouched.
-This is why §5.2's table is unchanged by the theming work.
-
-**Nothing about a switch is tracked.** `.theme` and all 18 pointers are gitignored, so:
-
-```sh
-theme gruvbox --no-icons
-git -C ~/repos/dotfiles status --short    # unchanged — switching is not a repo operation
-```
-
-If a switch ever *does* dirty the tree, the explicit list in `.gitignore` has fallen behind a newly
-added themed file. `tests/theme_test.sh` checks that list against the fragments on disk and fails
-when it has.
-
-**What a switch does *not* update immediately:**
-
-| | Why | Remedy |
-|---|---|---|
-| foot | No config-reload signal exists (§9.11) | `--restart-terminals`, or log out |
-| Running GTK apps | They read `settings.ini` once, at startup (§9.9) | Restart the app |
-| Folder icons | papirus-folders needs `sudo`; skipped when there is no tty to prompt on | Run the printed `sudo papirus-folders …` line |
-
-Everything else — sway, waybar, mako, gsettings/libadwaita, nwg-drawer, fuzzel, gtklock, new
-terminals, new vim sessions — is live by the time the command returns. `theme` runs
-`sway --validate` before `swaymsg reload` and refuses to reload an invalid config.
-
-**One invocation does all of it.** If a switch ever appears to need two runs — some packages themed,
-papirus-folders and the closing advisory missing on the first — that is a bug in `theme`, not a
-property of the design. It happened once: the apply function used a loop variable named `target`,
-the same global holding the requested theme, and `sh` has no function-local scope, so `reload_icons`
-was handed `colors-nord.ini` and `set -e` killed the script mid-run. `tests/theme_test.sh` pins this
-and the rest of the switcher's guarantees:
-
-```sh
-sh tests/theme_test.sh    # throwaway $HOME, stubbed swaymsg — the live desktop is untouched
-```
-
-Run it after any edit to `bin/.local/bin/theme`. `tests/` is a repo-root directory like `docs/`, not
-a stow package — never `stow tests`, which would install it to `~/tests/`.
-
-### 3.4 Switching, as a procedure
-
-The reference above is the mechanism. This is what you actually do.
-
-**Day to day: press `$mod+Shift+t`.** That is the whole interface. No terminal, no repo. Everything
-in the table above changes at once; the three laggards are the same three every time.
-
-**When you want the laggards caught up as well:**
-
-```sh
-theme gruvbox                       # runs papirus-folders itself if a tty is there to take the sudo prompt
-theme gruvbox --restart-terminals   # ALSO closes every open terminal — there is no gentler option
-```
-
-Run the `sudo papirus-folders …` line the switcher prints if it said it skipped it — that happens
-over ssh, from a keybinding, or under `--no-icons`, none of which have a terminal to prompt on.
-
-**Then check it landed**, using the §10 sweep under the new palette. Three failures look distinct
-and each points somewhere specific:
-
-| What you see | What it means |
-|---|---|
-| A **black** widget | A role referenced but not defined in this palette. GTK CSS renders an undefined `@name` as black with no error (§9.10) |
-| A surface still in the **old** palette | Its fragment is not named to the `-nord`/`-gruvbox` pattern, so the switcher never saw it |
-| A libadwaita app rendering **light** | `~/.config/gtk-4.0/gtk.css` is not linked — check §9.1, nwg-look |
-| Terminals unchanged | Expected. foot has no reload signal (§9.11) |
-
-**If a switch ever looks half-applied**, it was not the switcher. Every fragment is checked to exist
-*before* any symlink moves, so a missing one aborts having changed nothing and names what is
-missing. Diagnose and recover:
-
-```sh
-theme                                    # what .theme says, falling back to a pointer
-theme nord --no-icons                    # re-apply: repairs every pointer from a known state
-```
-
-Re-applying is the recovery. It reports `18 pointers, N updated`; anything other than `0` when you
-had not switched means something outside `theme` moved a pointer.
-
-**Adding a themed application** takes two fragments and no code — not even a pointer, since `theme`
-creates it:
-
-```sh
-cd ~/repos/dotfiles/<pkg>/.config/<app>
-# write colors-nord.<ext> and colors-gruvbox.<ext>, defining the SAME role names
-# point the application's own config at colors.<ext> via its include directive
-theme gruvbox --no-icons                     # the count must go up by one
-```
-
-Then add `<pkg>/.config/<app>/colors.<ext>` to `.gitignore`, or the new pointer will show up as an
-untracked file and switching will dirty the tree again. The test suite fails until you do.
-
-The count is the confirmation. If it does not rise, the filename does not match the pattern and that
-file is **silently** pinned to one palette forever — see §3.3. If the package is unfolded
-(`alacritty`, `gtk`, `vim`, `bin`), the new files need `stow -R <pkg>` before they exist in `~`.
+**foot does not reload.** It has no config-reload signal at all; `SIGUSR1`/`SIGUSR2` only pick
+between the `[colors-dark]` and `[colors-light]` blocks loaded at startup. A switch needs a foot
+server restart or a logout.
 
 ---
 
@@ -438,13 +299,19 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | Package | Folded? | Reason |
 |---|---|---|
 | `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
-| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, the `colorscheme.lua` pointer and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
+| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 | `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future theme fragment — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
+
+**Rendered palette files are the standing exception.** Every folded themed package now contains
+ignored `*.gen.*` artefacts, which is untracked content inside a folded directory — the thing the
+rule below forbids. It is tolerable here for one reason only: those files are caught by a glob that
+cannot fall behind, unlike a hand-maintained list. It is worth naming as a principle spent rather
+than earned, because the next person to put a generated file in a package will cite it.
 
 The rule: **never fold a directory that a tool writes into, or that holds untracked content** —
 *unless* the tool replaces the file by `rename()`, in which case folding is the only thing that
@@ -466,7 +333,7 @@ To fold one that isn't: `stow -D <pkg> && rmdir <the now-empty target dirs> && s
 
 **The theming work did not change a single row of this table, by design.** Each theme fragment and
 its symlink live *inside* the package that owns them, so switching writes into the repo, never into
-`~/.config`. The alternative — a `theme-nord` / `theme-gruvbox` pair of stow packages — would have
+`~/.config`. The alternative — a pair of per-palette stow packages — would have
 put a second package's files into `~/.config/waybar`, `~/.config/foot` and the rest, forcing stow to
 unfold every one of them and costing all seven themed folded packages their "new files appear for
 free" property in exchange for nothing. See §3.3.
@@ -572,62 +439,17 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 
 ---
 
-## 7. Keybinding reference
+## 7. Keybindings
 
-`$mod` is Super. `$left/$down/$up/$right` = `h/j/k/l`. **Bold** = added by this repo.
+Not listed here. A static table duplicating `sway/.config/sway/keyboard.conf` (457 lines) is a
+table that drifts, and this desktop already answers the question two better ways:
 
-### Launching
-| Key | Action |
-|---|---|
-| `$mod+Return` | Terminal (`footclient`) |
-| **`$mod+grave`** | **Dropdown terminal (toggle)** |
-| `$mod+d` | fuzzel launcher |
-| `$mod+Shift+d` | nwg-drawer app grid |
-| `$mod+n` | thunar |
-| `$mod+o` | firefox |
-| `$mod+p` | Window switcher |
-| `$mod+Shift+e` | Power menu |
-| `$mod+f1` | Lock (gtklock) |
-| **`$mod+Shift+t`** | **Toggle Nord ↔ Gruvbox (`theme toggle`, §3.3)** |
+- **`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`,
+  which renders the bindings *from the live config* — it cannot be out of date.
+- `sway/.config/sway/keyboard.conf` is the source, and is commented.
 
-### Windows
-| Key | Action |
-|---|---|
-| `$mod+q` | Kill |
-| `$mod+{h,j,k,l}` / arrows | Focus |
-| `$mod+Shift+{h,j,k,l}` | Move |
-| `$mod+f` | Fullscreen |
-| `$mod+Shift+space` | Floating toggle |
-| `$mod+space` | Focus tiling ↔ floating |
-| `$mod+a` | Focus parent |
-| `$mod+{v,b}` | Split vertical / horizontal |
-| `$mod+{s,w,e}` | Stacking / tabbed / toggle split |
-| `$mod+Ctrl+{arrows,hjkl}` | Resize |
-| **`$mod+r`** | **Resize mode** |
-| **`$mod+g`** | **Gaps toggle** |
-
-### Workspaces
-| Key | Action |
-|---|---|
-| `$mod+{1..0}` | Switch (via `bindcode`, for Azerty compatibility) |
-| `$mod+Shift+{1..0}` | Move container to workspace |
-| **`$mod+Tab`** | **Back and forth** |
-| **`$mod+Ctrl+Shift+{h,j,k,l}`** | **Move workspace to output** |
-| `$mod+Shift+minus` / `$mod+minus` | Scratchpad move / show |
-
-### Screenshots & clipboard
-| Key | Action |
-|---|---|
-| `Print` | Region → swappy |
-| `Ctrl+Print` | Window → swappy |
-| `Shift+Print` | Display → swappy |
-| **`Ctrl+Shift+Print`** | **Region → clipboard** |
-| `$mod+Ctrl+v` | cliphist picker |
-| `$mod+Ctrl+x` | cliphist delete |
-
-### Other
-`$mod+Shift+c` reload · `$mod+button4/5` resize floating by scroll · media/brightness keys via
-`pamixer`, `playerctl`, `brightnessctl`.
+The two worth knowing before you can read either: **`$mod+Return`** opens a terminal and
+**`$mod+Shift+t`** switches the palette.
 
 ---
 
@@ -668,18 +490,18 @@ git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 # The theme switcher, so `theme` and $mod+Shift+t work
 stow bin
 
-# Create the theme pointers. They are gitignored, so a fresh clone does not have
+# Render the colour files. They are gitignored, so a fresh clone does not have
 # them, and every themed package needs them present BEFORE it is stowed — the
 # unfolded ones (gtk, alacritty, vim) link file-by-file and would otherwise miss
 # them, leaving each application with no colours to include.
-theme nord --no-icons          # or gruvbox; must report "18 pointers"
+theme nord --no-icons          # or gruvbox; must report "18 files rendered"
 
 # ~/.bashrc already exists from /etc/skel and stow will not overwrite a real file
 mv ~/.bashrc ~/.bashrc.bak && stow bash
 ```
 
 **`theme` before `stow`, always.** If you stow first, run `stow -R <pkg>` afterwards for the
-unfolded packages, or the pointers will exist in the repo and be absent from `~`.
+unfolded packages, or the rendered files will exist in the repo and be absent from `~`.
 
 **Optional now, not required:**
 
@@ -856,17 +678,20 @@ nothing is logged — no warning on stderr, no fallback to the previous value, n
 name is involved. A widget simply turns black, which reads as a rendering bug rather than a missing
 definition. On a `#2E3440` bar a black region is easy to miss entirely.
 
-The way to produce it is to add a role to one palette and forget the other, so `theme` refuses to
-switch when `theme-nord.env` and `theme-gruvbox.env` (or the two `colors-*.conf`) do not define
-exactly the same names:
+The way to produce it is to add a role to one palette and forget the other. `theme` refuses to
+render when the two sections of `palettes.toml` do not define exactly the same keys:
 
 ```
-theme: theme-nord.env and theme-gruvbox.env define different roles
+theme: nord and gruvbox define different keys: missing=['indicator'] extra=[]
 ```
 
-That is the guard working. Add the role to *both* fragments and it goes away. The same discipline
-applies to the four GTK CSS fragments — waybar, gtklock, nwg-drawer, and `gtk-{3,4}.0/gtk.css` —
-which the check cannot cover, because it reads the shell and sway copies.
+That is the guard working, and it now covers *every* themed file rather than the two it could
+parse — the check is on the table, not on a sample of the outputs. A template naming a role no
+palette defines fails the same way, naming the file:
+
+```
+theme: waybar/.config/waybar/colors.gen.css.tmpl: no such role 'accnet' in this palette
+```
 
 Related: **a raw hex in an application config is now a bug**, not a style choice. It will survive a
 switch and sit there in the wrong palette. §2.3 lists where values are allowed to live.
