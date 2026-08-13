@@ -11,7 +11,7 @@ stow bin                            # puts `theme` on $PATH via ~/.local/bin
 ./bin/.local/bin/theme gruvbox      # render the colours; must precede the stows below
 stow bash vim nvim alacritty foot starship htop claude
 stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
-sh tests/theme_test.sh              # 13 assertions, in a sandbox; touches nothing live
+sh tests/theme_test.sh              # 14 assertions, in a sandbox; touches nothing live
 ```
 
 Full desktop, including the steps that cannot be stowed: **[PLAYBOOK.md](PLAYBOOK.md)**.

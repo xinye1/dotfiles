@@ -129,6 +129,14 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
 # include still named `colors.css`, no template produced it any more, and
 # nothing failed loudly because sway and GTK treat a missing include as a
 # warning rather than an error.
+# Every rendered file must be syntactically acceptable to the tool that reads
+# it. A banner written in the wrong comment syntax renders fine and fails at
+# the consumer: `#` is a comment in most of these formats and in neither JSON
+# nor legacy vimscript, and that is how the bar disappeared.
+python3 "$REPO/tests/check_syntax.py" "$REPO" \
+  && ok "every rendered file parses for its consumer" \
+  || no "every rendered file parses for its consumer"
+
 python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
