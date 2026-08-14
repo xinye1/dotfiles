@@ -119,6 +119,13 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   palettes and using `{{role}}` in the relevant `*.tmpl`; `theme` refuses to render if the two
   palettes define different keys. `PLAYBOOK.md` §3.1 says what each role is *for*; the values live
   only in the table. Note *Nord* and *Nordic* are different schemes (§3.2).
+  **A colour is not always spelled with a `#`.** fuzzel's `-t`/`-S` take a bare `RRGGBBAA`, and
+  `tests/check_hex.py` looked only for `#`-prefixed forms — so it passed for months with
+  `-t bf616aff` sitting in a sway binding. It now checks both spellings. When a consumer wants a
+  colour in some third notation, extend the check *first*: a green assertion the guard cannot
+  actually see is worse than no assertion, because the next colour gets added trusting it.
+  For a file parsed before `config.d/theme`, derive the colour at runtime instead of typing it —
+  `sway/.config/sway/scripts/cliphist_delete.sh` is the worked example (`${CRITICAL#\#}ff`).
 - **Themed files are templates.** `<name>.tmpl` renders to `<name>` with the `.tmpl` stripped, so
   `colors.gen.css.tmpl` -> `colors.gen.css`. Rendered files match `*.gen.*` and are gitignored;
   editing one is pointless. The six GTK/xsettingsd files read at a hardcoded path cannot carry the

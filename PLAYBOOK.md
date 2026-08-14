@@ -273,6 +273,16 @@ that produces the same result, installs into `~/.themes` without root, and needs
 `lxappearance` (GTK3+ only reads settings.ini), `qt5ct`/`qt6ct` (no Qt apps in this setup yet —
 add them if that changes, as Qt apps will otherwise ignore the theme entirely).
 
+**mako's `group-by`**, tried and reverted. mako draws only the *first* member of a group, so
+`group-by=app-name` turned six notifications into one card reading `(6) …` with the other five
+invisible and no hint they differed. It bites here specifically because `notify-send` sends an
+**empty app name** — every script on the machine grouped as one nameless app, which is grouping's
+worst case rather than its intended one. The wall-of-cards problem it was meant to solve is already
+handled by `max-visible=5` plus the `[hidden]` placeholder. `[grouped] invisible=0` was also tried:
+it shows every member, but stamps the redundant `(N)` on each one *and* escapes the `max-visible`
+cap. If a genuinely chatty app ever arrives, `group-by=app-name,summary` collapses only true
+repeats without hiding distinct messages.
+
 ---
 
 ## 5. The stow model
@@ -401,6 +411,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | **Undeclared display scale** | `config.d/output` was 100% comments. `eDP-1` runs 3840×2160 at scale 2 by autodetection — worked here, would silently not reproduce elsewhere | `output eDP-1 { scale 2 }` | `swaymsg -t get_outputs` |
 | **Unhandled lid switch** | A `Lid_Switch` input exists; nothing bound to it | `bindswitch --reload --locked lid:on/off` | Close the lid |
 | **mako icon path** | Points at a directory that does not exist | Papirus-Dark | `notify-send -i firefox test` |
+| **Hex guard blind to bare colours** | `tests/check_hex.py` asserts "no tracked config carries a literal hex" and passed while `sway/…/config.d/default` ran `fuzzel … -t bf616aff -S bf616aff`. The regex required a leading `#`; fuzzel's `-t`/`-S` want a bare `RRGGBBAA`. Same colour, different spelling. The cost was not the one off-palette picker — it was a green check certifying a rule it could not see | `BARE_HEX` pattern added; the binding moved into `scripts/cliphist_delete.sh`, which sources `theme.gen.env` and derives `${CRITICAL#\#}ff` at press time, because `config.d/default` is parsed before `config.d/theme` (§9.6) | `python3 tests/check_hex.py .`; `theme gruvbox` then `$mod+Ctrl+x` — picker is gruvbox red, not Nord red |
 | **Critical notifications expired after 5s** | `[urgency=high] ignore-timeout=1` was commented "never time out on their own". It does not mean that. Per `man 5 mako` it means *ignore the timeout the app asked for and use `default-timeout` instead* — which is `5000` globally. So critical notifications vanished after five seconds, **and** an app that explicitly asked to stay longer was overridden into vanishing sooner. The comment described the intent, not the behaviour, and nothing ever checked | `default-timeout=0` alongside `ignore-timeout=1` in the same criteria. The pair is what makes it stick: ignore what the app said, then apply no timeout | `notify-send -u critical x y`, wait >5s, `makoctl list` still shows it |
 | **waybar workspaces 1–2** | `format-icons` covered `"3"`–`"10"` only; 1 and 2 fell through to the raw name | Added, plus a `default` | Harmless for numeric workspaces; breaks the moment one is renamed |
 | **No Nerd Font** | Only the symbols-only fallback was installed; every glyph rendered via fontconfig fallback | `ttf-jetbrains-mono-nerd` | §9.4 |

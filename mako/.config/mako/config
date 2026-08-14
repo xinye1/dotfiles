@@ -48,10 +48,17 @@ layer=overlay
 
 default-timeout=8000
 
-# Ten pings from one app collapse into one card with a count, instead of
-# stacking ten cards down the screen. mako renders only group-index=0 and
-# hides the rest — see the [hidden] placeholder at the bottom.
-group-by=app-name
+# NO group-by, deliberately. `group-by=app-name` was tried and reverted: mako
+# draws only the FIRST member of a group, so six notifications became one card
+# reading "(6) …" and the other five were invisible with no hint they differed.
+# The reason it bites here is that `notify-send` sends an EMPTY app name — so
+# every script on the machine grouped together as one nameless app, which is
+# grouping's worst case rather than its intended one.
+#
+# The problem grouping was meant to solve (a wall of cards) is already solved
+# by max-visible=5 plus the [hidden] placeholder at the bottom of this file.
+# If a genuinely chatty app ever shows up, `group-by=app-name,summary` collapses
+# only true repeats — same app AND same title — without hiding distinct messages.
 
 # history is on by default but the buffer was unreachable: nothing invoked
 # `makoctl restore`. $mod+Ctrl+n now does, so a deeper buffer is worth having.

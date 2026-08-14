@@ -23,6 +23,17 @@ COMMENT_MARKERS = {
 DEFAULT_COMMENT = r'^\s*#'
 # 3-, 4-, 6- and 8-digit forms are all legal CSS/GTK colours.
 HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
+# ...but not every consumer spells a colour with a leading `#`. fuzzel's -t/-S
+# take a bare RRGGBBAA, and a `#`-only check passed for months while
+# `-t bf616aff` sat in a sway binding: same colour, different spelling, guard
+# blind to it. A green check asserting a rule it cannot see is worse than no
+# check, because the next colour gets added on the strength of it.
+#
+# Deliberately not requiring a letter a-f: that would exempt `112233`, a real
+# colour. Pure-digit runs of exactly 6 or 8 are vanishingly rare in these
+# configs (measured: zero across the tracked tree), and a false positive here
+# fails loudly, which is the right direction for a guard to be wrong in.
+BARE_HEX = re.compile(r'(?<![#\w])(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6})(?!\w)')
 SKIP_PREFIX = ("tests/", "docs/")
 SKIP_EXACT = {"palettes.toml"}
 
@@ -50,6 +61,9 @@ def main(repo):
                 continue
             if HEX.search(line):
                 bad.append(f"{rel}:{n}: literal colour outside palettes.toml: {line.strip()[:60]}")
+            elif BARE_HEX.search(line):
+                bad.append(f"{rel}:{n}: literal colour (bare, no '#') outside "
+                           f"palettes.toml: {line.strip()[:60]}")
     for line in bad:
         print(line, file=sys.stderr)
     return 1 if bad else 0
