@@ -84,6 +84,41 @@ if have mako; then
     esac
 fi
 
+# --- tmux ---
+# tmux has no --check-config, but starting a server on a PRIVATE socket against
+# the live config is equivalent and cannot disturb a running session: `-L` names
+# a socket nothing else uses, so this is a second server, not a second client.
+#
+# Then a second, sharper question. The status bar reaches its colours through
+# `@thm_*` user options that colors.gen.conf defines, and tmux does not care
+# whether they exist: an undefined one expands to nothing, `#[fg=#{@thm_accent}]`
+# becomes `#[fg=]`, and the bar renders in the default colours with no error at
+# all -- the same silent-failure shape as GTK's undefined `@name`. Expanding the
+# three format strings and looking for an empty `fg=` is what catches a role
+# that was added to tmux.conf but not to the template.
+#
+# What this does NOT catch: a status-format whose `align=` groups are wrong.
+# tmux accepts that silently too, and the only way to see it is to attach a
+# client and look at the bar. See the note on `list=on` in tmux.conf.
+if have tmux; then
+    sock=dotfiles-check-$$
+    out=$(tmux -L "$sock" -f "$HOME/.config/tmux/tmux.conf" \
+              new-session -d -s check 2>&1)
+    if [ -n "$out" ]; then
+        no "tmux accepts its config" "$(printf '%s' "$out" | head -2)"
+    else
+        fmt=$(tmux -L "$sock" display-message -p \
+              '#{E:status-format[0]}#{E:status-left}#{E:status-right}' 2>&1)
+        case $fmt in
+            *"fg=]"*|*"fg= "*|*"bg=]"*)
+                no "tmux resolves every colour role" \
+                   "an empty fg=/bg= means colors.gen.conf is missing a @thm_ role" ;;
+            *)  ok "tmux accepts its config and resolves every colour" ;;
+        esac
+    fi
+    tmux -L "$sock" kill-server 2>/dev/null
+fi
+
 # --- vim ---
 # Note the limit of this one: vim accepts a stray `#` (it parses as `:number`),
 # so this catches real syntax errors but would NOT have caught the wrong-comment

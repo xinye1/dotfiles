@@ -80,6 +80,32 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   second instance just exits on the name clash. Distinguish the parse error from the expected
   `Failed to acquire service name` — `check_consumers.sh` greps for the former, since the exit code
   is dominated by the latter.
+- **tmux has no colour indirection, and no error for a missing one.** Every colour option takes a
+  literal, so `tmux/.config/tmux/colors.gen.conf` carries the hexes twice over: as `@thm_*` user
+  options for the format strings (`#[fg=#{@thm_accent}]` — tmux does expand `#{}` inside `#[]`) and
+  as the plain style options, which take a colour and would not expand a format. An **undefined**
+  `@thm_foo` expands to nothing, `#[fg=]` is accepted, and the bar quietly renders in the default
+  colours — the GTK `@name` failure again. `check_consumers.sh` greps the expanded format for an
+  empty `fg=`.
+- **A `#` arriving from data breaks the tmux status bar downstream of itself.** tmux expands the
+  format first and parses `#[...]` directives in the *result*, so a `#` from a pane title, window
+  name or branch name is indistinguishable from the start of one — and a value ending in `#` pairs
+  with the `#` of the next real directive to form `##`, an escaped literal, printing that directive
+  as visible text. A Claude Code pane title truncated onto an issue number ate
+  `#[nolist align=right]` and left the right-hand group unaligned. Wrap **every** dynamic value in
+  `#{qh:…}` (`#S`/`#W` don't escape; use `#{qh:session_name}`/`#{qh:window_name}`), and have any
+  `#()` script escape its own output. Two constraints on `qh` that are not in the man page:
+  it does **not** apply to a nested `#{…}`, only to a plain variable name — hence chained modifiers
+  and a conditional wrapping two modified branches, not one modifier wrapping a conditional; and in
+  `#{=/50/…;qh:x}` the trim runs **first**, which is the only safe order, since escaping first lets
+  the trim fall between the halves of a `##` and recreate the dangling `#`.
+- **A hand-written tmux `status-format[0]` needs `list=on`/`nolist`, or every `align=` group is
+  ignored.** Wrapping the `#{W:…}` window list in `#[list=on …]` … `#[nolist align=centre]` is what
+  identifies the elastic part of the line; without it tmux accepts all three groups, reports
+  nothing, and draws left, centre and right run together flush left. Taking the format over also
+  drops the per-window activity/bell *style* options — the stock format's nested conditionals for
+  them are gone, so those states have to be shown as characters in `window-status-format`. Neither
+  loss is visible except by attaching a client and looking.
 - **`keyhint.sh` is a flat cell list in a 5-column yad grid, and `--geometry` does not track it.**
   Append a number of cells that is not a multiple of 5 and every later row silently shifts a column;
   overflow the height and yad clips with no scrollbar and no warning. Both failures look like

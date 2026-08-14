@@ -1,0 +1,63 @@
+# Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+#
+# tmux has no colour indirection of its own: every option that takes a colour
+# takes a literal. So this file is where the hexes live, and `tmux.conf` names
+# nothing but roles. Two mechanisms, because tmux needs both:
+#
+#   1. `@thm_*` user options, for colours used INSIDE a format string. tmux
+#      expands `#{}` within `#[]`, so `#[fg=#{@thm_accent}]` in status-right
+#      resolves to the palette's accent with no hex in the tracked file. This
+#      is the only reason the status bar can be written in `tmux.conf` at all.
+#   2. The plain style options below, which are read once and take a colour
+#      directly — a format would not be expanded in them.
+#
+# `tmux.conf` must not set any option that appears here, or it would win: it
+# sources this file, and last write wins.
+
+# --- Roles, for use inside format strings ------------------------------------
+set -g @thm_bg        "{{bg}}"
+set -g @thm_surface   "{{surface}}"
+set -g @thm_sel       "{{sel}}"
+set -g @thm_muted     "{{muted}}"
+set -g @thm_fg        "{{fg}}"
+set -g @thm_fg_bright "{{fg_bright}}"
+set -g @thm_accent    "{{accent}}"
+set -g @thm_accent2   "{{accent2}}"
+set -g @thm_indicator "{{indicator}}"
+set -g @thm_critical  "{{critical}}"
+set -g @thm_warning   "{{warning}}"
+set -g @thm_success   "{{success}}"
+
+# --- The bar -----------------------------------------------------------------
+# `bg=default` rather than `bg={{bg}}`: default means "whatever the terminal is
+# painting", so the bar has no edge of its own and inherits foot's background
+# exactly, including any transparency. Naming the colour would instead paint a
+# rectangle that merely matches — and stops matching the moment the terminal is
+# given an alpha or a different background.
+set -g status-style "bg=default,fg={{muted}}"
+
+# --- Messages, prompts and modes ---------------------------------------------
+# The command prompt is the one place a block of colour is wanted: it is modal,
+# and it should be obvious that keystrokes are going to tmux rather than the
+# shell.
+set -g message-style         "bg={{surface}},fg={{fg_bright}}"
+set -g message-command-style "bg={{surface}},fg={{warning}}"
+
+# copy-mode and the selection inside it.
+set -g mode-style                    "bg={{sel}},fg={{fg_bright}}"
+set -g copy-mode-match-style         "bg={{sel}},fg={{fg_bright}}"
+set -g copy-mode-current-match-style "bg={{accent}},fg={{bg}}"
+set -g copy-mode-mark-style          "bg={{accent2}},fg={{bg}}"
+
+# --- Panes -------------------------------------------------------------------
+# Borders sit one step apart, both dim: the active pane is already identified by
+# the cursor and by the centre of the status bar, so a bright border would be
+# the third signal for the same fact.
+set -g pane-border-style        "fg={{surface}}"
+set -g pane-active-border-style "fg={{muted}}"
+
+# The big numbers from `display-panes` (prefix q) — transient, so they may shout.
+set -g display-panes-colour        "{{muted}}"
+set -g display-panes-active-colour "{{accent}}"
+
+set -g clock-mode-colour "{{accent}}"

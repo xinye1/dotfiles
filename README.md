@@ -63,6 +63,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
 | `alacritty` | `~/.config/alacritty/alacritty.toml` |
 | `foot` | `~/.config/foot/foot.ini` |
+| `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
 | `starship` | `~/.config/starship.toml` |
 | `htop` | `~/.config/htop/htoprc` |
 | `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
