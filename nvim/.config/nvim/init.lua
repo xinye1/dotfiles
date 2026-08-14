@@ -62,6 +62,15 @@ vim.o.expandtab = true -- tabs are spaces
 --==== UI config ====
 vim.o.number = true    -- show line numbers
 vim.o.showmatch = true -- highlight matching brackets
+
+-- Mouse off, matching vim. This is a decision, not a port: Neovim's default is
+-- `nvi`, so nvim grabs click and drag where vim ignores them. Inside tmux
+-- (`mouse on`) that means a drag over an nvim pane becomes a *visual
+-- selection* instead of a terminal selection, and the obvious
+-- select-then-middle-click copy stops working — in vim the same drag never
+-- reaches the editor at all. Empty, tmux keeps the mouse: click selects the
+-- pane, wheel enters copy-mode, drag selects text to copy.
+vim.o.mouse = ''
 --
 -- Dropped from .vimrc as already-default in Neovim, listed so their absence
 -- reads as a decision rather than an oversight:
