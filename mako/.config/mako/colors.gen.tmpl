@@ -1,9 +1,9 @@
 # Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
 # mako's colours.
 #
-# Included by config via a `colors` symlink that ~/.local/bin/theme flips.
-# mako's include accepts criteria sections, so the per-urgency overrides live
-# here too rather than being split across two files.
+# Included by ~/.config/mako/config, which holds everything that is not a
+# colour. mako's include accepts criteria sections, so the per-urgency
+# overrides live here rather than being split across two files.
 #
 # surface body against fg text: one step up from the desktop background so
 # notifications read as raised rather than as a hole in the wallpaper.
@@ -20,8 +20,24 @@ text-color={{indicator}}
 [urgency=normal]
 border-color={{accent}}
 
-# Critical notifications never time out on their own.
+# Critical notifications never time out on their own. mako accepts `high` as
+# an alias for `critical` here — checked against mako 1.11, not assumed.
+#
+# `ignore-timeout=1` ALONE DOES NOT DO THAT, which is the bug this comment used
+# to describe away: it means "ignore the timeout the app asked for and use
+# default-timeout instead", and default-timeout is 5000 globally. So critical
+# notifications were disappearing after five seconds — and an app that asked
+# to stay longer was being overridden into vanishing sooner. The pair is what
+# makes it stick: ignore whatever the app said (1), and use no timeout (0).
 [urgency=high]
 border-color={{critical}}
 text-color={{fg_bright}}
 ignore-timeout=1
+default-timeout=0
+
+# The "and N more" placeholder. Its format string is in config, next to the
+# other structural options; only the colour belongs here. Muted, because the
+# placeholder is a counter rather than a notification in its own right.
+[hidden]
+text-color={{muted}}
+border-color={{muted}}

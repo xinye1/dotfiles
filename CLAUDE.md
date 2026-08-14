@@ -69,6 +69,21 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
 - **Moving a config block wholesale silently loses whatever stays behind**, and every check here is
   syntactic. The waybar clock's `actions` block was dropped exactly this way and nothing complained.
   Diff the old block against the new one key by key before deleting it.
+- **mako's `ignore-timeout=1` does not mean "never expire".** It means *ignore the timeout the app
+  asked for and use `default-timeout` instead* — so on its own, under a global `default-timeout`, it
+  makes a notification expire **sooner** than an app requested. Pair it with `default-timeout=0` in
+  the same criteria. A comment claiming otherwise sat over `[urgency=high]` for months (PLAYBOOK
+  §6.2). `border-size` is also **not** directional, though `margin`/`outer-margin`/`padding`/
+  `border-radius` all are.
+- **`mako --config <file>` is a real validator**, and the only one mako has: it fully parses the
+  config *and its includes* before touching D-Bus, so the running daemon is unaffected and the
+  second instance just exits on the name clash. Distinguish the parse error from the expected
+  `Failed to acquire service name` — `check_consumers.sh` greps for the former, since the exit code
+  is dominated by the latter.
+- **`keyhint.sh` is a flat cell list in a 5-column yad grid, and `--geometry` does not track it.**
+  Append a number of cells that is not a multiple of 5 and every later row silently shifts a column;
+  overflow the height and yad clips with no scrollbar and no warning. Both failures look like
+  nothing happened. See PLAYBOOK §7.
 
 ## Verify
 

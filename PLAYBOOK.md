@@ -380,6 +380,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | waybar calendar | pastel pink `#ff6699` `#ecc6d9` `#99ffdd` | `$accent2` weekdays, `$warning` today, `$muted` week numbers | Loudest palette break in the setup. The weekday colour moved nord9 → nord7 in the role rewrite — the one deliberate visual change on the Nord side |
 | waybar font | `JetBrainsMono` | `"JetBrainsMono Nerd Font"` | §9.4 |
 | mako | Arc blue `#5294e2` on `#404552` | `$surface` body / `$accent` border | |
+| mako frame | 5px border, square | 2px border, `border-radius=10,0,0,10` | Rounded on the left, square on the right, so the card reads as a tab flush against the screen edge. Note `border-size` is **not** directional in mako 1.11 — only `margin`, `outer-margin`, `padding` and `border-radius` are, so a per-edge accent *spine* cannot be expressed; asymmetric corners are the closest thing |
 | mako icons | `/usr/share/icons/Arc-X-D` | `/usr/share/icons/Papirus-Dark` | **The stock path does not exist** — icons were silently falling back |
 | fuzzel | purple/navy `08052bdd`, Dracula selection `44475add` | `$bg` / `$sel` / `$accent` border | Related to nothing else |
 | fuzzel font | `JetBrainsMono-Regular` | `JetBrains Mono` | §9.4 — file name vs fontconfig family |
@@ -400,6 +401,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | **Undeclared display scale** | `config.d/output` was 100% comments. `eDP-1` runs 3840×2160 at scale 2 by autodetection — worked here, would silently not reproduce elsewhere | `output eDP-1 { scale 2 }` | `swaymsg -t get_outputs` |
 | **Unhandled lid switch** | A `Lid_Switch` input exists; nothing bound to it | `bindswitch --reload --locked lid:on/off` | Close the lid |
 | **mako icon path** | Points at a directory that does not exist | Papirus-Dark | `notify-send -i firefox test` |
+| **Critical notifications expired after 5s** | `[urgency=high] ignore-timeout=1` was commented "never time out on their own". It does not mean that. Per `man 5 mako` it means *ignore the timeout the app asked for and use `default-timeout` instead* — which is `5000` globally. So critical notifications vanished after five seconds, **and** an app that explicitly asked to stay longer was overridden into vanishing sooner. The comment described the intent, not the behaviour, and nothing ever checked | `default-timeout=0` alongside `ignore-timeout=1` in the same criteria. The pair is what makes it stick: ignore what the app said, then apply no timeout | `notify-send -u critical x y`, wait >5s, `makoctl list` still shows it |
 | **waybar workspaces 1–2** | `format-icons` covered `"3"`–`"10"` only; 1 and 2 fell through to the raw name | Added, plus a `default` | Harmless for numeric workspaces; breaks the moment one is renamed |
 | **No Nerd Font** | Only the symbols-only fallback was installed; every glyph rendered via fontconfig fallback | `ttf-jetbrains-mono-nerd` | §9.4 |
 | **Cursor theme never resolved** | The name was written `Qogir-dark` in 13 places; the directory is `/usr/share/icons/Qogir-Dark`. XCursor resolves by **case-sensitive path**, so it silently fell back to the default cursor everywhere | `Qogir-Dark` throughout, plus `seat * xcursor_theme` and `~/.icons/default/index.theme` so it reaches XWayland and the compositor cursor too | `ls -d /usr/share/icons/Qogir-dark` errors, `-Dark` does not — that one letter was the whole bug |
@@ -451,6 +453,21 @@ table that drifts, and this desktop already answers the question two better ways
 **`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`. Be
 aware of what that is: a *hardcoded* `cheat=()` array, inherited from stock EndeavourOS. It reads
 no config, so it can and does drift from the two files above. It is a convenience, not a source.
+
+Two things bite when adding to it, both silent:
+
+- The array is a **flat list of cells in a 5-column grid** (left Function, left Binding, spacer,
+  right Function, right Binding). Append fewer than five and every following row shifts a column —
+  a section header lands in the Binding column and nothing errors. Count with
+  `len(cells) % 5 == 0` before trusting it.
+- **`--geometry` does not grow with the array.** yad clips the overflow with no scrollbar and no
+  warning: the NOTIFICATIONS section was invisible at `1200x680` until the height went to `860`.
+  Screenshot the window after adding rows; do not assume it rendered.
+
+The notification bindings are `$mod+Shift+n` (do-not-disturb toggle), `$mod+Ctrl+n` (restore the
+last notification from history) and `$mod+Ctrl+Shift+n` (dismiss all). They are plain `makoctl`
+calls with no colour in them, which is why they can live in `config.d/default` despite that file
+being parsed before `config.d/theme` (§9.6).
 
 The one worth knowing before you can read any of it: **`$mod+Return`** opens a terminal.
 

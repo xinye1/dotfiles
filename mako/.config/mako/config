@@ -2,26 +2,88 @@
 #
 # Was Arc-blue (#5294e2 border on a #404552 body), which matched the GTK
 # theme of the day and nothing else.
+#
+# Colours live in colors.gen (rendered from palettes.toml); nothing here may
+# carry a literal hex. Structure lives here, colour lives there — the two
+# files cross-reference each other where one criteria is split across both.
 
 font=JetBrains Mono 11
 
-# ~/.local/bin/theme flips it, then runs `makoctl reload` — mako is exec'd
-# rather than exec_always'd in sway, so a sway reload does NOT restart it.
-include=~/.config/mako/colors.gen
+# --- geometry -------------------------------------------------------------
 
+anchor=top-right
 width=315
+
+# A *maximum*, not a fixed height — mako shrinks a short notification to fit.
 height=200
 padding=10
-margin=10
+
+# outer-margin is the gap from the screen edge; margin is the gap around each
+# notification and therefore doubles up between two stacked ones. Splitting
+# them (rather than the old single margin=10 doing both jobs) tightens the
+# stack without moving it closer to the corner.
+outer-margin=10
+margin=5
+
+# --- appearance -----------------------------------------------------------
+
+# border-size is NOT directional in mako 1.11 — only margin, outer-margin,
+# padding and border-radius are. A per-edge accent spine is therefore not
+# expressible; a thin uniform border is the quiet equivalent. 5px square was
+# the one surface on this desktop that did not match waybar's 1px/5px radius.
+border-size=2
+border-radius=10,0,0,10
 
 # Was /usr/share/icons/Arc-X-D, a directory that does not exist on this system —
 # notification icons were silently falling back. Papirus-Dark ships theme-tinted
 # folders once `papirus-folders -C nordic -t Papirus-Dark` has been run.
 icon-path=/usr/share/icons/Papirus-Dark
 max-icon-size=70
+icon-border-radius=3
+
+# overlay puts notifications above fullscreen windows.
 layer=overlay
 
-border-size=5
-border-radius=0
+# --- behaviour ------------------------------------------------------------
 
-default-timeout=5000
+default-timeout=8000
+
+# Ten pings from one app collapse into one card with a count, instead of
+# stacking ten cards down the screen. mako renders only group-index=0 and
+# hides the rest — see the [hidden] placeholder at the bottom.
+group-by=app-name
+
+# history is on by default but the buffer was unreachable: nothing invoked
+# `makoctl restore`. $mod+Ctrl+n now does, so a deeper buffer is worth having.
+max-history=20
+
+# Left = invoke default action and right = dismiss are mako's defaults and are
+# right; middle-click clearing the whole stack is the one worth adding.
+on-button-middle=dismiss-all
+
+# --- colours --------------------------------------------------------------
+
+# Rendered by ~/.local/bin/theme from colors.gen.tmpl, which also carries the
+# per-urgency border colours. `theme` runs `makoctl reload` separately after a
+# switch, because mako is exec'd rather than exec_always'd in sway and so a
+# sway reload does NOT restart it.
+#
+# An include splices in at this point and returns the parser to global scope
+# afterwards, so criteria below are top-level — verified, not assumed.
+include=~/.config/mako/colors.gen
+
+# --- criteria -------------------------------------------------------------
+
+# Do not disturb. $mod+Shift+n toggles it via `makoctl mode -t do-not-disturb`.
+# Notifications still arrive and still land in history — they just never pop,
+# so nothing is lost while it is on. This must stay after the include: mako
+# applies matching criteria in file order and last-wins, and the built-in
+# [group-index=0] criteria sets invisible=0.
+[mode=do-not-disturb]
+invisible=1
+
+# The "and N more" placeholder shown once the stack exceeds max-visible (5).
+# Its text-color is in colors.gen.tmpl — same criteria, split across the two
+# files along the structure/colour line.
+[hidden]
+format=<b>%h more</b>

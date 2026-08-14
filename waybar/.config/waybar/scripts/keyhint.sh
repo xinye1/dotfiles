@@ -9,7 +9,10 @@ header="$ACCENT"
 cheat=(
     --title="EndeavourOS Sway keybindings:"
     --no-buttons
-    --geometry=1200x680
+    # Height must grow with the array. At 680 the NOTIFICATIONS section added
+    # four rows below the fold and was simply invisible — yad clips silently
+    # rather than scrolling or complaining. Re-screenshot after adding rows.
+    --geometry=1200x860
     --list
     --no-click
     --no-selection
@@ -100,6 +103,30 @@ cheat=(
     ""
     "<span font='$font 14'>Launch the web browser</span>"
     "<span font='$font 14'> + </span><span font='$font 18'>󰰕</span>"
+    ""
+    ""
+    ""
+    ""
+    ""
+    "<span font='$font 16' foreground='$header'>NOTIFICATIONS</span>"
+    ""
+    ""
+    ""
+    ""
+    "<span font='$font 14'>Toggle do not disturb</span>"
+    "<span font='$font 14'> + Shift + </span><span font='$font 18'>󰰒</span>"
+    ""
+    ""
+    ""
+    "<span font='$font 14'>Restore last notification</span>"
+    "<span font='$font 14'>Ctrl +  + </span><span font='$font 18'>󰰒</span>"
+    ""
+    ""
+    ""
+    "<span font='$font 14'>Dismiss all notifications</span>"
+    "<span font='$font 14'>Ctrl +  + Shift + </span><span font='$font 18'>󰰒</span>"
+    ""
+    ""
     ""
 )
 

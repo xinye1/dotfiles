@@ -63,6 +63,27 @@ if have waybar; then
     rm -f "$log"
 fi
 
+# --- mako ---
+# mako has no --check-config, but it parses its config (and everything the
+# config includes) BEFORE it tries to take the D-Bus name, and a parse failure
+# is reported distinctly from the name clash. So starting a second mako against
+# the live config is a real check: the running daemon keeps the name, the
+# second one exits immediately, and what it printed on the way out is the
+# answer. Grepping for the parse error rather than the exit code is the point —
+# the exit code is dominated by the expected name clash.
+#
+# This is the check that would have noticed a bad {{role}} reaching colors.gen,
+# or a criteria mako no longer accepts, neither of which is visible from
+# outside the file.
+if have mako; then
+    out=$(timeout 5 mako --config "$HOME/.config/mako/config" 2>&1)
+    case $out in
+        *"Failed to parse"*|*"Invalid "*|*"Unable to open"*)
+            no "mako accepts its config" "$(printf '%s' "$out" | head -2)" ;;
+        *)  ok "mako accepts its config" ;;
+    esac
+fi
+
 # --- vim ---
 # Note the limit of this one: vim accepts a stray `#` (it parses as `:number`),
 # so this catches real syntax errors but would NOT have caught the wrong-comment

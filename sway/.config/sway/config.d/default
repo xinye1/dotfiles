@@ -268,6 +268,24 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # Note: you can clear all cliphist entries by running `cliphist wipe`
 
 #
+# Notifications
+#
+    # All three are plain makoctl calls — no script and no colour, so they are
+    # safe in this file despite it being parsed before config.d/theme.
+    #
+    # Do not disturb. `mode -t` toggles, so one binding covers both directions.
+    # Notifications still arrive and still enter history while it is on; the
+    # [mode=do-not-disturb] criteria in ~/.config/mako/config only hides them.
+    bindsym $mod+Shift+n exec makoctl mode -t do-not-disturb
+
+    # Replay the most recently expired notification from the history buffer.
+    # Without this the buffer mako has always been filling was unreachable.
+    bindsym $mod+Ctrl+n exec makoctl restore
+
+    # Clear the whole stack. Also on middle-click, via on-button-middle.
+    bindsym $mod+Ctrl+Shift+n exec makoctl dismiss --all
+
+#
 # Theme
 #
     # Switch between the Nord and Gruvbox palettes. See ~/.local/bin/theme.
