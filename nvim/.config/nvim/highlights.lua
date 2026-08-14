@@ -9,7 +9,29 @@
 --
 -- Neovim links its treesitter groups to these classic groups by default
 -- (`@comment` -> `Comment`, and so on), so a treesitter-highlighted buffer
--- inherits everything below without a parser or a plugin in sight.
+-- inherits everything below without a parser or a plugin in sight. That is
+-- true but buys very little here, and the comment used to imply otherwise:
+-- with only the parsers Neovim ships (c, lua, markdown, markdown_inline,
+-- query, vim, vimdoc) and nothing auto-starting them, treesitter highlighting
+-- is live for **markdown and lua only**. Every other filetype edited here —
+-- conf, toml, ini, sh, css, json, python — runs the same regex syntax files
+-- vim does, so nvim's highlighting is vim's highlighting.
+--
+-- Installing parsers was considered and rejected. Measured on README.md the
+-- two engines are equivalent (treesitter 45.1% of characters highlighted,
+-- regex 43.4%), and across five constructs picked to break regex — `**` and
+-- `#` inside a fenced code block, underscore emphasis in prose, an f-string
+-- with nested same-type quotes, line 3000 of a 4000-line docstring reached
+-- directly, and `Array<number>` vs `a < b && c > d` in TSX — the regex
+-- syntax was correct every time. The case for parsers would be structural
+-- editing (node text objects, foldmethod=expr), not colour; revisit only on a
+-- file that is visibly mis-highlighted, not on principle.
+--
+-- The `@markup.*` groups markdown uses are not set below and are not meant to
+-- be: Neovim's defaults route them onto groups this file does define, so they
+-- land on the palette anyway (`@markup.heading` -> Title -> fg_bright,
+-- `@markup.raw.block` -> warning). Checked, because an undefined group here
+-- would be the GTK `@name` failure again.
 
 -- Every role a fragment must define. Kept as an explicit list so that a
 -- fragment missing one fails here, by name, at startup — GTK's failure mode
