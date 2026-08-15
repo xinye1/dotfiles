@@ -19,8 +19,10 @@ for_window [title="Save File"] floating enable
 for_window [app_id="firefox" title="Firefox — Sharing Indicator"] kill
 
 # Dropdown terminal, toggled by $mod+grave (see config.d/default). Launched as
-# `footclient --app-id dropdown`; parked in the scratchpad on creation so the
-# first press of the binding leaves it hidden until pressed again.
+# `kitty --class dropdown`; parked in the scratchpad on creation so the first
+# press of the binding leaves it hidden until pressed again. `--class` is what
+# sets the app_id this rule matches on — see the binding for the one thing that
+# would break that.
 for_window [app_id="dropdown"] floating enable, resize set width 80 ppt height 50 ppt, move position center, move scratchpad, scratchpad show
 
 # Inhibit idle

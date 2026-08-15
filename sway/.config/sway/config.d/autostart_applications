@@ -55,8 +55,17 @@ exec_always pkill -x kanshi; kanshi
 # Desktop notifications
 exec mako
 
-# Start foot server
-exec_always --no-startup-id foot --server
+# No terminal daemon is started here any more.
+#
+# This used to be `exec_always --no-startup-id foot --server`, prewarming the
+# foot server so $mod+Return was instant. $term is now plain `kitty`, one
+# process per window (config.d/default has the measurements behind that), so
+# there is no daemon to prewarm and nothing to translate the line into. An
+# `exec_always` starting one would be the process-per-reload leak §9.9 warns
+# about, and kitty starts in ~220ms anyway.
+#
+# foot is still installed and still works, standalone, as `foot`. It just is
+# not what the desktop launches, so nothing needs its server running.
 
 # Autotiling
 exec autotiling

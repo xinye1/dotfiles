@@ -9,7 +9,7 @@ git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
 stow bin                            # puts `theme` on $PATH via ~/.local/bin
 ./bin/.local/bin/theme gruvbox      # render the colours; must precede the stows below
-stow bash vim nvim alacritty foot starship htop claude
+stow bash vim nvim alacritty foot kitty starship htop claude
 stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
 sh tests/theme_test.sh              # 15 assertions, in a sandbox; touches nothing live
 sh tests/check_consumers.sh         # asks the apps themselves; reads the live config
@@ -62,7 +62,8 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bin` | `~/.local/bin/theme` — the palette renderer |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
 | `alacritty` | `~/.config/alacritty/alacritty.toml` |
-| `foot` | `~/.config/foot/foot.ini` |
+| `foot` | `~/.config/foot/foot.ini` — standalone fallback, still themed |
+| `kitty` | `~/.config/kitty/kitty.conf` — **the default terminal**; a port of `foot` |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
 | `starship` | `~/.config/starship.toml` |
 | `htop` | `~/.config/htop/htoprc` |

@@ -42,6 +42,33 @@ if have foot; then
     fi
 fi
 
+# --- kitty ---
+# kitty 0.48 has no --debug-config, but its config parser is importable and
+# `kitty +runpy` runs a snippet against it without opening a window or needing
+# a display. load_config() follows the `include`, so this checks the rendered
+# colours too.
+#
+# Two failures, not one, and only the first is loud: a bad *value* raises, but
+# an unknown *key* is only logged as "Ignoring unknown config key" and kitty
+# starts perfectly happily with the option silently absent. That is the same
+# shape as GTK's undefined @name and tmux's empty fg=, so it is checked the
+# same way — by looking at what the parser said, not at the exit code alone.
+if have kitty; then
+    out=$(timeout 20 kitty +runpy \
+              'from kitty.config import load_config; load_config("'"$HOME"'/.config/kitty/kitty.conf")' 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        no "kitty accepts its config" "$(printf '%s' "$out" | tail -2)"
+    else
+        case $out in
+            *"Ignoring unknown config key"*)
+                no "kitty accepts every key in its config" \
+                   "$(printf '%s' "$out" | grep -m1 'Ignoring unknown')" ;;
+            *)  ok "kitty accepts its config and every key in it" ;;
+        esac
+    fi
+fi
+
 # --- waybar ---
 # No --check-config exists, so it has to be started. The signal is survival:
 # a config or style error makes waybar exit at once, a good one keeps it up.

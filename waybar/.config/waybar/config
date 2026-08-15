@@ -115,14 +115,14 @@
             "warning": 70,
             "critical": 90,
         },
-        "on-click": "footclient -T waybar_htop -e htop"
+        "on-click": "kitty -T waybar_htop -e htop"
     },
     
     "memory": {
         "interval": 5,
         "format": "\n{}%",
         "justify": "center",
-        "on-click": "footclient -T waybar_htop -e htop",
+        "on-click": "kitty -T waybar_htop -e htop",
         "states": {
             "warning": 70,
             "critical": 90
@@ -174,7 +174,7 @@
         "interval": 2,
         "format": "{}",
         "justify": "center",
-        "on-click": "footclient -T waybar_nmtui -e nmtui"
+        "on-click": "kitty -T waybar_nmtui -e nmtui"
     },
 
     "tray": {

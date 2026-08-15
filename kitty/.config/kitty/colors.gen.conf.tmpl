@@ -1,0 +1,53 @@
+# Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+# kitty's 16-colour ramp, plus the surfaces foot does not have.
+#
+# The ramp is foot's, role for role, including its one deliberate deviation
+# from the canonical scheme: color0 is `surface` rather than `bg`, which would
+# make "black" text invisible against the background. Both palettes make the
+# same choice.
+
+background {{bg}}
+foreground {{fg}}
+
+selection_foreground {{bg}}
+selection_background {{sel}}
+
+# foot's cursor inverts the cell by default and does not blink; fg-on-bg is
+# that inversion spelled out. The blink is turned off in kitty.conf, since it
+# is not a colour.
+cursor {{fg}}
+cursor_text_color {{bg}}
+
+url_color {{accent}}
+
+# Surfaces foot simply does not have: kitty draws split borders and a tab bar.
+# Left at kitty's defaults these are hardcoded greys and blues — off-palette
+# drift of exactly the kind palettes.toml exists to prevent, and invisible
+# until the day you open a split.
+active_border_color {{accent}}
+inactive_border_color {{surface}}
+bell_border_color {{warning}}
+
+active_tab_foreground {{bg}}
+active_tab_background {{accent}}
+inactive_tab_foreground {{fg}}
+inactive_tab_background {{surface}}
+tab_bar_background {{desktop}}
+
+color0 {{ansi_normal_black}}
+color1 {{ansi_normal_red}}
+color2 {{ansi_normal_green}}
+color3 {{ansi_normal_yellow}}
+color4 {{ansi_normal_blue}}
+color5 {{ansi_normal_magenta}}
+color6 {{ansi_normal_cyan}}
+color7 {{ansi_normal_white}}
+
+color8 {{ansi_bright_black}}
+color9 {{ansi_bright_red}}
+color10 {{ansi_bright_green}}
+color11 {{ansi_bright_yellow}}
+color12 {{ansi_bright_blue}}
+color13 {{ansi_bright_magenta}}
+color14 {{ansi_bright_cyan}}
+color15 {{ansi_bright_white}}

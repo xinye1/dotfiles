@@ -7,8 +7,26 @@ set $down j
 set $up k
 set $right l
 
-# Set default terminal emulator
-set $term footclient
+# Set default terminal emulator.
+#
+# One process per window, deliberately. `kitty --single-instance` is the direct
+# analogue of the `foot --server` this replaced — one process serving every
+# window — and it was measured and rejected. Measured on this machine:
+#
+#   invoke -> shell running   47ms single-instance   221ms one-process-per-window
+#   PSS, two windows          87MB                   136MB
+#   one window crashes        ALL windows die        the others are unaffected
+#
+# ~175ms and ~50MB per window is not worth every terminal sharing a fate. The
+# processes inside a terminal are the user's — an editor with unsaved work, a
+# long build, a Claude Code session — which is the same reason `theme` does not
+# restart terminals (PLAYBOOK §9.11).
+#
+# Note the two arguments that do NOT apply, both checked rather than assumed:
+# palette switches reach every window either way (`theme` signals each process,
+# §9.11), and kitty forwards both $ENV and cwd over the single-instance socket,
+# so isolation was never the differentiator people expect.
+set $term kitty
 
 # Application launcher
 set $launcher fuzzel
@@ -171,13 +189,22 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # If there are multiple scratchpad windows, this command cycles through them.
     bindsym $mod+minus scratchpad show
 
-    # Dropdown terminal on $mod+`. A dedicated footclient with a known title,
+    # Dropdown terminal on $mod+`. A dedicated kitty with a known app_id,
     # caught by the for_window rule in config.d/application_defaults and parked in
     # the scratchpad. First press creates it, subsequent presses toggle it.
     #
-    # `scratchpad show` on a title that does not exist yet is a no-op, so the
+    # `scratchpad show` on an app_id that does not exist yet is a no-op, so the
     # `|| exec` fallback is what creates it the first time.
-    bindsym $mod+grave exec swaymsg '[app_id="dropdown"] scratchpad show' || footclient --app-id dropdown
+    #
+    # `--class` sets the app_id the rule matches on. It is this simple only
+    # because $term is one-process-per-window: `--class` is a property of a
+    # kitty *instance*, not of a window, so under `--single-instance` this
+    # window would join the main instance and come up as app_id `kitty` — no
+    # error, the binding silently toggling nothing — and would need a separate
+    # `--instance-group dropdown` to get its own. If single-instance is ever
+    # reintroduced, that is the thing to put back. Verified with
+    # `swaymsg -t get_tree`, which is the only way to see an app_id.
+    bindsym $mod+grave exec swaymsg '[app_id="dropdown"] scratchpad show' || kitty --class dropdown
 
 #
 # Gaps:

@@ -180,6 +180,31 @@ def reload_desktop(home):
     # mako is exec'd, not exec_always'd, so a sway reload does not restart it.
     if shutil.which("makoctl") and run_ok(["makoctl", "reload"]):
         print("  mako                                  reloaded")
+    reload_kitty()
+
+
+def reload_kitty():
+    """kitty re-reads kitty.conf and its include on SIGUSR1.
+
+    This is the one terminal here that can change palette without being
+    restarted, so it is the one terminal this script signals. foot has no
+    reload at all (PLAYBOOK §9.11) and is deliberately left alone: nothing in
+    this repo restarts a terminal, because the processes inside one are the
+    user's, not ours.
+
+    Sent through kitty's own reload_conf_in_all_kitties() rather than
+    `pkill -USR1 -x kitty`, and that is not fussiness. `kitty @ ...` and
+    `kitty +...` helper processes share the basename `kitty` and do NOT
+    install a SIGUSR1 handler, so pkill would match them and the default
+    action for SIGUSR1 — terminate — would kill them. kitty's own function
+    filters to GUI processes (kitty/utils.py: is_kitty_gui_cmdline), so using
+    it means that filter can never drift from what kitty actually is.
+    """
+    if not shutil.which("kitty"):
+        return
+    if run_ok(["kitty", "+runpy",
+               "from kitty.utils import reload_conf_in_all_kitties as r; r()"]):
+        print("  kitty                                 reloaded (SIGUSR1)")
 
 
 def reload_icons(values):

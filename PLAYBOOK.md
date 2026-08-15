@@ -27,7 +27,8 @@ Built on and tested against:
 | Hardware | Dell laptop, single 3840×2160 internal panel (`eDP-1`), touchpad, lid switch |
 
 The Sway Community Edition matters. It ships an opinionated `~/.config/sway/config.d/` split, a
-`scripts/` directory, and a set of chosen applications (foot, fuzzel, mako, nwg-drawer, gtklock,
+`scripts/` directory, and a set of chosen applications (foot — since replaced as the default
+terminal by kitty — fuzzel, mako, nwg-drawer, gtklock,
 azote, swappy, cliphist). This playbook is written as a **diff against that**, not against
 upstream sway's bare default config. On vanilla Arch + sway you would be starting from
 `/etc/sway/config`, and the "what stock does" column below would not apply.
@@ -53,7 +54,7 @@ greetd
        │         ├─ output                displays, scale, workspace pinning
        │         └─ theme                 colours, fonts, gaps, background, bar
        └─ children spawned by exec/exec_always:
-            waybar, mako, kanshi, swayidle, foot --server, autotiling,
+            waybar, mako, kanshi, swayidle, autotiling,
             nm-applet, cliphist watchers, polkit agent, nwg-drawer
 ```
 
@@ -237,7 +238,8 @@ server restart or a logout.
 |---|---|---|---|
 | `sway` `swaybg` `swayidle` | repo | Compositor, background, idle daemon | — |
 | `waybar` | repo | The bar | No bar |
-| `foot` | repo | Terminal. `$term` is `footclient`; a `foot --server` daemon is exec'd at startup | `$mod+Return` does nothing |
+| `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
+| `foot` | repo | Standalone fallback, still themed. No longer `$term` and no server is started; run `foot`. Wayland-only, which is why it is not the default | Nothing — `foot` is optional now |
 | `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
 | `gtklock` | repo | Lock screen. Used by `$mod+f1`, the idle timeout, and before-sleep | **Machine never locks** |
@@ -311,6 +313,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | Package | Folded? | Reason |
 |---|---|---|
 | `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so it behaves like `foot`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
@@ -428,7 +431,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | Addition | Binding / file | Notes |
 |---|---|---|
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
-| Dropdown terminal | `$mod+grave` | `footclient --app-id dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| footclient …` creates it on first press |
+| Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
 | Gaps toggle | `$mod+g` | `gaps inner current toggle 12` — for screen sharing and screenshots |
 | Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §6.2, §9.13 |
@@ -595,42 +598,27 @@ stow -R gtk
 Also: `exec export FOO=bar` does nothing. sway runs the command in a subshell that exits
 immediately, taking the variable with it. Use `systemctl --user set-environment`.
 
-**Two `exec_always` lines here lack the `pkill` prefix**, and they do not behave the same way:
+**One `exec_always` line here lacks the `pkill` prefix:**
 
 ```
 exec_always nwg-drawer -r -c 7 -is 90 …      # single instance in practice
-exec_always --no-startup-id foot --server    # single: a 2nd server cannot bind the socket
 ```
 
 `nwg-drawer -r` is resident mode and stays at one process across reloads (`pgrep -xc nwg-drawer`
 → `1` after 15 hours and many reloads).
 
-`foot --server` is safe for a different and stronger reason: **it cannot double-start.** The second
-instance fails to bind the socket and exits immediately:
+**There is no terminal daemon here any more.** This section used to carry a second exempt line,
+`exec_always --no-startup-id foot --server`, safe for a stronger reason than nwg-drawer's — it
+*cannot* double-start, the second instance failing to bind
+`$XDG_RUNTIME_DIR/foot-wayland-1.sock` and exiting on the spot. That line is gone with the switch
+to `$term kitty`, which starts one process per window and has no daemon to prewarm. Kept here
+because the reasoning is the reusable part — **"this daemon cannot
+double-start" is a valid exemption from the `pkill` rule, and "it seems to stay at one process" is
+not.** Only the second needs re-checking after every change.
 
-```
-$ foot --server
- err: server.c:589: /run/user/1000/foot-wayland-1.sock is already accepting connections;
-      is 'foot --server' already running
-```
-
-So a reload spawns a process that dies on the spot. This is not the swayidle shape.
-
-**Two `foot --server` processes can nonetheless be alive at once, and that is not a leak.**
-`pkill -x foot` — which `theme <name> --restart-terminals` runs — makes the old server release its
-listening socket, but it stays up serving the windows already attached to it and exits when the last
-one closes. A replacement server then takes the socket. During that overlap `pgrep -a foot` shows
-two, the older one holding real memory and an open `foot-wayland-shm-buffer-pool`. It is draining,
-not orphaned. Distinguish them by which owns the socket:
-
-```sh
-pgrep -a foot                                  # more than one --server?
-ls -l $XDG_RUNTIME_DIR/foot-wayland-1.sock     # its mtime marks the live one
-```
-
-**Do not add `pkill -x foot` to the `exec_always` line.** It is unnecessary — nothing leaks — and it
-would kill every open terminal on every `swaymsg reload`. That destructiveness is precisely why
-`theme <name> --restart-terminals` is opt-in.
+**Do not add a `pkill` for a terminal to any `exec_always` line.** It would kill every open terminal
+on every `swaymsg reload`, taking whatever was running inside them with it. Nothing in this repo
+restarts a terminal — see §9.11 for what `theme` does instead.
 
 ### 9.3 azote rewrites `~/.azotebg`
 
@@ -745,14 +733,72 @@ after editing the config does nothing new.
 **The rejected trick, recorded so it is not re-proposed:** park Nord in `[colors-dark]` and Gruvbox
 in `[colors-light]`, then switch with `SIGUSR1`. It works, and it was still rejected twice over —
 it caps the setup at exactly two themes forever, and it makes the config lie, with a dark palette
-declared as the light one. Restarting the server is the honest answer:
+declared as the light one.
+
+**The answer is that foot does not get restarted.** An already-open foot keeps its old palette until
+you close and reopen it; a new one comes up correct. That is the whole story, and it is a deliberate
+limit rather than a missing feature.
+
+This once read as a `theme <name> --restart-terminals` flag that ran `pkill -x foot; foot --server`.
+**No such flag ever existed in `theme`** — the argument parser rejects any unknown option, so every
+copy of that line in this document was an instruction that would have exited non-zero. It is
+recorded here because the drift is the lesson: four places described a flag nobody had run, and
+nothing checks prose against `--help`.
+
+It is not coming back. Restarting terminals to recolour them destroys the processes inside them,
+which are the user's and not the theme switcher's — an editor with unsaved work, a long build, a
+Claude Code session. **tmux sessions are the exception and survive it** (verified: the server's PPID
+is 1, so it is never a child of the terminal; SIGKILL the pty owner and the session and its jobs
+stay up and reattachable). But that only protects what was already started *inside* tmux, which is
+not a safe assumption to design a default around.
+
+**kitty — now the default terminal — does not have the problem.** `SIGUSR1` is a genuine
+config-reload there: every running instance re-reads `kitty.conf` and its `include`, so a palette
+switch recolours open windows in place, without closing them and without touching what is running
+inside. `theme` sends it at the end of every switch, and this is the only signal it sends to a
+terminal. Nothing is restarted.
+
+**Send it with kitty's own reloader, never with `pkill`:**
 
 ```sh
-theme gruvbox --restart-terminals    # pkill -x foot; foot --server
+kitty +runpy 'from kitty.utils import reload_conf_in_all_kitties as r; r()'
 ```
 
-That costs every open shell, so it is opt-in rather than the default. Without it, existing terminals
-and the running server keep the old palette until the next login.
+`pkill -USR1 -x kitty` is the obvious version and it is a trap. `kitty @ …` and `kitty +…` helper
+processes share the basename `kitty` and install **no** SIGUSR1 handler, so `pkill -x` matches them
+and the default action for SIGUSR1 — terminate — kills them. kitty's own function filters to GUI
+processes first (`kitty/utils.py`, `is_kitty_gui_cmdline`), so borrowing it means that filter can
+never drift from what kitty considers itself to be. `theme` calls it for exactly this reason.
+
+**`--single-instance` was measured and rejected.** It is the direct analogue of the `foot --server`
+this replaced — one process serving every window — so it was the obvious default and it is not the
+one here. Measured on this machine:
+
+| | `--single-instance` | one process per window |
+|---|---|---|
+| invoke → shell actually running | **47 ms** | 221 ms |
+| PSS, two windows open | **87 MB** | 136 MB |
+| one window crashes | **every window dies** | the others are unaffected |
+
+~175 ms and ~50 MB per window is not worth every terminal sharing a fate. The processes inside a
+terminal belong to whoever started them, which is the same principle that keeps `theme` from
+restarting terminals at all — and re-adding the risk as an *accident*, after deliberately removing
+the command that caused it, would be incoherent. Note also that single-instance does not fix the
+cold start: the first window still pays the 221 ms, because there is no daemon. It buys speed only
+for windows 2..n.
+
+**Two arguments in the usual pro/con list do not apply here, and both were checked rather than
+reasoned about:**
+
+- *"Config changes only reach new processes"* — false. Two independent kitty processes both
+  recoloured across a `theme` switch, because `reload_conf_in_all_kitties()` walks every GUI
+  process. Palette switching never depended on a shared process.
+- *"Windows inherit the environment of the original parent"* — false for kitty, whatever it may be
+  for other terminals. kitty forwards both the environment and the cwd over the single-instance
+  socket; a second window invoked with `MARKER=second` from a different directory got both.
+
+The remaining consequence is that a throwaway window — waybar's htop popup, fuzzel's launcher —
+must never share a process with a long-lived shell, which one-process-per-window gives for free.
 
 Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
 fragments use `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
@@ -879,8 +925,9 @@ have to be moved back.
 | htop right-hand CPUs render below the left | All meters piled into `column_meters_0` | §9.16 |
 | A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
 | One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
-| `$mod+Return` does nothing | `foot --server` not running | `pgrep -a foot` |
-| Terminal still the old palette after a switch | foot cannot reload colours | `theme <name> --restart-terminals`, or log out; §9.11 |
+| `$mod+Return` does nothing | kitty not installed, or its first start is failing | `kitty --version`, then run `kitty` from another terminal and read the error |
+| An open **foot** is still the old palette after a switch | foot cannot reload colours, and nothing restarts it | Close and reopen it; §9.11 |
+| An open **kitty** is still the old palette after a switch | The SIGUSR1 never arrived | `theme` prints `kitty … reloaded (SIGUSR1)` when it sends one; §9.11 |
 | One surface still the old palette, everything else switched | A running GTK app, or a file whose name does not match `<base>-<theme>.<ext>` so `theme` never saw it | `theme` prints how many symlinks it flipped — it must say **17**; §3.3 |
 | A widget renders **black** | A role used but not defined in that palette's fragment | §9.10 — define it in *both* fragments |
 | `theme: missing fragment: …` | A theme symlink (not necessarily `colors.*` — could be `settings.ini`, `.gtkrc-2.0`, etc.) exists with no counterpart for the target theme | Create the sibling fragment, or remove the symlink |
@@ -907,13 +954,13 @@ readlink ~/repos/dotfiles/sway/.config/sway/theme.env     # theme-<that>.env
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
 
 ```sh
-for p in sway waybar foot mako fuzzel gtklock nwg-drawer htop; do
+for p in sway waybar foot kitty mako fuzzel gtklock nwg-drawer htop; do
     printf '%-12s ' "$p"
     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
 done
 ```
 
-Eight lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+Nine lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
 see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
 
 Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar
