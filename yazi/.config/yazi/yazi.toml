@@ -1,0 +1,42 @@
+#
+# ~/.config/yazi/yazi.toml — managed by ~/repos/dotfiles (stow package: yazi)
+#
+# Behaviour only. Every colour yazi uses comes from theme.toml, which is
+# rendered from palettes.toml — nothing here carries one, and tests/check_hex.py
+# fails the build if that ever changes.
+#
+# yazi merges this over its embedded preset key by key, so a key absent here
+# keeps yazi's default. Four settings below differ from that default and each is
+# a decision; `ratio` is restated at its default purely to orient the reader,
+# because the three-pane split is the first thing anyone wants to change.
+#:schema https://yazi-rs.github.io/schemas/yazi.json
+
+[mgr]
+# parent : current : preview. yazi's default, kept.
+ratio = [ 1, 4, 3 ]
+
+# Not yazi's default. Nearly every directory worth opening a file manager on
+# this machine is a dotfile tree, so starting with them hidden means starting
+# with the interesting half of the listing missing. `.` still toggles.
+show_hidden = true
+
+# Not yazi's default ("none"). Size is the one column that earns its width
+# without being asked for; `ms` / `mm` / `mp` / `mn` switch it at runtime, and
+# the `,s` / `,m` sort bindings switch it as a side effect of sorting.
+linemode = "size"
+
+# Not yazi's default ([ "click", "scroll", "drag" ]).
+#
+# This is the one setting here in genuine tension with the rest of the repo:
+# tmux.conf sets `mouse on`, and yazi is a TUI like tmux rather than an editor.
+# It is off anyway, matching the deliberate call in nvim (commit eb50249, "turn
+# the mouse off, matching vim"). The tie goes to the modal keyboard-driven tools
+# because that is what yazi is — reaching for the mouse inside it is the same
+# interruption it is inside vim. Flip this one line if that turns out wrong.
+mouse_events = []
+
+[preview]
+# Not yazi's default ("no"). Without it long lines are truncated at the pane
+# edge, which makes the preview useless for exactly the files it is most useful
+# for — Markdown, prose, and anything with a paragraph in it.
+wrap = "yes"

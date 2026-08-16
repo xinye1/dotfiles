@@ -27,16 +27,24 @@ __pycache__/
 # contain the same marker: colors.gen.css.tmpl renders to colors.gen.css.
 !*.tmpl
 
-# The exception, and the reason it is an exception: these six are read by GTK
-# and xsettingsd at a fixed path, so their rendered output cannot carry the
-# .gen marker. The list is structural rather than growing — it can only change
-# if an application with a hardcoded config filename joins the desktop.
+# The exception, and the reason it is an exception: these are read at a fixed
+# path by an application that takes no include directive, so their rendered
+# output has nowhere to put the .gen marker. The list is structural rather than
+# growing — it can only change if an application with a hardcoded config
+# filename joins the desktop.
+#
+# It has changed exactly once since it was written: six paths for GTK and
+# xsettingsd, then a seventh when yazi arrived on 2026-08-16. Two applications,
+# same cause. A third would be unremarkable; a third *without* that cause would
+# mean someone has stopped naming rendered files `*.gen.*`, which is what makes
+# the glob above possible.
 gtk/.config/gtk-3.0/gtk.css
 gtk/.config/gtk-3.0/settings.ini
 gtk/.config/gtk-4.0/gtk.css
 gtk/.config/gtk-4.0/settings.ini
 gtk/.config/xsettingsd/xsettingsd.conf
 gtk/.gtkrc-2.0
+yazi/.config/yazi/theme.toml
 
 # The active palette used to be recorded here as `.theme`. It now lives in
 # $XDG_STATE_HOME/theme/palette (default ~/.local/state), because which palette

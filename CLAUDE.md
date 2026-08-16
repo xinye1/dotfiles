@@ -106,6 +106,23 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   drops the per-window activity/bell *style* options — the stock format's nested conditionals for
   them are gone, so those states have to be shown as characters in `window-status-format`. Neither
   loss is visible except by attaching a client and looking.
+- **yazi ignores an unknown theme key in silence — no error, no warning, not even in `--debug`.**
+  It is strict about everything else: `yazi --debug </dev/null` exits 1 with a caret under a bad
+  hex, a bad value, malformed TOML or an unknown `[section]`, which makes it a better validator than
+  most consumers here. But a *key* misspelt inside a known section is dropped without a word, and the
+  schema does move (`[manager]` was renamed `[mgr]`). So the keys in `theme.toml.tmpl` are copied
+  from the preset embedded in the installed binary, not from documentation — re-derive them the same
+  way after an upgrade: `strings /usr/bin/yazi | grep -n 'schemas/theme.json'`, then read forward.
+  More yazi traps, all the same shape — **a bare array key replaces, only `prepend_*`/`append_*`
+  merge**: `keymap` wipes the whole preset keymap, and `[filetype] rules` and the four `[icon]`
+  tables replace theirs, so every *fallback* rule has to be restated or files quietly stop being
+  coloured or lose their icon. The `[icon]` tables are replaced here on purpose: the preset carries
+  725 rules painted from the Material palette, a third colour scheme fixed in the binary that
+  matches neither palette and does not move when one switches. Its `files` keys are **lowercase** —
+  yazi folds the filename before matching, so a capitalised key never matches and says nothing.
+  Interactively a bad config is not fatal either —
+  yazi prints `Press <Enter> to continue with preset settings...` and starts anyway, which is why
+  `check_consumers.sh` closes stdin and then asks whether the theme actually *loaded*.
 - **`keyhint.sh` is a flat cell list in a 5-column yad grid, and `--geometry` does not track it.**
   Append a number of cells that is not a multiple of 5 and every later row silently shifts a column;
   overflow the height and yad clips with no scrollbar and no warning. Both failures look like

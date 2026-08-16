@@ -37,6 +37,29 @@ alias pm='sudo pacman'
 alias vimrc='vim ~/.vimrc'
 alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
 
+# --- yazi --------------------------------------------------------------------
+# `y` runs yazi and leaves the shell in whatever directory yazi ended up in.
+# Plain `yazi` cannot do this — a child process cannot change its parent's
+# working directory — so yazi writes the path to --cwd-file and the wrapper
+# reads it back. This is yazi's own documented recipe; the guards are ours.
+#
+# Guarded on the binary like mise and starship below, so this file still works
+# on a machine without yazi. Note the early return at the top: a non-interactive
+# shell never sees this, so test it with `bash -ic`, never `bash -lc`.
+#
+# `builtin cd` rather than `cd` in case a later alias shadows it, and the
+# tempfile is removed on every path — including the one where yazi exits with Q
+# (quit --no-cwd-file), which leaves the file empty on purpose.
+command -v yazi >/dev/null && y() {
+    local cwd dir
+    cwd=$(mktemp -t "yazi-cwd.XXXXXX") || return
+    yazi "$@" --cwd-file="$cwd"
+    if [ -s "$cwd" ] && IFS= read -r dir < "$cwd" && [ -n "$dir" ] && [ "$dir" != "$PWD" ]; then
+        builtin cd -- "$dir" || true
+    fi
+    rm -f -- "$cwd"
+}
+
 # --- mise: per-project tool versions ---------------------------------------
 # Applies a repo's .mise.toml pins on cd (trading-platform-v2 pins python 3.12,
 # node 18, go 1.22). Activated *before* starship so the prompt's version modules

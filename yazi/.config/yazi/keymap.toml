@@ -1,0 +1,44 @@
+#
+# ~/.config/yazi/keymap.toml — managed by ~/repos/dotfiles (stow package: yazi)
+#
+# `prepend_keymap`, never `keymap`. The bare key REPLACES yazi's whole preset
+# keymap; `prepend_keymap` puts these in front of it and leaves the rest intact.
+# Getting that wrong costs every default binding at once, and the only symptom
+# is that `j` stops working.
+#
+# Deliberately short. The preset already binds most of what a config like this
+# usually adds, and re-binding it here would mean maintaining a copy that drifts
+# from yazi's own `~` help screen:
+#
+#   cc cd cf cn   copy path / dirname / filename / stem to the system clipboard
+#   .             toggle hidden files
+#   s / S         search by name via fd / by content via ripgrep
+#   z             jump to a file or directory via fzf
+#   ms mm mp mo   linemode: size / mtime / permissions / owner
+#   ,s ,m ,e ,a   sort by size / mtime / extension / name (capital reverses)
+#   gh gc gd      go ~ / ~/.config / ~/Downloads
+#   tt [ ]        new tab, previous tab, next tab
+#
+# fd, ripgrep and fzf are all installed, so those work as shipped. `Z` (zoxide)
+# is bound by the preset and will error when pressed — zoxide is not installed.
+# PLAYBOOK §4.2 lists it among yazi's optional extras.
+#:schema https://yazi-rs.github.io/schemas/keymap.json
+
+# Go to the root of the current git repo. There is no builtin for this: `shell`
+# runs the command and `ya emit` feeds the result back to the running instance,
+# which is yazi's documented way of turning shell output into navigation.
+#
+# Single-quoted, so the TOML parser leaves the "$(...)" alone for the shell.
+# Outside a repo `git rev-parse` fails, the substitution is empty, and `cd`
+# receives nothing — a no-op, which is the right thing to do about it.
+[[mgr.prepend_keymap]]
+on   = [ "g", "r" ]
+run  = 'shell -- ya emit cd "$(git rev-parse --show-toplevel)"'
+desc = "Go to the repo root"
+
+# The preset has gh/gc/gd for ~, ~/.config and ~/Downloads. This machine keeps
+# its checkouts in ~/repos, including this one.
+[[mgr.prepend_keymap]]
+on   = [ "g", "p" ]
+run  = "cd ~/repos"
+desc = "Go to ~/repos"

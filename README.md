@@ -9,7 +9,8 @@ git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
 stow bin                            # puts `theme` on $PATH via ~/.local/bin
 ./bin/.local/bin/theme gruvbox      # render the colours; must precede the stows below
-stow bash vim nvim alacritty foot kitty starship htop claude
+mkdir -p ~/.config/yazi                 # keeps `yazi` unfolded; see PLAYBOOK §5.2
+stow bash vim nvim alacritty foot kitty starship htop claude yazi
 stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
 sh tests/theme_test.sh              # 15 assertions, in a sandbox; touches nothing live
 sh tests/check_consumers.sh         # asks the apps themselves; reads the live config
@@ -33,12 +34,14 @@ themed by hand.
 **Generated files are disposable, and named so you can tell.** Anything matching `*.gen.*` is a
 build artefact. Editing one is pointless — the next switch overwrites it. This is what lets
 `.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to be, and what
-makes "did switching dirty the tree?" a question with a permanent answer of no.
+makes "did switching dirty the tree?" a question with a permanent answer of no. Seven files cannot
+carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded name and take
+no include; those are listed one by one in `.gitignore`, next to the reason.
 
 **Nothing is clever that could be obvious.** Stow does the linking; no bespoke installer. `theme`
 renders and reloads; it does not manage state beyond one word in
 `$XDG_STATE_HOME/theme/palette`. The one genuinely
-surprising rule — six GTK files that cannot carry the `.gen` marker — is written down in
+surprising rule — seven files that cannot carry the `.gen` marker — is written down in
 `.gitignore` next to the entries themselves, because a rule you have to remember is a rule that
 will be broken.
 
@@ -47,7 +50,7 @@ What this costs, stated plainly, because a reader deserves it up front:
 - You cannot theme one application differently from the rest without adding a role.
 - A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
 - `theme` must run **before** `stow` on a fresh clone, and after adding a themed file to `gtk`,
-  `alacritty` or `vim` — the unfolded packages that carry templates. See PLAYBOOK §5.2.
+  `alacritty`, `vim` or `yazi` — the unfolded packages that carry templates. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
 ## Packages
@@ -67,6 +70,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
 | `starship` | `~/.config/starship.toml` |
 | `htop` | `~/.config/htop/htoprc` |
+| `yazi` | `~/.config/yazi/` — `yazi.toml`, `keymap.toml`, `theme.toml` |
 | `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
 | `sway` | `~/.config/sway/` — `config`, `config.d/`, `scripts/` |
 | `kanshi` | `~/.config/kanshi/config` |

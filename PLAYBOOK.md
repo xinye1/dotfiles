@@ -114,11 +114,13 @@ The include is static — `style.css` always names `colors.gen.css`, whichever p
 That is what makes switching a re-render rather than a reconfiguration.
 
 **Rendered files are build artefacts.** They match `*.gen.*`, git ignores them, and editing one is
-pointless because the next switch overwrites it. Six files are the exception and cannot carry the
-marker, because GTK and xsettingsd read them at a hardcoded path:
-`gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`, `xsettingsd/xsettingsd.conf` and `.gtkrc-2.0`.
-Those six are listed individually in `.gitignore`. That list is structural — it can only change if
-an application with a hardcoded config filename joins the desktop.
+pointless because the next switch overwrites it. Seven files are the exception and cannot carry the
+marker, because the application reads them at a hardcoded path and takes no include: GTK and
+xsettingsd account for six — `gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`,
+`xsettingsd/xsettingsd.conf` and `.gtkrc-2.0` — and yazi's `theme.toml` for the seventh.
+Those seven are listed individually in `.gitignore`. That list is structural — it can only change if
+an application with a hardcoded config filename joins the desktop, which is exactly what happened
+when yazi arrived on 2026-08-16.
 
 This replaced a scheme where each themed file was kept *twice*, once per palette, with a
 theme-neutral symlink pointing at whichever was active. The colours were written 36 times, the 18
@@ -263,6 +265,7 @@ server restart or a logout.
 | `kanshi` | repo | Display hotplug profiles |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
 | `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
+| `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
 | `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
 
 **Why the gruvbox GTK theme is not the AUR package.** `gruvbox-gtk-theme-git` depends on
@@ -319,6 +322,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
+| `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
 | `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future theme fragment — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |

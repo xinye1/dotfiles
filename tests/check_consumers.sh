@@ -146,6 +146,43 @@ if have tmux; then
     tmux -L "$sock" kill-server 2>/dev/null
 fi
 
+# --- yazi ---
+# `yazi --debug` is a real validator, and a better one than most consumers here
+# have: it parses init.lua, yazi.toml, keymap.toml and theme.toml and exits 1
+# with the offending line and a caret under the token. Measured against a
+# scratch $YAZI_CONFIG_HOME, it rejects malformed TOML, an unknown [section],
+# a bad hex (`Failed to parse Colors`) and an empty value.
+#
+# `</dev/null` is not decoration. On a parse failure yazi prints "Press <Enter>
+# to continue with preset settings..." and WAITS -- interactively it then starts
+# in preset colours, which is the degradation this check exists to notice.
+# Closing stdin turns that prompt into the non-zero exit.
+#
+# What --debug does NOT catch, and the reason theme.toml.tmpl carries a header
+# about where its keys came from: an unknown KEY inside a known section is
+# ignored in silence, with no warning even here. Same shape as an undefined GTK
+# @name or an empty tmux `fg=`.
+#
+# Hence the second assertion, which is the sharper one. yazi exits 0 with no
+# theme.toml at all, quietly using its preset colours -- exactly what a fresh
+# clone that has not run `theme`, or an unfolded `yazi` package that has not
+# been `stow -R`'d after a new file, would produce. The debug output names each
+# config path and either its size or the errno, so asking whether the theme
+# actually loaded is a question with a real answer.
+if have yazi; then
+    if out=$(timeout 20 yazi --debug </dev/null 2>&1); then
+        case $(printf '%s\n' "$out" | grep -E '^ +Theme +:') in
+            *"No such file"*|*error*)
+                no "yazi loaded its rendered theme" \
+                   "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
+            *)  ok "yazi accepts its config and loaded its rendered theme" ;;
+        esac
+    else
+        no "yazi accepts its config" \
+           "$(printf '%s\n' "$out" | grep -v '^ *$' | tail -3 | head -2)"
+    fi
+fi
+
 # --- vim ---
 # Note the limit of this one: vim accepts a stray `#` (it parses as `:number`),
 # so this catches real syntax errors but would NOT have caught the wrong-comment
