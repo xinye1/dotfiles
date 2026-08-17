@@ -42,22 +42,13 @@ alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
 # Plain `yazi` cannot do this — a child process cannot change its parent's
 # working directory — so yazi writes the path to --cwd-file and the wrapper
 # reads it back. This is yazi's own documented recipe; the guards are ours.
-#
-# Guarded on the binary like mise and starship below, so this file still works
-# on a machine without yazi. Note the early return at the top: a non-interactive
-# shell never sees this, so test it with `bash -ic`, never `bash -lc`.
-#
-# `builtin cd` rather than `cd` in case a later alias shadows it, and the
-# tempfile is removed on every path — including the one where yazi exits with Q
-# (quit --no-cwd-file), which leaves the file empty on purpose.
-command -v yazi >/dev/null && y() {
-    local cwd dir
-    cwd=$(mktemp -t "yazi-cwd.XXXXXX") || return
-    yazi "$@" --cwd-file="$cwd"
-    if [ -s "$cwd" ] && IFS= read -r dir < "$cwd" && [ -n "$dir" ] && [ "$dir" != "$PWD" ]; then
-        builtin cd -- "$dir" || true
-    fi
-    rm -f -- "$cwd"
+# https://yazi-rs.github.io/docs/quick-start/#shell-wrapper
+function y() {
+	local tmp cwd; tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+	command yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd" || builtin true
+	command rm -f -- "$tmp"
 }
 
 # --- mise: per-project tool versions ---------------------------------------
