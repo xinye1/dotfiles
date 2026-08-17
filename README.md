@@ -7,16 +7,19 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 ```sh
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
-stow bin                            # puts `theme` on $PATH via ~/.local/bin
-./bin/.local/bin/theme gruvbox      # render the colours; must precede the stows below
-mkdir -p ~/.config/yazi                 # keeps `yazi` unfolded; see PLAYBOOK §5.2
-stow bash vim nvim alacritty foot kitty starship htop claude yazi
-stow sway waybar mako fuzzel gtk gtklock kanshi nwg-drawer
-sh tests/theme_test.sh              # 15 assertions, in a sandbox; touches nothing live
-sh tests/check_consumers.sh         # asks the apps themselves; reads the live config
+./setup.sh gruvbox                  # or nord
+sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
 ```
 
-Full desktop, including the steps that cannot be stowed: **[PLAYBOOK.md](PLAYBOOK.md)**.
+`setup.sh` is this quickstart made executable, in the one order that works: the fold-guard
+`mkdir`s of PLAYBOOK §5.2 (on a fresh `$HOME` the unfolded packages' target dirs don't exist yet,
+and stow would fold them — pulling every later plugin clone and installed binary into the repo),
+`theme` before `stow`, the `/etc/skel` `~/.bashrc` move, then every package — gated on a `stow -n`
+dry run, so existing configs stop it *before* anything is linked — and the sandboxed tests.
+Re-running it is always safe; it manages nothing.
+
+Full desktop, including the steps `setup.sh` cannot do — system packages, GTK themes, vim plugin
+clones, the papirus tint: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
 
 ## The intention
 
@@ -38,7 +41,8 @@ makes "did switching dirty the tree?" a question with a permanent answer of no. 
 carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded name and take
 no include; those are listed one by one in `.gitignore`, next to the reason.
 
-**Nothing is clever that could be obvious.** Stow does the linking; no bespoke installer. `theme`
+**Nothing is clever that could be obvious.** Stow does the linking; `setup.sh` only sequences the
+documented steps and would change nothing if you typed them from PLAYBOOK §8 instead. `theme`
 renders and reloads; it does not manage state beyond one word in
 `$XDG_STATE_HOME/theme/palette`. The one genuinely
 surprising rule — seven files that cannot carry the `.gen` marker — is written down in
@@ -49,8 +53,9 @@ What this costs, stated plainly, because a reader deserves it up front:
 
 - You cannot theme one application differently from the rest without adding a role.
 - A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
-- `theme` must run **before** `stow` on a fresh clone, and after adding a themed file to `gtk`,
-  `alacritty`, `vim` or `yazi` — the unfolded packages that carry templates. See PLAYBOOK §5.2.
+- `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
+  adding a themed file to `gtk`, `alacritty`, `vim` or `yazi` — the unfolded packages that carry
+  templates. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
 ## Packages

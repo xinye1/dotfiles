@@ -53,7 +53,7 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
   widget just turns black. This is why `theme` refuses to render when the two sections of
   `palettes.toml` do not define identical keys; that refusal is the guard working.
 - **waybar's `include` gives precedence to the INCLUDING file.** A module defined in `config`
-  silently overrides the same module in an included fragment. The `clock` module had to be deleted
+  silently overrides the same module in an included file. The `clock` module had to be deleted
   from `config` entirely and defined only in `colors.gen.json`.
 - **foot's plain `[colors]` section is deprecated** — the template uses `[colors-dark]`. foot has no
   config-reload signal at all; `SIGUSR1`/`SIGUSR2` only pick between the `[colors-dark]` and
@@ -132,6 +132,13 @@ GNU Stow-managed. Each top-level dir is a package; contents mirror the layout un
 
 No build. `stow -n -v <pkg>` (dry run) is the verification step for a package — run it before
 `stow <pkg>`. `stow -R <pkg>` to pick up deletions; `stow -D <pkg>` to unlink.
+
+Fresh clone: `./setup.sh <palette>` is the README quickstart as a script — fold-guard `mkdir`s
+(§5.2), render before stow, the `.bashrc` move, a `stow -n`-gated stow of every package (derived
+from the tree, so a new package is picked up automatically), then `tests/theme_test.sh`.
+Re-runnable; with no argument it re-applies the remembered palette. **Never run it with a palette
+argument on the live machine** unless switching is intended — `./setup.sh nord` switches the
+desktop exactly like `theme nord`.
 
 One test suite, for the one thing here with real logic:
 

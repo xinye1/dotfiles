@@ -1,6 +1,6 @@
 [general]
 import = [
-    # ~/.local/bin/theme flips it. Both live in this package, so alacritty no
+    # ~/.local/bin/theme renders it. Both live in this package, so alacritty no
     # longer depends on the untracked ~/.config/alacritty/themes clone for its
     # palette — the clone is only needed if you want other schemes to hand.
     "~/.config/alacritty/colors.gen.toml"

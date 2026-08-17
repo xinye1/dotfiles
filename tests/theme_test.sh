@@ -164,6 +164,19 @@ python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
 
+# The pre-Python `theme` kept per-palette "fragments" (colors-nord.css, theme.env)
+# behind symlinks it flipped. §10 kept instructing that scheme long after the
+# rewrite — five rows of a troubleshooting table telling the reader to check
+# things that no longer exist. Words that can only describe the old mechanism
+# are therefore treated as doc bugs, mechanically.
+stale=$(grep -nE 'fragment|theme\.env|colors\.conf|symlinks it flipped|(colors|colorscheme|theme)-(nord|gruvbox|\*|\{)' \
+    "$REPO/README.md" "$REPO/PLAYBOOK.md" "$REPO/CLAUDE.md" || true)
+if [ -z "$stale" ]; then
+    ok "docs describe the render scheme, not the retired symlink one"
+else
+    no "docs describe the render scheme, not the retired symlink one" "$stale"
+fi
+
 # Switching is an operational change, never a git one. Asserted against a
 # sandbox repo with its own .git -- doing this in $REPO renders into the live
 # tree (the packages are symlinked into ~) and overwrites .theme, so the

@@ -323,7 +323,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
-| `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future theme fragment — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
+| `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future themed file — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
 
@@ -351,9 +351,9 @@ broken. The anchored form shipped in this plan's own verification step and had t
 
 To fold one that isn't: `stow -D <pkg> && rmdir <the now-empty target dirs> && stow <pkg>`.
 
-**The theming work did not change a single row of this table, by design.** Each theme fragment and
-its symlink live *inside* the package that owns them, so switching writes into the repo, never into
-`~/.config`. The alternative — a pair of per-palette stow packages — would have
+**The theming work did not change a single row of this table, by design.** Each template and its
+rendered output live *inside* the package that owns them, so switching writes into the repo, never
+into `~/.config`. The alternative — a pair of per-palette stow packages — would have
 put a second package's files into `~/.config/waybar`, `~/.config/foot` and the rest, forcing stow to
 unfold every one of them and costing all seven themed folded packages their "new files appear for
 free" property in exchange for nothing. See §3.3.
@@ -395,7 +395,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | sway border bg | `bground` == `border` (accent-filled titlebar) | `bground` = `$bg` | The accent belongs on the border, not flooding the title area |
 | sway font | `Noto Sans Regular 10` | `JetBrainsMono Nerd Font 10` | Matches bar and launcher; glyph coverage |
 | Terminals | *Nordic* (`#242933`) | *Nord* (`#2E3440`) | See §3.2 — different scheme despite the name |
-| waybar | `@highlight #685878`, `@base1 #19191e`, literal `orange`/`red` | The thirteen roles as `@define-color`, from a switchable fragment | One-off hexes matched nothing else, and named roles are what make two palettes possible |
+| waybar | `@highlight #685878`, `@base1 #19191e`, literal `orange`/`red` | The thirteen roles as `@define-color`, in the rendered `colors.gen.css` | One-off hexes matched nothing else, and named roles are what make two palettes possible |
 | waybar calendar | pastel pink `#ff6699` `#ecc6d9` `#99ffdd` | `$accent2` weekdays, `$warning` today, `$muted` week numbers | Loudest palette break in the setup. The weekday colour moved nord9 → nord7 in the role rewrite — the one deliberate visual change on the Nord side |
 | waybar font | `JetBrainsMono` | `"JetBrainsMono Nerd Font"` | §9.4 |
 | mako | Arc blue `#5294e2` on `#404552` | `$surface` body / `$accent` border | |
@@ -405,7 +405,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | fuzzel font | `JetBrainsMono-Regular` | `JetBrains Mono` | §9.4 — file name vs fontconfig family |
 | nwg-drawer | `rgba(38,18,57,.9)` purple | `@bg` with alpha | |
 | gtklock | 22 MB background image, purple accents | Solid `@bg`, role-named accents | Image moved to `~/Pictures/wallpapers`; a 22 MB binary has no place in a config dir |
-| GTK theme / icons | `Arc-Dark` / `Qogir-Dark` | `Nordic` or `Colloid-Yellow-Dark-Gruvbox`, `Papirus-Dark` | Per palette, from `GTK_THEME_NAME` in `theme-*.env` |
+| GTK theme / icons | `Arc-Dark` / `Qogir-Dark` | `Nordic` or `Colloid-Yellow-Dark-Gruvbox`, `Papirus-Dark` | Per palette, from the `gtk_theme_name` role, rendered into `settings.ini` and `theme.gen.env` |
 | GTK dark hint | `gtk-application-prefer-dark-theme=0` | `=1` | Was `0` while the theme name was a *dark* variant — libadwaita apps rendered light |
 | libadwaita | *(nothing)* | `gtk-4.0/gtk.css` + `color-scheme` in gsettings | §2.2 — the only way to reach these apps |
 | Wallpaper | 3.3 MB PNG via untracked `~/.azotebg` | `output * bg $desktop solid_color` | Native to sway; no loose script, no tracked binary |
@@ -427,7 +427,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | **Cursor theme never resolved** | The name was written `Qogir-dark` in 13 places; the directory is `/usr/share/icons/Qogir-Dark`. XCursor resolves by **case-sensitive path**, so it silently fell back to the default cursor everywhere | `Qogir-Dark` throughout, plus `seat * xcursor_theme` and `~/.icons/default/index.theme` so it reaches XWayland and the compositor cursor too | `ls -d /usr/share/icons/Qogir-dark` errors, `-Dark` does not — that one letter was the whole bug |
 | **Dangling GTK2 include** | `.gtkrc-2.0` ended with `include "/home/xinye/.gtkrc-2.0.mine"` — a file that has never existed on this machine | Line dropped | `grep -rl gtkrc-2.0.mine ~/repos/dotfiles --exclude-dir=.git --exclude-dir=docs` → nothing but this file |
 | **Stale, untracked xsettingsd** | `~/.config/xsettingsd/xsettingsd.conf` was untracked and still named `Arc-Dark` / `Qogir-Dark`, disagreeing with `settings.ini`. **xsettingsd is not running**, which is exactly why the drift was invisible | Tracked in the `gtk` package, per-theme, generated from the same names as everything else | `readlink -f ~/.config/xsettingsd/xsettingsd.conf` is inside the repo |
-| **alacritty depended on an untracked clone** | Its palette was imported from `~/.config/alacritty/themes`, so the repo alone did not describe the colours | Self-contained `colors-{nord,gruvbox}.toml` fragments; the clone is now optional | The only `import` in `alacritty.toml` is `~/.config/alacritty/colors.toml` |
+| **alacritty depended on an untracked clone** | Its palette was imported from `~/.config/alacritty/themes`, so the repo alone did not describe the colours | A self-contained rendered `colors.gen.toml`; the clone is now optional | The only `import` in `alacritty.toml` is `~/.config/alacritty/colors.gen.toml` |
 | **Cancelled screenshot ran anyway** | `grim -g "$(slurp)"` — pressing Escape gave slurp a non-zero exit and an empty string, and grim was handed an empty geometry | `scripts/screenshot_region.sh` captures slurp's exit status and bails | `Print`, then Escape: nothing is written and swappy does not open |
 
 ### 6.3 Added capability
@@ -501,6 +501,11 @@ rotted.
 
 ## 8. Post-install steps that cannot be stowed
 
+`./setup.sh <palette>` already did everything stow-shaped: the §5.2 fold-guard `mkdir`s, the render
+(before the stows — §3.3), the `/etc/skel` `~/.bashrc` move, and every package, gated on a
+`stow -n` dry run so a conflict stops it before anything is linked. What follows is what it cannot
+do.
+
 ```sh
 # Tint the Papirus folder icons (writes into /usr/share/icons, so root).
 # `theme` re-runs this on an INTERACTIVE switch when the colour differs -- it skips
@@ -519,8 +524,8 @@ git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lig
 git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
 git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 
-# nvim: nothing to run. Its colourschemes are written from the §3.1 roles in
-# nvim/.config/nvim/colorscheme-{nord,gruvbox}.lua, so there is no colorscheme
+# nvim: nothing to run. Its colourscheme is rendered from the §3.1 roles
+# (nvim/.config/nvim/colorscheme.gen.lua.tmpl), so there is no colorscheme
 # clone to forget, and lualine installs itself: `vim.pack.add` in init.lua
 # fetches it on the FIRST LAUNCH, which is therefore the one launch that needs
 # network. Offline, nvim still opens — it falls back to the built-in
@@ -533,18 +538,6 @@ git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 # the exact opposite of `theme`, where a switch must never show up in git; the
 # difference is that a plugin revision is part of the configuration and the
 # active palette is not.
-
-# The palette renderer, so `theme` is on $PATH
-stow bin
-
-# Render the colour files. They are gitignored, so a fresh clone does not have
-# them, and every themed package needs them present BEFORE it is stowed — the
-# unfolded ones (gtk, alacritty, vim) link file-by-file and would otherwise miss
-# them, leaving each application with no colours to include.
-theme nord --no-icons          # or gruvbox; must report "18 files rendered"
-
-# ~/.bashrc already exists from /etc/skel and stow will not overwrite a real file
-mv ~/.bashrc ~/.bashrc.bak && stow bash
 ```
 
 **`theme` before `stow`, always.** If you stow first, run `stow -R <pkg>` afterwards for the
@@ -805,7 +798,7 @@ The remaining consequence is that a throwaway window — waybar's htop popup, fu
 must never share a process with a long-lived shell, which one-process-per-window gives for free.
 
 Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
-fragments use `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
+foot template uses `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
 `[colors-dark]` unconditionally, which is what makes the section name a formality rather than a
 light/dark switch.
 
@@ -814,15 +807,16 @@ light/dark switch.
 Backwards from every other config format in this setup. In waybar, a key defined in `config` **wins**
 over the same key coming from an `"include"`, regardless of where the `"include"` line sits.
 
-So moving the clock's colours into `colors.json` while leaving a `"clock"` object behind in `config`
-does not merge them — the `config` copy silently wins and the fragment has no effect at all. The
-`clock` module had to be **deleted from `config` entirely** and defined only in the fragment. The
-symptom is a module that ignores the theme while every other module switches correctly.
+So moving the clock's colours into `colors.gen.json` while leaving a `"clock"` object behind in
+`config` does not merge them — the `config` copy silently wins and the included file has no effect
+at all. The `clock` module had to be **deleted from `config` entirely** and defined only in
+`colors.gen.json`. The symptom is a module that ignores the theme while every other module switches
+correctly.
 
 ### 9.13 sway `$variables` cannot cross `config.d` ordering
 
 `config.d/*` is read alphabetically (§9.6), so `default` — which holds the keybindings — is parsed
-**before** `theme`, which is where `include ../colors.conf` defines the palette. A `$role` used in a
+**before** `theme`, which is where `include ../colors.gen.conf` defines the palette. A `$role` used in a
 binding in `default` is therefore not yet defined, and sway rejects the whole config:
 
 ```
@@ -830,13 +824,13 @@ Invalid border color $accent
 ```
 
 This is why the screenshot bindings call `scripts/screenshot_region.sh` instead of inlining
-`slurp -c $accent`: the script sources `~/.config/sway/theme.env` at *runtime*, sidestepping parse
+`slurp -c $accent`: the script sources `~/.config/sway/theme.gen.env` at *runtime*, sidestepping parse
 order completely. Any future binding that needs a colour should do the same rather than move files
 around to fix the sort order.
 
 ### 9.14 Moving a config block wholesale loses whatever stayed behind
 
-When the waybar clock moved into the colour fragment, its `actions` block — scroll to shift the
+When the waybar clock moved into the rendered `colors.gen.json`, its `actions` block — scroll to shift the
 calendar month — was left in the old file and dropped. **Every check in this repo still passed**:
 `sway --validate` does not read waybar's config, the JSON stayed valid, waybar started clean, and
 the clock rendered correctly. Only scrolling on it revealed the loss.
@@ -932,13 +926,13 @@ have to be moved back.
 | `$mod+Return` does nothing | kitty not installed, or its first start is failing | `kitty --version`, then run `kitty` from another terminal and read the error |
 | An open **foot** is still the old palette after a switch | foot cannot reload colours, and nothing restarts it | Close and reopen it; §9.11 |
 | An open **kitty** is still the old palette after a switch | The SIGUSR1 never arrived | `theme` prints `kitty … reloaded (SIGUSR1)` when it sends one; §9.11 |
-| One surface still the old palette, everything else switched | A running GTK app, or a file whose name does not match `<base>-<theme>.<ext>` so `theme` never saw it | `theme` prints how many symlinks it flipped — it must say **17**; §3.3 |
-| A widget renders **black** | A role used but not defined in that palette's fragment | §9.10 — define it in *both* fragments |
-| `theme: missing fragment: …` | A theme symlink (not necessarily `colors.*` — could be `settings.ini`, `.gtkrc-2.0`, etc.) exists with no counterpart for the target theme | Create the sibling fragment, or remove the symlink |
-| `theme: … define different roles` | The two palettes have drifted | §9.10. This is the guard, not a fault |
-| Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo` and there was no tty to prompt on | Run the `sudo papirus-folders -C <colour> -t Papirus-Dark` line `theme` printed |
+| One surface still the old palette, everything else switched | A running GTK app (§9.9), an open foot (§9.11), or an unfolded package that was stowed before `theme` first ran, so the rendered file was never linked | Restart the app; else `readlink` the file under `~` and `stow -R <pkg>` if it is missing; §3.3 |
+| A widget renders **black** | A GTK CSS `@name` used in a hand-written file but produced by no template, or a stale/deleted rendered file | Re-run `theme` (re-rendering repairs artefacts); if the name is not a role, add it to **both** palettes; §9.10 |
+| `theme: …tmpl: no such role '…'` | A template names a role `palettes.toml` does not define | Add the role to both palettes, or fix the typo in the template; §9.10 |
+| `theme: … define different keys` | The two palettes have drifted | §9.10. This is the guard, not a fault |
+| Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo`, so `theme` only runs it from a terminal | Re-run `theme` in a terminal, or `sudo papirus-folders -C <colour> --theme Papirus-Dark` |
 | Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path; §6.2 |
-| A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.env` from a script instead |
+| A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.gen.env` from a script instead |
 
 ### Verification sweep
 
@@ -951,8 +945,8 @@ gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 systemctl --user show-environment | grep XDG_CURRENT      # =sway
 readlink -f ~/.config/sway ~/.config/waybar ~/.gtkrc-2.0  # all inside the repo
 
-theme                                                     # nord | gruvbox
-readlink ~/repos/dotfiles/sway/.config/sway/theme.env     # theme-<that>.env
+theme                                                     # re-renders; prints "N files rendered … [name]"
+cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
 ```
 
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:

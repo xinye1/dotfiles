@@ -6,7 +6,7 @@
 #
 # Why a script rather than sway variables: config.d/* is read alphabetically,
 # so `default` (which holds the keybindings) is parsed BEFORE `theme` (which
-# includes colors.conf). A $role written into a binding in `default` is not yet
+# includes colors.gen.conf). A $role written into a binding in `default` is not yet
 # defined and sway rejects the whole config. Sourcing the palette at runtime
 # sidesteps parse ordering completely.
 set -eu
