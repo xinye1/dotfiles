@@ -8,7 +8,7 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
 sudo pacman -S --needed $(cat packages.txt)   # the desktop and every tool a config here invokes
-yay -S --needed $(cat packages-aur.txt)       # nordic-theme, papirus-folders
+yay -S --needed $(cat packages-aur.txt)       # google-chrome, nordic-theme, papirus-folders
 ./setup.sh gruvbox                  # or nord
 sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
 ```

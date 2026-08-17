@@ -119,5 +119,6 @@ setup:   - system packages           §4.1/§4.2 (pacman + AUR)
 setup:   - GTK themes                nordic-theme (AUR), Colloid-…-Gruvbox (§8)
 setup:   - vim plugins               three git clones (§8)
 setup:   - papirus folder tint       sudo papirus-folders … (§8), or just `theme`
+setup:   - default web browser       env -u BROWSER xdg-settings set … (§8)
 setup: When the desktop is up: sh tests/check_consumers.sh
 EOF

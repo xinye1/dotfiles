@@ -265,6 +265,7 @@ tables say *why* each package is here and what breaks without it; the two `Sourc
 | `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
 | `papirus-folders` | **AUR** | Recolours Papirus folder icons. `theme` drives it per palette (`nordic` / `yellow`), and it is the one step needing `sudo` |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
+| `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
 | `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
@@ -475,6 +476,20 @@ do.
 # papirus-folders when stdin is not a tty, because it needs sudo. This is just
 # the first one. nordic for Nord, yellow for Gruvbox — see §3.2.
 sudo papirus-folders -C nordic -t Papirus-Dark
+
+# Default web browser: http, https and text/html to Chrome. This is xdg state,
+# not config — it lands in ~/.config/mimeapps.list, which xdg-settings and every
+# "make me your default?" prompt rewrite in place. Stowing that file would make
+# it a tracked file other programs edit behind you, the nwg-look failure mode of
+# §9.1 — so it stays a one-liner here. Idempotent; verify with
+# `env -u BROWSER xdg-settings check default-web-browser google-chrome.desktop`.
+# `env -u BROWSER` is REQUIRED, not tidiness: bash/.bashrc exports $BROWSER, and
+# xdg-settings refuses to write while it is set ("$BROWSER is set and can't be
+# changed with xdg-settings") — exit 1, one line of stderr, nothing written.
+# NOTE the .desktop name is `google-chrome`, while the BINARY is
+# `google-chrome-stable` ($mod+o, $BROWSER) and the X11 class is `Google-chrome`
+# (application_defaults). Three spellings, all required, none interchangeable.
+env -u BROWSER xdg-settings set default-web-browser google-chrome.desktop
 
 # The Gruvbox GTK theme. Not a package: see §4.2 for why not the AUR one.
 # NEVER add -l/--libadwaita — it overwrites ~/.config/gtk-4.0/gtk.css, which is
