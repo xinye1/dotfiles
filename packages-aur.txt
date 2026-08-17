@@ -1,0 +1,2 @@
+nordic-theme
+papirus-folders

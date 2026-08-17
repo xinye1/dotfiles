@@ -24,7 +24,7 @@ desktop = "#272b33"
 gtk_theme_name = "Nordic"
 papirus_folder = "nordic"
 
-# The 16-colour terminal ramp, shared by alacritty and foot. Previously
+# The 16-colour terminal ramp, shared by kitty and foot. Previously
 # duplicated across both, with a comment asking that they be kept in step
 # by hand; now they render from here.
 [nord.ansi]
@@ -64,7 +64,7 @@ desktop = "#1d2021"
 gtk_theme_name = "Colloid-Yellow-Dark-Gruvbox"
 papirus_folder = "yellow"
 
-# The 16-colour terminal ramp, shared by alacritty and foot. Previously
+# The 16-colour terminal ramp, shared by kitty and foot. Previously
 # duplicated across both, with a comment asking that they be kept in step
 # by hand; now they render from here.
 [gruvbox.ansi]

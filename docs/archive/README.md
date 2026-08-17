@@ -9,6 +9,7 @@ record *why*, not because they describe the current system — for that, read `P
 | `2026-08-06-theme-switching.md` | The implementation plan for the above. |
 | `2026-08-13-simplify-theming-design.md` | Replacing the pointers with generation from `palettes.toml`. |
 | `2026-08-16-yazi-design.md` | Adding yazi as a themed package. Records the yazi 26.5.6 theme schema, why `syntect_theme` stays empty, and the measurements behind the `yazi --debug` consumer check — including the one fault it cannot see. |
+| `2026-08-17-stock-deviations.md` | The stock-vs-here theming diff and defect log (formerly PLAYBOOK §6.1–6.2), the pre-render theming scheme, and the terminal-recolouring designs that were measured and rejected (formerly the bulk of §9.11). |
 
 `docs/setup.html` used to live here too — a 2086-line hand-maintained page that re-told PLAYBOOK in
 a second format. It was deleted rather than archived: two documents describing one system is how

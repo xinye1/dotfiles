@@ -2,7 +2,7 @@
 #
 # THEME-INDEPENDENT BY CONSTRUCTION. Every colour below is one of the 16 ANSI
 # slots, never a 256-colour index or a truecolor escape. The terminal supplies
-# the actual hexes from foot/alacritty's palette, which the theme switcher
+# the actual hexes from the terminals' palette, which the theme switcher
 # already changes — so this file themes itself and needs no per-theme variant.
 #
 # Regenerate the stock version for reference with: dircolors -p

@@ -7,6 +7,8 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 ```sh
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
+sudo pacman -S --needed $(cat packages.txt)   # the desktop and every tool a config here invokes
+yay -S --needed $(cat packages-aur.txt)       # nordic-theme, papirus-folders
 ./setup.sh gruvbox                  # or nord
 sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
 ```
@@ -54,7 +56,7 @@ What this costs, stated plainly, because a reader deserves it up front:
 - You cannot theme one application differently from the rest without adding a role.
 - A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
 - `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
-  adding a themed file to `gtk`, `alacritty`, `vim` or `yazi` — the unfolded packages that carry
+  adding a themed file to `gtk`, `vim` or `yazi` — the unfolded packages that carry
   templates. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
@@ -69,7 +71,6 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
 | `bin` | `~/.local/bin/theme` — the palette renderer |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
-| `alacritty` | `~/.config/alacritty/alacritty.toml` |
 | `foot` | `~/.config/foot/foot.ini` — standalone fallback, still themed |
 | `kitty` | `~/.config/kitty/kitty.conf` — **the default terminal**; a port of `foot` |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |

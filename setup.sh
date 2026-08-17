@@ -25,6 +25,16 @@ command -v stow >/dev/null || { echo 'setup: GNU Stow is not installed (pacman -
 python3 -c 'import tomllib' 2>/dev/null \
     || { echo 'setup: python3 >= 3.11 required (theme needs tomllib)' >&2; exit 1; }
 
+# Missing system packages are a warning, not a stop: stow and theme work
+# without them, and a half-provisioned machine still deserves a linked $HOME.
+# packages.txt / packages-aur.txt are the canonical lists (PLAYBOOK §4).
+if command -v pacman >/dev/null; then
+    missing=$(pacman -T $(cat packages.txt) || true)
+    [ -z "$missing" ] || printf 'setup: not installed yet (sudo pacman -S --needed $(cat packages.txt)):\n%s\n' "$missing"
+    missing=$(pacman -T $(cat packages-aur.txt) || true)
+    [ -z "$missing" ] || printf 'setup: not installed yet, from the AUR (yay -S --needed):\n%s\n' "$missing"
+fi
+
 # --- palette ----------------------------------------------------------------
 # No argument means "whatever is already applied" — theme reads
 # $XDG_STATE_HOME/theme/palette. On a fresh machine there is nothing to read,
@@ -42,12 +52,11 @@ fi
 # directory into the repo. For these targets that would be a trap sprung later:
 # each one accumulates untracked content (installed binaries in ~/.local/bin,
 # plugin clones in ~/.vim, Claude Code state in ~/.claude, nwg-look output in
-# gtk-{3,4}.0, `ya pkg` installs in ~/.config/yazi, the optional themes clone
-# in ~/.config/alacritty), and folded, all of it lands inside the repo. On a
-# fresh $HOME none of these directories exist, so create them before stow sees
-# them. mkdir -p is a no-op when they already do.
+# gtk-{3,4}.0, `ya pkg` installs in ~/.config/yazi), and folded, all of it
+# lands inside the repo. On a fresh $HOME none of these directories exist, so
+# create them before stow sees them. mkdir -p is a no-op when they already do.
 for dir in "$HOME/.local/bin" "$HOME/.vim" "$HOME/.claude" "$HOME/.icons" \
-           "$HOME/.config/alacritty" "$HOME/.config/gtk-3.0" \
+           "$HOME/.config/gtk-3.0" \
            "$HOME/.config/gtk-4.0" "$HOME/.config/yazi"; do
     if [ -L "$dir" ]; then
         printf 'setup: %s is already a symlink — stow folded it on an earlier run.\n' "$dir" >&2

@@ -8,9 +8,7 @@ It carries **two palettes**, Nord and Gruvbox Dark, and switches between them wi
 added by making every colour in the setup a *role* rather than a hex, which is the single change
 that most of this document now turns on. §3.3 is the mechanism.
 
-This is the document to *read*. For a checklist to *follow* at a terminal, open
-[`docs/setup.html`](docs/setup.html) in a browser — same content, structured as steps with
-copy buttons and progress that survives a reboot.
+This is the document to *read*. The thing to *run* on a new machine is `./setup.sh` (README).
 
 ---
 
@@ -62,7 +60,7 @@ greetd
 `theme` last. Anything that must win a conflict belongs in a later-sorted file.
 
 `exec` runs **only at sway startup**. `exec_always` runs at startup *and* on every
-`swaymsg reload`. Choosing wrong is the single most common bug in this config — see §6.2 and §9.2.
+`swaymsg reload`. Choosing wrong is the single most common bug in this config — see §9.2.
 
 ### 2.2 How GTK theming actually reaches applications
 
@@ -122,11 +120,8 @@ Those seven are listed individually in `.gitignore`. That list is structural —
 an application with a hardcoded config filename joins the desktop, which is exactly what happened
 when yazi arrived on 2026-08-16.
 
-This replaced a scheme where each themed file was kept *twice*, once per palette, with a
-theme-neutral symlink pointing at whichever was active. The colours were written 36 times, the 18
-pointers had to be enumerated in `.gitignore` because no glob could catch names like `colors.css`
-and `.gtkrc-2.0` without also catching tracked files, and a test existed only to catch that list
-falling behind. Generation chooses the output name, so a glob can catch it.
+(The pre-render scheme this replaced is described in
+`docs/archive/2026-08-17-stock-deviations.md`.)
 
 ---
 
@@ -166,8 +161,8 @@ Two per-palette values are not colours and still have to be chosen per palette: 
 and `papirus_folder`. They live in the same table.
 
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
-role colours; the other eight are not, and are shared by alacritty and foot. They used to be
-duplicated across both applications with a comment asking that they be kept in step by hand.
+role colours; the other eight are not, and are shared by kitty and foot. They used to be
+duplicated across the terminals with a comment asking that they be kept in step by hand.
 
 **Both palettes must define exactly the same keys.** `theme` refuses to render otherwise. This
 matters more than it looks: an undefined `@name` in GTK CSS renders as **black, with no warning**,
@@ -219,7 +214,7 @@ then reloads: `sway --validate` before `swaymsg reload` (which also restarts way
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
-and the unfolded packages that carry templates (`gtk`, `alacritty`, `vim` — `bin` and `claude`
+and the unfolded packages that carry templates (`gtk`, `vim`, `yazi` — `bin` and `claude`
 are also unfolded but carry none) link file-by-file — a file created
 after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
 §5.2.
@@ -233,6 +228,14 @@ server restart or a logout.
 ---
 
 ## 4. Package manifest
+
+The install lists a new machine actually consumes are `packages.txt` (official repos) and
+`packages-aur.txt` (AUR) at the repo root — `sudo pacman -S --needed $(cat packages.txt)`, then
+`yay -S --needed $(cat packages-aur.txt)`. `setup.sh` warns about anything from either list that is
+not installed. The files also carry the tools the configs here invoke that the tables below assume
+(vim, neovim, starship, htop, and yazi's `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The
+tables say *why* each package is here and what breaks without it; the two `Source: source` entries
+(the Colloid GTK theme, the vim colorschemes) cannot live in either file and are §8's job.
 
 ### 4.1 Required — the setup is broken without these
 
@@ -319,7 +322,6 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so it behaves like `foot`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
-| `alacritty` | **No** | `themes/` is an untracked clone of alacritty/alacritty-theme living inside `~/.config/alacritty`. Folding would put the clone inside the repo. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
@@ -385,50 +387,11 @@ indistinguishable from the import, and you lose the ability to see what you actu
 
 ## 6. Deviations from stock EndeavourOS
 
-The core reference. Each row: what stock does → what this repo does → why → how to check.
-
-### 6.1 Theming
-
-| | Stock | Here | Why |
-|---|---|---|---|
-| sway borders | Dracula `#6272A4` / `#282A36` / `#F8F8F2` | `$accent` focus, `$accent2` focused-inactive, `$muted` unfocused | Consistency; stock clashed with the terminals. Role names, so both palettes get the same ladder |
-| sway border bg | `bground` == `border` (accent-filled titlebar) | `bground` = `$bg` | The accent belongs on the border, not flooding the title area |
-| sway font | `Noto Sans Regular 10` | `JetBrainsMono Nerd Font 10` | Matches bar and launcher; glyph coverage |
-| Terminals | *Nordic* (`#242933`) | *Nord* (`#2E3440`) | See §3.2 — different scheme despite the name |
-| waybar | `@highlight #685878`, `@base1 #19191e`, literal `orange`/`red` | The thirteen roles as `@define-color`, in the rendered `colors.gen.css` | One-off hexes matched nothing else, and named roles are what make two palettes possible |
-| waybar calendar | pastel pink `#ff6699` `#ecc6d9` `#99ffdd` | `$accent2` weekdays, `$warning` today, `$muted` week numbers | Loudest palette break in the setup. The weekday colour moved nord9 → nord7 in the role rewrite — the one deliberate visual change on the Nord side |
-| waybar font | `JetBrainsMono` | `"JetBrainsMono Nerd Font"` | §9.4 |
-| mako | Arc blue `#5294e2` on `#404552` | `$surface` body / `$accent` border | |
-| mako frame | 5px border, square | 2px border, `border-radius=10,0,0,10` | Rounded on the left, square on the right, so the card reads as a tab flush against the screen edge. Note `border-size` is **not** directional in mako 1.11 — only `margin`, `outer-margin`, `padding` and `border-radius` are, so a per-edge accent *spine* cannot be expressed; asymmetric corners are the closest thing |
-| mako icons | `/usr/share/icons/Arc-X-D` | `/usr/share/icons/Papirus-Dark` | **The stock path does not exist** — icons were silently falling back |
-| fuzzel | purple/navy `08052bdd`, Dracula selection `44475add` | `$bg` / `$sel` / `$accent` border | Related to nothing else |
-| fuzzel font | `JetBrainsMono-Regular` | `JetBrains Mono` | §9.4 — file name vs fontconfig family |
-| nwg-drawer | `rgba(38,18,57,.9)` purple | `@bg` with alpha | |
-| gtklock | 22 MB background image, purple accents | Solid `@bg`, role-named accents | Image moved to `~/Pictures/wallpapers`; a 22 MB binary has no place in a config dir |
-| GTK theme / icons | `Arc-Dark` / `Qogir-Dark` | `Nordic` or `Colloid-Yellow-Dark-Gruvbox`, `Papirus-Dark` | Per palette, from the `gtk_theme_name` role, rendered into `settings.ini` and `theme.gen.env` |
-| GTK dark hint | `gtk-application-prefer-dark-theme=0` | `=1` | Was `0` while the theme name was a *dark* variant — libadwaita apps rendered light |
-| libadwaita | *(nothing)* | `gtk-4.0/gtk.css` + `color-scheme` in gsettings | §2.2 — the only way to reach these apps |
-| Wallpaper | 3.3 MB PNG via untracked `~/.azotebg` | `output * bg $desktop solid_color` | Native to sway; no loose script, no tracked binary |
-
-### 6.2 Defects fixed
-
-| Defect | Detail | Fix | Verify |
-|---|---|---|---|
-| **swayidle process leak** | `exec_always swayidle …` re-ran on every reload without killing the previous instance. **40 were alive** when found, all racing to lock the screen | `exec_always pkill -x swayidle; swayidle …` | `pgrep -xc swayidle` → `1`, still `1` after a second reload |
-| **No idle locking at all** | Stock had `before-sleep` only — no `timeout` clauses, so an unattended machine never locked or blanked | `timeout 300` lock, `timeout 600` dpms off + resume | Leave it 5 minutes |
-| **`XDG_CURRENT_DESKTOP` empty** | greetd doesn't set it; stock imported the *empty* value into systemd and dbus. `xdg-desktop-portal` picks its backend from it, with portal-gtk and portal-wlr both installed — the choice was arbitrary | `systemctl --user set-environment` + `dbus-update-activation-environment`, both `exec_always`. Full fix in §6.4 | `systemctl --user show-environment \| grep XDG_CURRENT` |
-| **Undeclared display scale** | `config.d/output` was 100% comments. `eDP-1` runs 3840×2160 at scale 2 by autodetection — worked here, would silently not reproduce elsewhere | `output eDP-1 { scale 2 }` | `swaymsg -t get_outputs` |
-| **Unhandled lid switch** | A `Lid_Switch` input exists; nothing bound to it | `bindswitch --reload --locked lid:on/off` | Close the lid |
-| **mako icon path** | Points at a directory that does not exist | Papirus-Dark | `notify-send -i firefox test` |
-| **Hex guard blind to bare colours** | `tests/check_hex.py` asserts "no tracked config carries a literal hex" and passed while `sway/…/config.d/default` ran `fuzzel … -t bf616aff -S bf616aff`. The regex required a leading `#`; fuzzel's `-t`/`-S` want a bare `RRGGBBAA`. Same colour, different spelling. The cost was not the one off-palette picker — it was a green check certifying a rule it could not see | `BARE_HEX` pattern added; the binding moved into `scripts/cliphist_delete.sh`, which sources `theme.gen.env` and derives `${CRITICAL#\#}ff` at press time, because `config.d/default` is parsed before `config.d/theme` (§9.6) | `python3 tests/check_hex.py .`; `theme gruvbox` then `$mod+Ctrl+x` — picker is gruvbox red, not Nord red |
-| **Critical notifications expired after 5s** | `[urgency=high] ignore-timeout=1` was commented "never time out on their own". It does not mean that. Per `man 5 mako` it means *ignore the timeout the app asked for and use `default-timeout` instead* — which is `5000` globally. So critical notifications vanished after five seconds, **and** an app that explicitly asked to stay longer was overridden into vanishing sooner. The comment described the intent, not the behaviour, and nothing ever checked | `default-timeout=0` alongside `ignore-timeout=1` in the same criteria. The pair is what makes it stick: ignore what the app said, then apply no timeout | `notify-send -u critical x y`, wait >5s, `makoctl list` still shows it |
-| **waybar workspaces 1–2** | `format-icons` covered `"3"`–`"10"` only; 1 and 2 fell through to the raw name | Added, plus a `default` | Harmless for numeric workspaces; breaks the moment one is renamed |
-| **No Nerd Font** | Only the symbols-only fallback was installed; every glyph rendered via fontconfig fallback | `ttf-jetbrains-mono-nerd` | §9.4 |
-| **Cursor theme never resolved** | The name was written `Qogir-dark` in 13 places; the directory is `/usr/share/icons/Qogir-Dark`. XCursor resolves by **case-sensitive path**, so it silently fell back to the default cursor everywhere | `Qogir-Dark` throughout, plus `seat * xcursor_theme` and `~/.icons/default/index.theme` so it reaches XWayland and the compositor cursor too | `ls -d /usr/share/icons/Qogir-dark` errors, `-Dark` does not — that one letter was the whole bug |
-| **Dangling GTK2 include** | `.gtkrc-2.0` ended with `include "/home/xinye/.gtkrc-2.0.mine"` — a file that has never existed on this machine | Line dropped | `grep -rl gtkrc-2.0.mine ~/repos/dotfiles --exclude-dir=.git --exclude-dir=docs` → nothing but this file |
-| **Stale, untracked xsettingsd** | `~/.config/xsettingsd/xsettingsd.conf` was untracked and still named `Arc-Dark` / `Qogir-Dark`, disagreeing with `settings.ini`. **xsettingsd is not running**, which is exactly why the drift was invisible | Tracked in the `gtk` package, per-theme, generated from the same names as everything else | `readlink -f ~/.config/xsettingsd/xsettingsd.conf` is inside the repo |
-| **alacritty depended on an untracked clone** | Its palette was imported from `~/.config/alacritty/themes`, so the repo alone did not describe the colours | A self-contained rendered `colors.gen.toml`; the clone is now optional | The only `import` in `alacritty.toml` is `~/.config/alacritty/colors.gen.toml` |
-| **Cancelled screenshot ran anyway** | `grim -g "$(slurp)"` — pressing Escape gave slurp a non-zero exit and an empty string, and grim was handed an empty geometry | `scripts/screenshot_region.sh` captures slurp's exit status and bails | `Print`, then Escape: nothing is written and swappy does not open |
+The full stock-vs-here record — every theming deviation and every stock defect found and fixed,
+with verification — is archived in
+[`docs/archive/2026-08-17-stock-deviations.md`](docs/archive/2026-08-17-stock-deviations.md).
+It is history: the *rules* that came out of it live in §3, §5 and §9. What remains here is
+capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4).
 
 ### 6.3 Added capability
 
@@ -438,7 +401,7 @@ The core reference. Each row: what stock does → what this repo does → why �
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
 | Gaps toggle | `$mod+g` | `gaps inner current toggle 12` — for screen sharing and screenshots |
-| Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §6.2, §9.13 |
+| Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §9.13 |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
 | App placement | `config.d/application_defaults` | `assign` (not `for_window … move`) so windows don't flash on the wrong workspace first. X11 apps need `class`, Wayland apps `app_id` |
@@ -543,15 +506,7 @@ git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 **`theme` before `stow`, always.** If you stow first, run `stow -R <pkg>` afterwards for the
 unfolded packages, or the rendered files will exist in the repo and be absent from `~`.
 
-**Optional now, not required:**
-
-```sh
-# alacritty's palette is self-contained since the two-palette work. This clone
-# is only worth having if you want other schemes to hand.
-git clone https://github.com/alacritty/alacritty-theme ~/.config/alacritty/themes
-```
-
-Also optional: the greetd-level environment fix from §6.4, in `/etc/greetd/config.toml`.
+Optional: the greetd-level environment fix from §6.4, in `/etc/greetd/config.toml`.
 
 `bin` is **not** folded (§5.2), so a script added to the package later needs `stow -R bin` before it
 appears on `PATH`.
@@ -727,27 +682,14 @@ foot has **no config-reload signal.** `SIGUSR1` and `SIGUSR2` look like one and 
 between the `[colors-dark]` and `[colors-light]` blocks *that were loaded at startup*. Sending them
 after editing the config does nothing new.
 
-**The rejected trick, recorded so it is not re-proposed:** park Nord in `[colors-dark]` and Gruvbox
-in `[colors-light]`, then switch with `SIGUSR1`. It works, and it was still rejected twice over —
-it caps the setup at exactly two themes forever, and it makes the config lie, with a dark palette
-declared as the light one.
-
-**The answer is that foot does not get restarted.** An already-open foot keeps its old palette until
-you close and reopen it; a new one comes up correct. That is the whole story, and it is a deliberate
-limit rather than a missing feature.
-
-This once read as a `theme <name> --restart-terminals` flag that ran `pkill -x foot; foot --server`.
-**No such flag ever existed in `theme`** — the argument parser rejects any unknown option, so every
-copy of that line in this document was an instruction that would have exited non-zero. It is
-recorded here because the drift is the lesson: four places described a flag nobody had run, and
-nothing checks prose against `--help`.
-
-It is not coming back. Restarting terminals to recolour them destroys the processes inside them,
-which are the user's and not the theme switcher's — an editor with unsaved work, a long build, a
-Claude Code session. **tmux sessions are the exception and survive it** (verified: the server's PPID
-is 1, so it is never a child of the terminal; SIGKILL the pty owner and the session and its jobs
-stay up and reattachable). But that only protects what was already started *inside* tmux, which is
-not a safe assumption to design a default around.
+**The answer is that foot does not get restarted.** An already-open foot keeps its old palette
+until you close and reopen it; a new one comes up correct. That is a deliberate limit, not a
+missing feature: restarting terminals to recolour them destroys the processes inside them, which
+are the user's and not the theme switcher's — an editor with unsaved work, a long build, a Claude
+Code session. Nothing in this repo restarts a terminal, ever. (The rejected alternatives — the
+dark/light-slot trick, the `--restart-terminals` flag this document once described but which never
+existed, the tmux-survives caveat — are archived in
+`docs/archive/2026-08-17-stock-deviations.md`.)
 
 **kitty — now the default terminal — does not have the problem.** `SIGUSR1` is a genuine
 config-reload there: every running instance re-reads `kitty.conf` and its `include`, so a palette
@@ -767,35 +709,12 @@ and the default action for SIGUSR1 — terminate — kills them. kitty's own fun
 processes first (`kitty/utils.py`, `is_kitty_gui_cmdline`), so borrowing it means that filter can
 never drift from what kitty considers itself to be. `theme` calls it for exactly this reason.
 
-**`--single-instance` was measured and rejected.** It is the direct analogue of the `foot --server`
-this replaced — one process serving every window — so it was the obvious default and it is not the
-one here. Measured on this machine:
-
-| | `--single-instance` | one process per window |
-|---|---|---|
-| invoke → shell actually running | **47 ms** | 221 ms |
-| PSS, two windows open | **87 MB** | 136 MB |
-| one window crashes | **every window dies** | the others are unaffected |
-
-~175 ms and ~50 MB per window is not worth every terminal sharing a fate. The processes inside a
-terminal belong to whoever started them, which is the same principle that keeps `theme` from
-restarting terminals at all — and re-adding the risk as an *accident*, after deliberately removing
-the command that caused it, would be incoherent. Note also that single-instance does not fix the
-cold start: the first window still pays the 221 ms, because there is no daemon. It buys speed only
-for windows 2..n.
-
-**Two arguments in the usual pro/con list do not apply here, and both were checked rather than
-reasoned about:**
-
-- *"Config changes only reach new processes"* — false. Two independent kitty processes both
-  recoloured across a `theme` switch, because `reload_conf_in_all_kitties()` walks every GUI
-  process. Palette switching never depended on a shared process.
-- *"Windows inherit the environment of the original parent"* — false for kitty, whatever it may be
-  for other terminals. kitty forwards both the environment and the cwd over the single-instance
-  socket; a second window invoked with `MARKER=second` from a different directory got both.
-
-The remaining consequence is that a throwaway window — waybar's htop popup, fuzzel's launcher —
-must never share a process with a long-lived shell, which one-process-per-window gives for free.
+**`--single-instance` was measured and rejected** — one process serving every window means every
+window shares a fate, for ~175 ms and ~50 MB per window, and it does not even fix the cold start.
+The measurements, and the two usual pro-daemon arguments that were checked and found false for
+kitty, are in the archive file above. The consequence that stays operative: a throwaway window —
+waybar's htop popup, fuzzel's launcher — must never share a process with a long-lived shell, which
+one-process-per-window gives for free.
 
 Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
 foot template uses `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
@@ -897,6 +816,87 @@ have to be moved back.
 
 ---
 
+### 9.17 A plugin that themes itself silently diverges from the palette
+
+lualine's default `theme = 'auto'` reads `g:colors_name` and loads its *own* bundled theme of that
+name — it ships both `nord` and `gruvbox`, so it always finds one and paints the bar a few shades
+off the waybar above it, erroring never. `nvim/.config/nvim/statusline.lua` hands it a table built
+from the thirteen roles instead. Apply the same rule to any future self-theming plugin: if it can
+choose colours, feed it the roles explicitly.
+
+### 9.18 tmux has no colour indirection, and no error for a missing one
+
+Every tmux colour option takes a literal, so `tmux/.config/tmux/colors.gen.conf` carries the hexes
+twice over: as `@thm_*` user options for the format strings (`#[fg=#{@thm_accent}]` — tmux does
+expand `#{}` inside `#[]`) and as the plain style options, which take a colour and would not expand
+a format. An **undefined** `@thm_foo` expands to nothing, `#[fg=]` is accepted, and the bar quietly
+renders in the default colours — the GTK `@name` failure of §9.10 again. `check_consumers.sh` greps
+the expanded format for an empty `fg=`.
+
+### 9.19 A `#` arriving from data breaks the tmux status bar downstream of itself
+
+tmux expands the format first and parses `#[...]` directives in the *result*, so a `#` from a pane
+title, window name or branch name is indistinguishable from the start of one — and a value ending
+in `#` pairs with the `#` of the next real directive to form `##`, an escaped literal, printing
+that directive as visible text. A Claude Code pane title truncated onto an issue number ate
+`#[nolist align=right]` and left the right-hand group unaligned.
+
+Wrap **every** dynamic value in `#{qh:…}` (`#S`/`#W` don't escape; use
+`#{qh:session_name}`/`#{qh:window_name}`), and have any `#()` script escape its own output. Two
+constraints on `qh` that are not in the man page: it does **not** apply to a nested `#{…}`, only to
+a plain variable name — hence chained modifiers, and a conditional wrapping two modified branches
+rather than one modifier wrapping a conditional; and in `#{=/50/…;qh:x}` the trim runs **first**,
+which is the only safe order, since escaping first lets the trim fall between the halves of a `##`
+and recreate the dangling `#`.
+
+### 9.20 A hand-written `status-format[0]` needs `list=on`/`nolist`
+
+Without them, every `align=` group is ignored. Wrapping the `#{W:…}` window list in `#[list=on …]`
+… `#[nolist align=centre]` is what identifies the elastic part of the line; without it tmux accepts
+all three groups, reports nothing, and draws left, centre and right run together flush left.
+Taking the format over also drops the per-window activity/bell *style* options — the stock
+format's nested conditionals for them are gone, so those states have to be shown as characters in
+`window-status-format`. Neither loss is visible except by attaching a client and looking.
+
+### 9.21 mako: `ignore-timeout=1` does not mean "never expire"
+
+It means *ignore the timeout the app asked for and use `default-timeout` instead* — so on its own,
+under a global `default-timeout`, it makes a notification expire **sooner** than an app requested.
+Pair it with `default-timeout=0` in the same criteria. A comment claiming otherwise sat over
+`[urgency=high]` for months (the defect log in `docs/archive/2026-08-17-stock-deviations.md` has
+the full story). `border-size` is also **not** directional, though
+`margin`/`outer-margin`/`padding`/`border-radius` all are.
+
+Related: **`mako --config <file>` is a real validator**, and the only one mako has. It fully
+parses the config *and its includes* before touching D-Bus, so the running daemon is unaffected
+and the second instance just exits on the name clash. Distinguish the parse error from the
+expected `Failed to acquire service name` — `check_consumers.sh` greps for the former, since the
+exit code is dominated by the latter.
+
+### 9.22 yazi ignores an unknown theme key in silence
+
+No error, no warning, not even in `--debug`. It is strict about everything else: `yazi --debug
+</dev/null` exits 1 with a caret under a bad hex, a bad value, malformed TOML or an unknown
+`[section]`, which makes it a better validator than most consumers here. But a *key* misspelt
+inside a known section is dropped without a word, and the schema does move (`[manager]` was
+renamed `[mgr]`). So the keys in `theme.toml.tmpl` are copied from the preset embedded in the
+installed binary, not from documentation — re-derive them the same way after an upgrade:
+`strings /usr/bin/yazi | grep -n 'schemas/theme.json'`, then read forward.
+
+More yazi traps, all the same shape — **a bare array key replaces, only `prepend_*`/`append_*`
+merge**: `keymap` wipes the whole preset keymap, and `[filetype] rules` and the four `[icon]`
+tables replace theirs, so every *fallback* rule has to be restated or files quietly stop being
+coloured or lose their icon. The `[icon]` tables are replaced here on purpose: the preset carries
+725 rules painted from the Material palette, a third colour scheme fixed in the binary that
+matches neither palette and does not move when one switches. Its `files` keys are **lowercase** —
+yazi folds the filename before matching, so a capitalised key never matches and says nothing.
+
+Interactively a bad config is not fatal either — yazi prints
+`Press <Enter> to continue with preset settings...` and starts anyway, which is why
+`check_consumers.sh` closes stdin and then asks whether the theme actually *loaded*.
+
+---
+
 ## 10. Troubleshooting
 
 | Symptom | Likely cause | Check / fix |
@@ -931,7 +931,7 @@ have to be moved back.
 | `theme: …tmpl: no such role '…'` | A template names a role `palettes.toml` does not define | Add the role to both palettes, or fix the typo in the template; §9.10 |
 | `theme: … define different keys` | The two palettes have drifted | §9.10. This is the guard, not a fault |
 | Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo`, so `theme` only runs it from a terminal | Re-run `theme` in a terminal, or `sudo papirus-folders -C <colour> --theme Papirus-Dark` |
-| Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path; §6.2 |
+| Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path |
 | A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.gen.env` from a script instead |
 
 ### Verification sweep

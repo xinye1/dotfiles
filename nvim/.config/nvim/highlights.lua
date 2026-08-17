@@ -147,7 +147,7 @@ return function(name, c)
   end
 
   -- The sixteen ANSI slots :terminal renders with. Left to the terminal's own
-  -- palette they would be foot's or alacritty's colours, which are themed from
+  -- palette they would be kitty's or foot's colours, which are themed from
   -- the same table but reach nvim only by coincidence; setting them here means
   -- a :terminal buffer is the same palette as the editor around it whatever
   -- launched nvim.

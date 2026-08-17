@@ -164,6 +164,16 @@ python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
 
+# packages.txt / packages-aur.txt are consumed as $(cat file) by pacman, which
+# chokes on comments; sorted-unique keeps every diff a one-line change.
+for f in packages.txt packages-aur.txt; do
+    if LC_ALL=C sort -uc "$REPO/$f" 2>/dev/null && ! grep -qE '^$|[^a-z0-9@._+-]' "$REPO/$f"; then
+        ok "$f is a sorted, comment-free package list"
+    else
+        no "$f is a sorted, comment-free package list"
+    fi
+done
+
 # The pre-Python `theme` kept per-palette "fragments" (colors-nord.css, theme.env)
 # behind symlinks it flipped. §10 kept instructing that scheme long after the
 # rewrite — five rows of a troubleshooting table telling the reader to check
