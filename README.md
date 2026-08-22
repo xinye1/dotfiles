@@ -11,6 +11,7 @@ sudo pacman -S --needed $(cat packages.txt)   # the desktop and every tool a con
 yay -S --needed $(cat packages-aur.txt)       # google-chrome, nordic-theme, papirus-folders
 ./setup.sh gruvbox                  # or nord
 sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
+walls-sync                          # optional: the lock screen's wallpapers (~320 MB)
 ```
 
 `setup.sh` is this quickstart made executable, in the one order that works: the fold-guard
@@ -69,7 +70,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bash` | `~/.bashrc`, `~/.config/dircolors` |
 | `vim` | `~/.vimrc`, `~/.vim/colorscheme.gen.vim` |
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
-| `bin` | `~/.local/bin/theme` — the palette renderer |
+| `bin` | `~/.local/bin/theme` — the palette renderer; `walls-sync` — the lock screen's wallpaper cache |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
 | `foot` | `~/.config/foot/foot.ini` — standalone fallback, still themed |
 | `kitty` | `~/.config/kitty/kitty.conf` — **the default terminal**; a port of `foot` |
@@ -90,6 +91,23 @@ flags in `sway/.config/sway/scripts/lock.sh` — a file in the `sway` package, n
 own. swaylock does read `~/.config/swaylock/config` if one exists; deliberately none does, because
 a config file could not derive its colours from the active palette and the script can (PLAYBOOK
 §4.3, §9.13).
+
+It locks over a **random wallpaper matching the active palette**, picked at lock time from
+`~/Pictures/walls/<palette>/`. Those images are **not in this repo** and never will be — the
+no-binaries rule, the same one that keeps the two desktop wallpapers in `~/Pictures/wallpapers` —
+so the directory starts empty and the lock screen is the solid `$desktop` colour until you fill it:
+
+```sh
+walls-sync                      # both palettes, ~320 MB, from github.com/dharmx/walls
+walls-sync nord                 # just one
+walls-sync --min 2560x1440      # raise the resolution floor (default 1920x1080)
+```
+
+Re-running downloads nothing it already has. It is a command **you** run, never something `theme`
+or the lock screen does: locking must not depend on the network, and syncing at lock time would
+make an unreachable GitHub into an unlocked screen. Everything in `~/Pictures/walls` is a cache —
+delete it and re-run, and you have lost only time. `lock.sh` falls back to the solid colour if the
+cache is missing, empty, or does not match the palette, and it locks either way (PLAYBOOK §9.25).
 
 `docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
 would install to `~/tests/…`.

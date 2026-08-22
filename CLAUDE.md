@@ -36,6 +36,11 @@ triggers, not the full story: read the named section before working in its area.
   never `pkill` (§9.11).
 - waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
   lives in `~/.cache/claude-usage/` (safe to delete) (§9.23).
+- **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
+  that does not happen. Its wallpapers are pre-synced by `walls-sync` into
+  `~/Pictures/walls/<palette>/` — palette name *is* the directory name — and every failure falls
+  back to the solid colour with the screen still locking. The bare `exec swaylock "$@"` colour
+  fail-safe stays flagless (§9.25).
 - tmux formats: wrap **every** dynamic value in `#{qh:…}` (trim runs before escape, the only safe
   order), and a hand-written `status-format[0]` needs `#[list=on]`/`#[nolist]` or every `align=`
   is ignored (§9.19, §9.20).
@@ -113,4 +118,5 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   a deleted or edited artefact.
 - `theme` skips papirus-folders when stdin is not a tty (it needs `sudo`); `--no-icons` forces the
   skip. Icon tint therefore only changes on an interactive run.
-- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, not here.
+- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, and the lock screen's ~320 MB of
+  them in `~/Pictures/walls/<palette>/`, not here.
