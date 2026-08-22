@@ -327,8 +327,8 @@ def render(st, theme, now):
                          f'<span color="{theme["indicator"]}">{bar}</span>'
                          f' {humanize(n):>6}')
         by_model = {}
-        for per_day in days.values():
-            for model, n in per_day.items():
+        for d in window:
+            for model, n in (days.get(d.isoformat()) or {}).items():
                 by_model[model] = by_model.get(model, 0) + n
         if by_model:
             lines += ["", f'<span color="{sect}"><b>TOKENS BY MODEL</b></span>'

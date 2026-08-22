@@ -395,6 +395,18 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(cu.cells(100), "█" * 16)
         self.assertEqual(cu.cells(50).count("█"), 8)
 
+    def test_tokens_by_model_respects_window(self):
+        st = self.fresh_state()
+        # Remove default days and add out-of-window data
+        st["days"] = {
+            "2026-08-15": {"claude-sonnet-5": 999_000_000},  # outside 7-day window
+            "2026-08-22": {"claude-fable-5": 1_000},          # inside window
+        }
+        out = cu.render(st, cu.FALLBACK_THEME, NOW)
+        tip = out["tooltip"]
+        self.assertIn("Fable 5", tip)                         # in-window model appears
+        self.assertNotIn("Sonnet 5", tip)                     # out-of-window model hidden
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
