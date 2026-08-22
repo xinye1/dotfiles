@@ -23,6 +23,22 @@ _spec.loader.exec_module(cu)
 os.environ["TZ"] = "UTC"
 time.tzset()
 
+
+def set_tz(name):
+    """Switch the process zone, or clear it when `name` is None.
+
+    tzset() is process-global and the whole suite shares one process, so a test
+    that switches zone registers an addCleanup with the AMBIENT value before
+    switching — never with the literal "UTC". The two happen to be the same
+    today because of the pin above; capturing keeps that a fact about the pin
+    rather than something each call site has to restate correctly.
+    """
+    if name is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = name
+    time.tzset()
+
 NOW = datetime(2026, 8, 22, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -385,11 +401,6 @@ class ScanTest(unittest.TestCase):
         cu.scan_jsonl(Path(self.td.name) / "projects", st, self.now)
         return st
 
-    @staticmethod
-    def set_tz(name):
-        os.environ["TZ"] = name
-        time.tzset()
-
     def test_within_file_duplicates_counted_once(self):
         # One line per content block, identical usage — the dominant mode.
         f = self.proj / "a.jsonl"
@@ -515,10 +526,10 @@ class ScanTest(unittest.TestCase):
         f.write_text(usage_line("2026-08-21T22:00:00.000Z", "claude-fable-5", "m1", "r1"))
         self.assertEqual(sorted(self.scan({})["days"]), ["2026-08-21"])  # UTC control
         # tzset() is process-global and the suite shares one process: restore
-        # the pin on the way out, registered BEFORE the switch so a failed
-        # assertion below cannot leak Auckland into every later test.
-        self.addCleanup(self.set_tz, "UTC")
-        self.set_tz("Pacific/Auckland")
+        # the ambient zone on the way out, captured BEFORE the switch so a
+        # failed assertion below cannot leak Auckland into every later test.
+        self.addCleanup(set_tz, os.environ.get("TZ"))
+        set_tz("Pacific/Auckland")
         st = self.scan({})  # fresh state: rescan from offset 0, empty seen-set
         self.assertEqual(sorted(st["days"]), ["2026-08-22"])
         self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
@@ -616,11 +627,6 @@ class PaceMarkTest(unittest.TestCase):
     def resets_in(seconds):
         return (NOW + timedelta(seconds=seconds)).isoformat()
 
-    @staticmethod
-    def set_tz(name):
-        os.environ["TZ"] = name
-        time.tzset()
-
     def test_marker_walks_the_five_hour_session_window(self):
         # NOW is fixed, so the marker is a pure function of what is left of the
         # window — the payload carries no start time, only `resets_at`.
@@ -686,9 +692,10 @@ class PaceMarkTest(unittest.TestCase):
         # Unlike the day buckets, this arithmetic is entirely in aware UTC: a
         # user in Auckland must see the marker in the same cell as one in
         # London. tzset() is process-global and the suite shares one process,
-        # so the UTC pin is restored BEFORE the switch, not after the assert.
-        self.addCleanup(self.set_tz, "UTC")
-        self.set_tz("Pacific/Auckland")
+        # so the ambient zone is captured BEFORE the switch, not after the
+        # assert.
+        self.addCleanup(set_tz, os.environ.get("TZ"))
+        set_tz("Pacific/Auckland")
         self.assertEqual(
             cu.pace_mark("session", self.resets_in(2.5 * 3600), NOW), 8)
 
