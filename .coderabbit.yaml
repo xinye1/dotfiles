@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit review configuration.
+#
+# Only deviations from CodeRabbit's defaults live here — the same rule
+# starship.toml states for itself. Anything not named below is whatever
+# CodeRabbit ships, so this file stays readable as a list of decisions.
+
+reviews:
+  pre_merge_checks:
+    docstrings:
+      # Quoted deliberately. The schema types this as a string, and YAML would
+      # otherwise read a bare `off` as the boolean false — which is the one
+      # spelling that looks correct and silently fails validation.
+      #
+      # The check scores docstring coverage over every function a diff touches
+      # against a default 80% threshold, and the Python here cannot meet it by
+      # construction. It is two files: the waybar widget, whose functions do
+      # carry docstrings, and its test suite, which documents each case with a
+      # `#` comment above it in the style of the rest of the repo. A PR
+      # touching a dozen tests therefore scores in the teens — 14.29% on #12,
+      # 15.38% on #14, 16.67% on #15 — none of which had anything wrong with
+      # its documentation.
+      #
+      # Left on, it is a permanent warning on the one channel that has to stay
+      # worth reading: §9.24 exists because a CodeRabbit banner must be read
+      # rather than merged past, and a banner that is always there stops being
+      # read. Turned off rather than threshold-tuned, because no threshold is
+      # meaningful when the denominator is mostly test methods that are not
+      # meant to have docstrings.
+      mode: "off"

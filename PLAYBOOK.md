@@ -1012,6 +1012,18 @@ The CLI has no such dependency, because it does not need a PR to exist at all:
 coderabbit review --base origin/main --committed
 ```
 
+The app's **pre-merge checks** are configured in `.coderabbit.yaml` at the repo root, and one of
+them is turned off there: docstring coverage. It scores every function a diff touches against a
+default 80% threshold, which the Python here cannot reach by construction — the widget's own
+functions carry docstrings, but its test suite documents each case with a `#` comment above it, so
+a PR touching a dozen tests scores in the teens (14.29% on #12, 15.38% on #14, 16.67% on
+#15) with nothing actually wrong. That the check is *configured off* rather than merely quiet is
+visible in the pre-merge table: #13 touched no Python and still printed a "skipping" row, whereas
+#16 — the PR that added this file — prints no docstring row at all. The reason to silence it rather than live with it is this section's own rule: a
+banner that is always present stops being read, and the whole point of §9.24 is that these banners
+have to be read rather than merged past. `mode` is a **string** in CodeRabbit's schema, so `"off"`
+must be quoted — a bare `off` is YAML's boolean `false` and fails validation while looking right.
+
 That is what actually covered #5 — range `4d6e404..b8702a0`, run twice, with the findings and their
 dispositions written up in `docs/specs/2026-08-22-claude-usage-widget-design.review.md`. Prefer it
 on this repo: work here lands in small PRs that are often merged the moment they go green, which is
