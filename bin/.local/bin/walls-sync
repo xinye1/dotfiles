@@ -347,7 +347,18 @@ def prune(dest, minimum):
     an image extension is not ours to touch.
     """
     removed = 0
-    for path in sorted(dest.iterdir()):
+    try:
+        cached = sorted(dest.iterdir())
+    except OSError as err:
+        # An existing but UNREADABLE cache directory, which sync()'s mkdir
+        # guard does not catch: mkdir(exist_ok=True) is perfectly happy with a
+        # directory it cannot read, so this is the first place it surfaces.
+        # Give up on this palette alone rather than letting it out -- uncaught,
+        # it aborts the process and every later palette silently goes unsynced,
+        # which is the opposite of the contract every other OSError here keeps.
+        problem(f"{dest}: {err}")
+        return None
+    for path in cached:
         if not path.is_file() or path.suffix.lower() not in EXTS:
             continue
         size = image_size(header_of(path))
@@ -373,6 +384,8 @@ def sync(theme, root, minimum):
     print(theme)
 
     removed = prune(dest, minimum)
+    if removed is None:
+        return                   # unreadable cache dir; prune() already said so
     new = present = small = 0
     for entry in listing(theme) or []:
         target = dest / entry["name"]
@@ -393,8 +406,15 @@ def sync(theme, root, minimum):
         elif outcome == "small":
             small += 1
 
-    files = [p for p in dest.iterdir() if p.is_file() and p.suffix.lower() in EXTS]
-    total = sum(p.stat().st_size for p in files) / (1 << 20)
+    try:
+        files = [p for p in dest.iterdir()
+                 if p.is_file() and p.suffix.lower() in EXTS]
+        total = sum(p.stat().st_size for p in files) / (1 << 20)
+    except OSError as err:
+        # Permissions can change under a long run. The sync itself is already
+        # done by here, so losing this costs the closing tally and nothing more.
+        problem(f"{dest}: {err}")
+        files, total = [], 0.0
     floor = f"{minimum[0]}x{minimum[1]}"
     print(f"  {new} new, {present} already present, "
           f"{small} skipped below {floor}, {removed} removed below {floor}")
