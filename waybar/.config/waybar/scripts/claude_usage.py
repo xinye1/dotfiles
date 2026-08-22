@@ -24,6 +24,7 @@ FORCE_DEBOUNCE = 30    # click-spam must not be able to 429 the widget stale
 FETCH_TIMEOUT = 5
 WINDOW_DAYS = 8        # scan/prune horizon; charts render 7 of these
 BAR_CELLS = 16
+PACE_MARK = "│"        # U+2502: an ordinary box-drawing char, not a PUA glyph
 
 # Pango named colours only: tests/check_hex.py scans this file for hex literals.
 FALLBACK_THEME = {
@@ -43,6 +44,15 @@ MODEL_NAMES = (
 
 def pango_escape(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def plain_len(s):
+    """Visible width of a marked-up fragment: tags contribute nothing, and the
+    only entities that can occur are pango_escape's three. Module level rather
+    than nested in render() so the tests can hold the bar to it directly — its
+    exact BAR_CELLS width is what every column in the tooltip rests on."""
+    return len(re.sub(r"<[^>]+>", "", s)
+               .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
 
 
 def humanize(n):
@@ -339,6 +349,23 @@ def scan_jsonl(projects_dir, st, now_epoch):
             del days[day]
 
 
+# How long each limit's window is, in seconds. The payload gives `resets_at`
+# — the window's END — and nothing else: no start, no duration. So the length
+# can only come from the kind, and the design spec fixes all three by name
+# (§1: `session` is the 5-hour rolling window, both weeklies are 7-day).
+# Hardcoded rather than derived because deriving it would mean watching a
+# window reset and remembering when — persistent state, and a whole class of
+# wrong-after-a-cache-wipe bugs — for a number that belongs to the plan rather
+# than to the response. A kind that is not in here gets no marker at all
+# (pace_mark), which is why an added fourth limit type costs these three
+# nothing.
+LIMIT_WINDOWS = {
+    "session": 5 * 3600,
+    "weekly_all": 7 * 86400,
+    "weekly_scoped": 7 * 86400,
+}
+
+
 def limit_label(l):
     kind = l.get("kind")
     if kind == "session":
@@ -351,9 +378,52 @@ def limit_label(l):
     return str(kind)
 
 
-def cells(pct):
+def pace_mark(kind, resets_at, now):
+    """Which bar cell the pace marker replaces: how far through its OWN window
+    this limit is, as an index in 0..BAR_CELLS-1. None whenever that cannot be
+    established, and None is the only fallback there is — a bar without a
+    marker still reads perfectly, a bar of the wrong width shifts every column
+    in the tooltip (see cells()).
+
+    Timestamp handling is countdown()'s, for countdown()'s reasons: the
+    endpoint is undocumented (§9.23), so `resets_at` may lose its zone at any
+    time and is read as UTC when it does, and a corrupted or hand-edited
+    state.json can hand over a non-string entirely. `kind` gets an isinstance
+    of its own because it is raw JSON too: a drift to a list or dict is
+    unhashable and would raise straight out of the dict lookup below.
+    """
+    window = LIMIT_WINDOWS.get(kind) if isinstance(kind, str) else None
+    if not window or not isinstance(resets_at, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        elapsed = 1 - (dt - now).total_seconds() / window
+    except (ValueError, TypeError):
+        return None
+    # Clamp the fraction before scaling: a window already past its reset, or a
+    # skewed clock, must still land on a real cell rather than off either end.
+    cell = int(min(max(elapsed, 0.0), 1.0) * BAR_CELLS)
+    return min(cell, BAR_CELLS - 1)  # a full window scales to 16, one past 15
+
+
+def cells(pct, mark=None, mark_color=None):
+    """The usage bar: exactly BAR_CELLS *visible* characters, always.
+
+    `mark` (from pace_mark) REPLACES a cell rather than inserting one. Every
+    tooltip row is column-aligned by plain_len() over the whole block, so a
+    17th visible character would push this one row's percent and countdown out
+    of line with its neighbours. Markup costs nothing there — plain_len strips
+    tags before counting — so the marker takes its own colour by nesting a
+    span inside the fill-coloured one render() wraps around this.
+    """
     filled = round(min(max(pct, 0), 100) * BAR_CELLS / 100)
-    return "█" * filled + "░" * (BAR_CELLS - filled)
+    bar = ["█"] * filled + ["░"] * (BAR_CELLS - filled)
+    if mark is not None and 0 <= mark < BAR_CELLS:
+        bar[mark] = (f'<span color="{mark_color}">{PACE_MARK}</span>'
+                     if mark_color else PACE_MARK)
+    return "".join(bar)
 
 
 def shown_pct(limit):
@@ -403,15 +473,31 @@ def render(st, theme, now):
     if limits:
         lines += ["", f'<span color="{sect}"><b>LIMITS</b></span>']
         width = max(len(limit_label(l)) for l in limits)
+        marked = False
         for l in limits:
             pct, disp = l.get("percent") or 0, shown_pct(l)
             label = pango_escape(limit_label(l))
             pad = " " * (width - len(limit_label(l)))
-            bar = f'<span color="{_pct_color(disp, theme)}">{cells(pct)}</span>'
+            # fg_bright, deliberately not a status colour: the marker is a
+            # neutral reference line, and the signal is the COMPARISON between
+            # it and the fill, not the line. Colouring it by severity would put
+            # two competing verdicts inside one 16-cell bar, and it also has to
+            # stay legible against both regions it can land in — the
+            # threshold-coloured █ and the muted ░.
+            mark = pace_mark(l.get("kind"), l.get("resets_at"), now)
+            marked = marked or mark is not None
+            bar = (f'<span color="{_pct_color(disp, theme)}">'
+                   f'{cells(pct, mark, theme["fg_bright"])}</span>')
             reset = countdown(l.get("resets_at"), now)
             reset = (f'  <span color="{mut}">{ICON_RESET} {reset}</span>'
                      if reset else "")
             lines.append(f"{label}{pad}  {bar}  <b>{disp:>3}%</b>{reset}")
+        if marked:
+            # One muted line, and only when a marker was actually drawn: this
+            # is a key the user needs once, on a tooltip that is already dense.
+            lines.append(f'<span color="{theme["fg_bright"]}">{PACE_MARK}</span>'
+                         f'<span color="{mut}"> = now · fill past it'
+                         f' = ahead of pace</span>')
     elif not err:
         lines += ["", f'<span color="{mut}">no limit data yet</span>']
 
@@ -459,11 +545,6 @@ def render(st, theme, now):
 
     # Chart rows are (prefix, value) tuples; every value ends flush with the
     # tooltip's right edge, i.e. the plain-text width of its longest line.
-    # Markup contributes no width, and only pango_escape's three entities occur.
-    def plain_len(s):
-        return len(re.sub(r"<[^>]+>", "", s)
-                   .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
-
     total = max(plain_len(l) if isinstance(l, str)
                 else plain_len(l[0]) + 1 + len(l[1]) for l in lines)
     resolved = [l if isinstance(l, str)
