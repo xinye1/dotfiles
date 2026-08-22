@@ -340,9 +340,11 @@ def render(st, theme, now):
                      else f'<span color="{mut}">{name}</span>')
             n = totals[d]
             bar = "█" * round(n / peak * BAR_CELLS) or "▏"  # hairline for ~zero days
-            lines.append(f'{label}{pad}  '
-                         f'<span color="{theme["indicator"]}">{bar}</span>'
-                         f' {humanize(n):>6}')
+            # (prefix, value) tuple: the value is pushed flush with the
+            # tooltip's right edge once the full width is known (see below).
+            lines.append((f'{label}{pad}  '
+                          f'<span color="{theme["indicator"]}">{bar}</span>',
+                          humanize(n)))
         by_model = {}
         for d in window:
             for model, n in (days.get(d.isoformat()) or {}).items():
@@ -356,16 +358,29 @@ def render(st, theme, now):
                 mname = pango_escape(model_display(model))
                 pad = " " * (mwidth - len(model_display(model)))
                 bar = "█" * max(1, round(n / mpeak * BAR_CELLS))
-                lines.append(f'{mname}{pad}  '
-                             f'<span color="{theme["indicator"]}">{bar}</span>'
-                             f' {humanize(n):>6}')
+                lines.append((f'{mname}{pad}  '
+                              f'<span color="{theme["indicator"]}">{bar}</span>',
+                              humanize(n)))
 
     stamp = st.get("limits_fetched_at")
     when = (datetime.fromtimestamp(stamp).astimezone().strftime("%H:%M")
             if stamp else "–")
     lines += ["", f'<span color="{mut}">updated {when} · click {ICON}'
                   f' to refresh</span>']
-    tooltip = f'<span face="{FACE}">' + "\n".join(lines) + "</span>"
+
+    # Chart rows are (prefix, value) tuples; every value ends flush with the
+    # tooltip's right edge, i.e. the plain-text width of its longest line.
+    # Markup contributes no width, and only pango_escape's three entities occur.
+    def plain_len(s):
+        return len(re.sub(r"<[^>]+>", "", s)
+                   .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
+
+    total = max(plain_len(l) if isinstance(l, str)
+                else plain_len(l[0]) + 1 + len(l[1]) for l in lines)
+    resolved = [l if isinstance(l, str)
+                else l[0] + " " * (total - plain_len(l[0]) - len(l[1])) + l[1]
+                for l in lines]
+    tooltip = f'<span face="{FACE}">' + "\n".join(resolved) + "</span>"
     return {"text": text, "tooltip": tooltip, "class": cls}
 
 
