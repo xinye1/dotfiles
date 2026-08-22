@@ -1,0 +1,462 @@
+#!/usr/bin/env python3
+"""walls-sync — fill the lock screen's wallpaper cache from dharmx/walls.
+
+    walls-sync                     every palette
+    walls-sync nord                one of them
+    walls-sync --min 2560x1440     raise the resolution floor, then re-converge
+
+Mirrors the `<palette>/` folders of https://github.com/dharmx/walls into
+~/Pictures/walls/<palette>/, which is where sway/scripts/lock.sh picks a random
+image from. The upstream folder names and the palette names in palettes.toml are
+the same two words, and that is load-bearing on both sides: this script asks
+palettes.toml what to sync, and lock.sh spells the active palette straight into
+the path. Rename a palette and this directory has to be renamed with it, or the
+lock screen quietly goes back to a solid colour with nothing to say about it.
+
+Why this is a command you run by hand, and never something `theme` or `lock.sh`
+does for you: **the lock screen must not depend on the network.** It is asked
+for when the idle timer fires, before suspend, and at $mod+f1 — on a train, on
+dead wifi, mid-resume — and a lock that waits on a socket is a lock that does
+not happen. Palette switching is the same argument one step down: `theme` runs
+often and has to stay instant and offline, while upstream changes about never.
+So the network is confined to this one foreground command, where a timeout is a
+line on the terminal you are watching instead of an unlocked screen.
+
+Nothing here lands in the repo. The images are hundreds of MB of binaries and
+this repo has a no-binaries rule — the two desktop wallpapers live in
+~/Pictures/wallpapers for exactly the same reason. ~/Pictures/walls is a cache
+in the strict sense: delete it, re-run this, and nothing is lost but time. That
+is also why pruning below-floor images (see prune()) is safe.
+
+Stdlib only, like `theme`; Python 3.11+ for tomllib.
+"""
+
+import json
+import os
+import re
+import shutil
+import struct
+import sys
+import tempfile
+import tomllib
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+API = "https://api.github.com/repos/dharmx/walls/contents/{}"
+# GitHub wants a User-Agent and rejects a request with none. urllib's default
+# would pass, but naming the tool is what you want in someone else's logs.
+UA = "walls-sync (+https://github.com/xinye1/dotfiles)"
+EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+# The resolution floor. The panel here is 3840x2160 and over half of upstream is
+# smaller than that -- nord ships a 435x492 and a 794x1024 -- which `--scaling
+# fill` blows up into a blurry mess covering the whole screen. 1920x1080 caps
+# the upscale at 2x on this panel, which is the point at which it stops being
+# obvious. Raising it later is a re-run of this command, not a manual sweep.
+MIN_DEFAULT = (1920, 1080)
+MIN_RE = re.compile(r"^(\d+)x(\d+)$")
+
+TIMEOUT = 30
+PROBE = 1 << 16          # bytes of header pulled before committing to a download
+CHUNK = 1 << 16
+
+# Every failure that did not stop the run. main() turns a non-empty list into a
+# non-zero exit, so a wrapper can still tell, while one unreachable file never
+# costs you the other 157.
+PROBLEMS = []
+
+
+def die(msg):
+    """Cannot start at all -- exit 2, to stay distinct from the exit 1 that
+    means "ran, and some files did not make it"."""
+    print(f"walls-sync: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def problem(msg):
+    PROBLEMS.append(msg)
+    print(f"walls-sync: {msg}", file=sys.stderr)
+
+
+def palette_names():
+    """The palettes, from palettes.toml — the same list `theme --list` prints.
+
+    Deliberately not a hardcoded ("gruvbox", "nord"). The palette name IS the
+    directory name, upstream and locally, so the set of things to sync is
+    exactly the set of palettes; a palette added to the table is synced without
+    editing this file, and one upstream has no folder for fails here, loudly,
+    on a command you are watching — rather than at lock time, where it would be
+    a solid colour and no message at all.
+    """
+    here = Path(__file__).resolve()      # .../dotfiles/bin/.local/bin/walls-sync
+    table = here.parents[3] / "palettes.toml"
+    if not table.is_file():
+        die(f"cannot find palettes.toml above {here}")
+    with open(table, "rb") as fh:
+        return sorted(tomllib.load(fh))
+
+
+def parse_min(text):
+    match = MIN_RE.match(text.strip().lower())
+    if not match:
+        die(f"--min wants WxH, e.g. 1920x1080 (got {text!r})")
+    return int(match.group(1)), int(match.group(2))
+
+
+# --- reading dimensions out of a header, without Pillow ----------------------
+
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+# JPEG markers that carry no length word: TEM, the eight restart markers, SOI.
+JPEG_STANDALONE = {0x01, *range(0xD0, 0xD9)}
+# A frame header is C0..CF except the three in that range that are not one:
+# C4 is the Huffman table, C8 a reserved extension, CC the arithmetic table.
+JPEG_NOT_SOF = {0xC4, 0xC8, 0xCC}
+
+
+def webp_size(data):
+    """(width, height) from a RIFF/WebP header, for the three chunk layouts.
+
+    Present because sniffing beat trusting the extension on the very first run:
+    gruvbox/a_close_up_of_a_circuit_board.**png** is a lossless WebP, and it is
+    1017x572 — one of the images the floor exists to remove. Judged by name it
+    is a PNG whose IHDR will not parse, i.e. "unknown, keep", and the worst of
+    the set would have survived the filter that was written for it.
+    """
+    if len(data) < 30 or data[8:12] != b"WEBP":
+        return None
+    kind, body = data[12:16], data[20:]
+    if kind == b"VP8 " and body[3:6] == b"\x9d\x01\x2a":      # lossy: sync code
+        width, height = struct.unpack("<HH", body[6:10])
+        return width & 0x3FFF, height & 0x3FFF
+    if kind == b"VP8L" and body[0] == 0x2F:                   # lossless
+        bits = int.from_bytes(body[1:5], "little")
+        return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    if kind == b"VP8X":                                       # extended: canvas
+        return (int.from_bytes(data[24:27], "little") + 1,
+                int.from_bytes(data[27:30], "little") + 1)
+    return None
+
+
+def image_size(data):
+    """(width, height) from a PNG, JPEG or WebP header, or None if unreadable.
+
+    Sniffs the magic rather than trusting the extension — see webp_size for why
+    that is not fastidiousness — and needs only the first PROBE bytes, which is
+    what lets one function judge a ranged request before a download and the
+    finished file after it. No Pillow and no ImageMagick: three format headers
+    are less to carry than a dependency, on a machine whose only guaranteed
+    interpreter is python3.
+
+    None means UNKNOWN, and every caller reads unknown as "keep it". A parser
+    that cannot read a header must never be the reason an image is deleted.
+    """
+    if len(data) >= 24 and data.startswith(PNG_SIG) and data[12:16] == b"IHDR":
+        return struct.unpack(">II", data[16:24])
+    if data.startswith(b"RIFF"):
+        return webp_size(data)
+    if not data.startswith(b"\xff\xd8"):
+        return None
+    i = 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            return None                  # lost the marker boundary; do not guess
+        marker = data[i + 1]
+        if marker == 0xFF:               # padding before a marker; re-align
+            i += 1
+            continue
+        if marker in JPEG_STANDALONE:
+            i += 2
+            continue
+        if marker in (0xD9, 0xDA):       # end of image, or entropy-coded data
+            return None                  # begins: there is no frame header left
+        if 0xC0 <= marker <= 0xCF and marker not in JPEG_NOT_SOF:
+            if i + 9 > len(data):
+                return None
+            height, width = struct.unpack(">HH", data[i + 5:i + 9])
+            return width, height
+        i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    return None
+
+
+def big_enough(size, minimum):
+    """Unknown (None) counts as big enough — never delete on a parse failure."""
+    return size is None or (size[0] >= minimum[0] and size[1] >= minimum[1])
+
+
+def header_of(path):
+    """The first PROBE bytes of a local file, or b'' (i.e. unknown, keep)."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(PROBE)
+    except OSError as err:
+        problem(f"{path}: {err}")
+        return b""
+
+
+# --- talking to GitHub -------------------------------------------------------
+
+
+def request(url, headers=None):
+    head = {"User-Agent": UA}
+    head.update(headers or {})
+    return urllib.request.Request(url, headers=head)
+
+
+def is_image_entry(entry):
+    """A listing row we are prepared to write to disk.
+
+    The extension test is what drops each theme folder's README.md, and the
+    name test is not paranoia for its own sake: the name becomes a path under
+    ~/Pictures, and a listing is remote input.
+    """
+    name = str(entry.get("name", ""))
+    return (entry.get("type") == "file"
+            and bool(entry.get("download_url"))
+            and name.lower().endswith(EXTS)
+            and "/" not in name and os.sep not in name
+            and not name.startswith("."))
+
+
+def listing(theme):
+    """Upstream's file list for one theme, or None if it could not be had.
+
+    One request per theme, not one per file: the unauthenticated contents API
+    allows 60 requests an hour, and a per-file stat would spend that on the
+    first run. It returns up to 1000 entries for a directory with no
+    pagination, and these folders hold 37 and 159, so one page is the whole
+    story. The byte size it reports for each file is what makes "already
+    present?" a stat rather than a download.
+    """
+    url = API.format(urllib.parse.quote(theme))
+    try:
+        with urllib.request.urlopen(
+                request(url, {"Accept": "application/vnd.github+json"}),
+                timeout=TIMEOUT) as resp:
+            data = json.load(resp)
+    except (OSError, ValueError) as err:
+        problem(f"{theme}: cannot list upstream: {err}")
+        return None
+    if not isinstance(data, list):
+        problem(f"{theme}: upstream {url} is not a directory")
+        return None
+    return sorted((e for e in data if is_image_entry(e)), key=lambda e: e["name"])
+
+
+def probe_size(url):
+    """Dimensions from the first PROBE bytes, without pulling the whole file.
+
+    Why bother, when the file gets measured again after download anyway:
+    without this, every below-floor image is downloaded in full and thrown away
+    ON EVERY RUN, because a rejected file leaves nothing on disk to remember it
+    by. One ranged request per rejected file keeps a re-run cheap and, more
+    importantly, stateless — no ledger of past rejections to drift out of date
+    with `--min`. A server that ignores Range simply starts sending the body,
+    and read(PROBE) stops listening after the header either way.
+    """
+    try:
+        with urllib.request.urlopen(
+                request(url, {"Range": f"bytes=0-{PROBE - 1}"}),
+                timeout=TIMEOUT) as resp:
+            return image_size(resp.read(PROBE))
+    except OSError:
+        return None          # unknown; let the full download settle it
+
+
+def download(entry, dest, minimum):
+    """Fetch one image. Returns "new", "small", or None when it failed.
+
+    Written to a private tempfile.mkstemp() file inside dest and moved with
+    os.replace, atomic on one filesystem: lock.sh can fire in the middle of a
+    sync and will never see a half-written image.
+
+    The temp name is unique per call, not the fixed "<name>.part" this used to
+    be. Two walls-sync processes syncing the same theme at once (a second
+    by-hand run started before the first finished, say) would otherwise both
+    write that identical path; once the first finishes and os.replace()s it
+    onto target, the second is still writing into the inode that IS now the
+    published cache file, so lock.sh could pick a half-written image mid-sync.
+    mkstemp's collision-proof name removes that window entirely.
+
+    The prefix/suffix are not incidental: the name must never be one lock.sh's
+    picker can select. That picker (and EXTS above) matches by extension --
+    .png/.jpg/.jpeg/.webp -- so a ".part" suffix guarantees a miss regardless
+    of uniqueness, and the leading "." keeps it out of sight the way ".part"
+    always has. Get the suffix wrong and an in-progress download becomes
+    eligible to be locked over the moment the file exists.
+    """
+    target = dest / entry["name"]
+    try:
+        fd, tmp_name = tempfile.mkstemp(
+            dir=dest, prefix=f".{entry['name']}.", suffix=".part")
+    except OSError as err:
+        # dest missing or unwritable. Caught here rather than left to
+        # propagate so one file's bad luck still can't take the other 157
+        # down with it -- same contract as every OSError below.
+        problem(f"{entry['name']}: {err}")
+        return None
+    tmp = Path(tmp_name)
+    try:
+        # fdopen first, before anything that can raise: fd must be under the
+        # context manager's care from here on, or an exception between
+        # mkstemp and the first thing that owns fd leaks it.
+        with os.fdopen(fd, "wb") as fh:
+            # mkstemp always opens 0600, ignoring umask (right default for a
+            # secret, wrong one here) -- match the 0644 open() would have
+            # given the same file, so os.replace doesn't quietly lock other
+            # users out of a file every other image in the cache is readable
+            # by.
+            os.fchmod(fh.fileno(), 0o644)
+            with urllib.request.urlopen(request(entry["download_url"]),
+                                        timeout=TIMEOUT) as resp:
+                shutil.copyfileobj(resp, fh, CHUNK)
+    except OSError as err:
+        problem(f"{entry['name']}: {err}")
+        tmp.unlink(missing_ok=True)
+        return None
+
+    # A connection closed early leaves a truncated but perfectly valid-looking
+    # file, and the listing already told us how long it should be.
+    want = entry.get("size")
+    got = tmp.stat().st_size
+    if isinstance(want, int) and got != want:
+        problem(f"{entry['name']}: got {got} bytes, listing says {want}")
+        tmp.unlink(missing_ok=True)
+        return None
+
+    # Measured from the LOCAL file, not from the listing -- which carries a byte
+    # count and no dimensions, and bytes predict pixels badly.
+    if not big_enough(image_size(header_of(tmp)), minimum):
+        tmp.unlink(missing_ok=True)
+        return "small"
+    os.replace(tmp, target)
+    return "new"
+
+
+# --- the sync itself ---------------------------------------------------------
+
+
+def prune(dest, minimum):
+    """Delete cached images below the floor, and say which ones.
+
+    The cache is a mirror this command owns and every file in it is one request
+    away, so converging it on the current --min is the right move: raising the
+    floor is a re-run, not a manual sweep. Deleting is still the one
+    destructive thing here, so every removal prints the dimensions that
+    condemned it, an unreadable header keeps the file, and anything that is not
+    an image extension is not ours to touch.
+    """
+    removed = 0
+    try:
+        cached = sorted(dest.iterdir())
+    except OSError as err:
+        # An existing but UNREADABLE cache directory, which sync()'s mkdir
+        # guard does not catch: mkdir(exist_ok=True) is perfectly happy with a
+        # directory it cannot read, so this is the first place it surfaces.
+        # Give up on this palette alone rather than letting it out -- uncaught,
+        # it aborts the process and every later palette silently goes unsynced,
+        # which is the opposite of the contract every other OSError here keeps.
+        problem(f"{dest}: {err}")
+        return None
+    for path in cached:
+        if not path.is_file() or path.suffix.lower() not in EXTS:
+            continue
+        size = image_size(header_of(path))
+        if big_enough(size, minimum):
+            continue
+        try:
+            path.unlink()
+        except OSError as err:
+            problem(f"{path}: {err}")
+            continue
+        removed += 1
+        print(f"  removed  {f'{size[0]}x{size[1]}':<11} {path.name}")
+    return removed
+
+
+def sync(theme, root, minimum):
+    dest = root / theme
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError as err:
+        problem(f"{theme}: {err}")
+        return
+    print(theme)
+
+    removed = prune(dest, minimum)
+    if removed is None:
+        return                   # unreadable cache dir; prune() already said so
+    new = present = small = 0
+    for entry in listing(theme) or []:
+        target = dest / entry["name"]
+        want = entry.get("size")
+        # Same name, same length: already here. This is the whole of "do not
+        # re-download 327 MB", and it is a stat, so it costs nothing.
+        if target.is_file() and (not isinstance(want, int)
+                                 or target.stat().st_size == want):
+            present += 1
+            continue
+        if not big_enough(probe_size(entry["download_url"]), minimum):
+            small += 1
+            continue
+        outcome = download(entry, dest, minimum)
+        if outcome == "new":
+            new += 1
+            print(f"  + {entry['name']}")
+        elif outcome == "small":
+            small += 1
+
+    try:
+        files = [p for p in dest.iterdir()
+                 if p.is_file() and p.suffix.lower() in EXTS]
+        total = sum(p.stat().st_size for p in files) / (1 << 20)
+    except OSError as err:
+        # Permissions can change under a long run. The sync itself is already
+        # done by here, so losing this costs the closing tally and nothing more.
+        problem(f"{dest}: {err}")
+        files, total = [], 0.0
+    floor = f"{minimum[0]}x{minimum[1]}"
+    print(f"  {new} new, {present} already present, "
+          f"{small} skipped below {floor}, {removed} removed below {floor}")
+    print(f"  {len(files)} file{'' if len(files) == 1 else 's'}, "
+          f"{total:.1f} MB in {dest}")
+
+
+def main(argv):
+    minimum = MIN_DEFAULT
+    themes, args = [], list(argv)
+    while args:
+        arg = args.pop(0)
+        if arg in ("-h", "--help"):
+            # The docstring is the usage message; keeping one copy means the
+            # help can never drift from the explanation above it.
+            print(__doc__.strip())
+            return 0
+        if arg == "--min" and args:
+            minimum = parse_min(args.pop(0))
+        elif arg.startswith("--min="):
+            minimum = parse_min(arg.split("=", 1)[1])
+        elif arg.startswith("-"):
+            die(f"unknown option {arg} (try --help)")
+        else:
+            themes.append(arg)
+
+    known = palette_names()
+    for name in themes:
+        if name not in known:
+            die(f"no palette named {name!r} (have: {', '.join(known)})")
+
+    # Spelled the same way in sway/scripts/lock.sh, in shell. The two are a
+    # pair; move one and the lock screen stops finding images.
+    root = Path.home() / "Pictures" / "walls"
+    for theme in themes or known:
+        sync(theme, root, minimum)
+
+    if PROBLEMS:
+        print(f"\n{len(PROBLEMS)} problem(s) above; everything else was synced",
+              file=sys.stderr)
+    return 1 if PROBLEMS else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
