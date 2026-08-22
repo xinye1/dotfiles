@@ -31,6 +31,7 @@ is also why pruning below-floor images (see prune()) is safe.
 Stdlib only, like `theme`; Python 3.11+ for tomllib.
 """
 
+import http.client
 import json
 import os
 import re
@@ -38,6 +39,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 import tomllib
 import urllib.parse
 import urllib.request
@@ -60,6 +62,27 @@ MIN_RE = re.compile(r"^(\d+)x(\d+)$")
 TIMEOUT = 30
 PROBE = 1 << 16          # bytes of header pulled before committing to a download
 CHUNK = 1 << 16
+
+# What "the network failed" is allowed to look like. Not just OSError: urllib
+# raises URLError (which is one) when the connection never happened, but a body
+# that dies mid-stream surfaces as http.client.IncompleteRead, and the whole
+# HTTPException family it belongs to descends from Exception, NOT from OSError.
+# One truncated chunked response therefore escaped download(), escaped sync()
+# and escaped main() -- every later file and every later palette went unsynced
+# and you got a traceback instead of the "N problem(s)" summary this file
+# promises above. ValueError belongs here for the same reason: urlopen raises
+# it, not OSError, for a URL whose scheme it does not recognise, and the
+# download_url it is handed comes out of a remote listing.
+NET_ERRORS = (OSError, http.client.HTTPException, ValueError)
+
+# A download that dies between mkstemp() and os.replace() leaves its temp file
+# behind. Nothing else reclaims one -- prune()'s image-extension test skips it,
+# the closing tally counts only image extensions, and lock.sh's picker matches
+# by extension too -- so they accumulated invisibly in a 320 MB cache. Swept by
+# prune(), but only once stale: a second walls-sync downloading right now has a
+# temp file seconds old, and must never have it deleted out from under it.
+PART_SUFFIX = ".part"
+PART_MAX_AGE = 24 * 60 * 60      # seconds
 
 # Every failure that did not stop the run. main() turns a non-empty list into a
 # non-zero exit, so a wrapper can still tell, while one unreachable file never
@@ -234,7 +257,7 @@ def listing(theme):
                 request(url, {"Accept": "application/vnd.github+json"}),
                 timeout=TIMEOUT) as resp:
             data = json.load(resp)
-    except (OSError, ValueError) as err:
+    except NET_ERRORS as err:
         problem(f"{theme}: cannot list upstream: {err}")
         return None
     if not isinstance(data, list):
@@ -259,7 +282,7 @@ def probe_size(url):
                 request(url, {"Range": f"bytes=0-{PROBE - 1}"}),
                 timeout=TIMEOUT) as resp:
             return image_size(resp.read(PROBE))
-    except OSError:
+    except NET_ERRORS:
         return None          # unknown; let the full download settle it
 
 
@@ -296,41 +319,51 @@ def download(entry, dest, minimum):
         problem(f"{entry['name']}: {err}")
         return None
     tmp = Path(tmp_name)
+    # Everything from here on is wrapped, because the temp file now exists and
+    # every exit has to take it with it. It used to be unlinked only inside the
+    # `except OSError` below -- and tmp.stat() and os.replace() sat OUTSIDE
+    # that try entirely, so an OSError from either, or any non-OSError from
+    # anywhere, left a .part file behind that nothing ever reclaimed.
     try:
-        # fdopen first, before anything that can raise: fd must be under the
-        # context manager's care from here on, or an exception between
-        # mkstemp and the first thing that owns fd leaks it.
-        with os.fdopen(fd, "wb") as fh:
-            # mkstemp always opens 0600, ignoring umask (right default for a
-            # secret, wrong one here) -- match the 0644 open() would have
-            # given the same file, so os.replace doesn't quietly lock other
-            # users out of a file every other image in the cache is readable
-            # by.
-            os.fchmod(fh.fileno(), 0o644)
-            with urllib.request.urlopen(request(entry["download_url"]),
-                                        timeout=TIMEOUT) as resp:
-                shutil.copyfileobj(resp, fh, CHUNK)
-    except OSError as err:
-        problem(f"{entry['name']}: {err}")
-        tmp.unlink(missing_ok=True)
-        return None
+        try:
+            # fdopen first, before anything that can raise: fd must be under
+            # the context manager's care from here on, or an exception between
+            # mkstemp and the first thing that owns fd leaks it.
+            with os.fdopen(fd, "wb") as fh:
+                # mkstemp always opens 0600, ignoring umask (right default for
+                # a secret, wrong one here) -- match the 0644 open() would have
+                # given the same file, so os.replace doesn't quietly lock other
+                # users out of a file every other image in the cache is
+                # readable by.
+                os.fchmod(fh.fileno(), 0o644)
+                with urllib.request.urlopen(request(entry["download_url"]),
+                                            timeout=TIMEOUT) as resp:
+                    shutil.copyfileobj(resp, fh, CHUNK)
+        except NET_ERRORS as err:
+            problem(f"{entry['name']}: {err}")
+            return None
 
-    # A connection closed early leaves a truncated but perfectly valid-looking
-    # file, and the listing already told us how long it should be.
-    want = entry.get("size")
-    got = tmp.stat().st_size
-    if isinstance(want, int) and got != want:
-        problem(f"{entry['name']}: got {got} bytes, listing says {want}")
-        tmp.unlink(missing_ok=True)
-        return None
+        # A connection closed early leaves a truncated but perfectly
+        # valid-looking file, and the listing already told us how long it
+        # should be. (IncompleteRead is caught above rather than diagnosed
+        # here, but a server that simply stops sending raises nothing at all,
+        # which is what this catches.)
+        want = entry.get("size")
+        got = tmp.stat().st_size
+        if isinstance(want, int) and got != want:
+            problem(f"{entry['name']}: got {got} bytes, listing says {want}")
+            return None
 
-    # Measured from the LOCAL file, not from the listing -- which carries a byte
-    # count and no dimensions, and bytes predict pixels badly.
-    if not big_enough(image_size(header_of(tmp)), minimum):
+        # Measured from the LOCAL file, not from the listing -- which carries a
+        # byte count and no dimensions, and bytes predict pixels badly.
+        if not big_enough(image_size(header_of(tmp)), minimum):
+            return "small"
+        os.replace(tmp, target)
+        return "new"
+    finally:
+        # A no-op on the success path -- os.replace has already consumed the
+        # name -- which is exactly why it can be unconditional.
         tmp.unlink(missing_ok=True)
-        return "small"
-    os.replace(tmp, target)
-    return "new"
 
 
 # --- the sync itself ---------------------------------------------------------
@@ -339,14 +372,21 @@ def download(entry, dest, minimum):
 def prune(dest, minimum):
     """Delete cached images below the floor, and say which ones.
 
+    Returns (removed, swept), or None if the cache could not even be read.
+
     The cache is a mirror this command owns and every file in it is one request
     away, so converging it on the current --min is the right move: raising the
     floor is a re-run, not a manual sweep. Deleting is still the one
     destructive thing here, so every removal prints the dimensions that
     condemned it, an unreadable header keeps the file, and anything that is not
     an image extension is not ours to touch.
+
+    The one exception to that last rule is a temp file this command itself
+    left behind (see PART_MAX_AGE): those are ours, nothing else would ever
+    reclaim them, and they are swept once stale rather than on sight.
     """
-    removed = 0
+    removed = swept = 0
+    now = time.time()
     try:
         cached = sorted(dest.iterdir())
     except OSError as err:
@@ -359,7 +399,19 @@ def prune(dest, minimum):
         problem(f"{dest}: {err}")
         return None
     for path in cached:
-        if not path.is_file() or path.suffix.lower() not in EXTS:
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in EXTS:
+            if path.name.startswith(".") and path.suffix == PART_SUFFIX:
+                try:
+                    if now - path.stat().st_mtime < PART_MAX_AGE:
+                        continue          # someone may be downloading it now
+                    path.unlink()
+                except OSError as err:
+                    problem(f"{path}: {err}")
+                    continue
+                swept += 1
+                print(f"  swept    {'stale .part':<11} {path.name}")
             continue
         size = image_size(header_of(path))
         if big_enough(size, minimum):
@@ -371,7 +423,7 @@ def prune(dest, minimum):
             continue
         removed += 1
         print(f"  removed  {f'{size[0]}x{size[1]}':<11} {path.name}")
-    return removed
+    return removed, swept
 
 
 def sync(theme, root, minimum):
@@ -383,9 +435,10 @@ def sync(theme, root, minimum):
         return
     print(theme)
 
-    removed = prune(dest, minimum)
-    if removed is None:
+    pruned = prune(dest, minimum)
+    if pruned is None:
         return                   # unreadable cache dir; prune() already said so
+    removed, swept = pruned
     new = present = small = 0
     for entry in listing(theme) or []:
         target = dest / entry["name"]
@@ -418,6 +471,11 @@ def sync(theme, root, minimum):
     floor = f"{minimum[0]}x{minimum[1]}"
     print(f"  {new} new, {present} already present, "
           f"{small} skipped below {floor}, {removed} removed below {floor}")
+    if swept:
+        # Said out loud, and on its own line: these were not removed for being
+        # below the floor, and folding them into that count would misreport
+        # both numbers.
+        print(f"  {swept} stale .part file{'' if swept == 1 else 's'} swept")
     print(f"  {len(files)} file{'' if len(files) == 1 else 's'}, "
           f"{total:.1f} MB in {dest}")
 
@@ -432,7 +490,12 @@ def main(argv):
             # help can never drift from the explanation above it.
             print(__doc__.strip())
             return 0
-        if arg == "--min" and args:
+        if arg == "--min":
+            # `--min` with nothing after it used to fall past this branch to
+            # the catch-all below and report "unknown option --min", which is
+            # simply untrue: the option is known, the value is missing.
+            if not args:
+                die("--min wants WxH, e.g. 1920x1080 (no value given)")
             minimum = parse_min(args.pop(0))
         elif arg.startswith("--min="):
             minimum = parse_min(arg.split("=", 1)[1])
