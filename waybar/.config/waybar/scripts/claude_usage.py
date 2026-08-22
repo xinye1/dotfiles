@@ -93,3 +93,59 @@ def load_theme(path):
         if m and m.group(1).lower() in theme:
             theme[m.group(1).lower()] = m.group(2)
     return theme
+
+
+def read_credentials(path, now_epoch):
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None, "not logged in", {}
+    oauth = data.get("claudeAiOauth") or {}
+    meta = {k: oauth[k] for k in ("subscriptionType", "rateLimitTier") if oauth.get(k)}
+    token = oauth.get("accessToken")
+    if not token:
+        return None, "not logged in", meta
+    if (oauth.get("expiresAt") or 0) / 1000 <= now_epoch:
+        return None, "token expired", meta
+    return token, None, meta
+
+
+def fetch_limits(token, urlopen=None):
+    urlopen = urlopen or urllib.request.urlopen  # resolved at call time: patchable
+    req = urllib.request.Request(API_URL, headers={
+        "Authorization": f"Bearer {token}",
+        "anthropic-beta": "oauth-2025-04-20",
+    })
+    with urlopen(req, timeout=FETCH_TIMEOUT) as resp:
+        data = json.load(resp)
+    limits = data.get("limits")
+    if not isinstance(limits, list):
+        raise ValueError("no limits[] in response")
+    return limits
+
+
+def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
+    token, err, meta = read_credentials(creds_path, now_epoch)
+    if meta:
+        st["creds_meta"] = meta
+    if err:
+        st["limits_error"] = err
+        return
+    if force:
+        if now_epoch - st.get("limits_forced_at", 0) < FORCE_DEBOUNCE:
+            return
+    elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
+        return
+    try:
+        st["limits"] = fetch_limits(token, urlopen)
+    except urllib.error.HTTPError as e:
+        st["limits_error"] = f"HTTP {e.code}"
+        print(f"claude_usage: {e}", file=sys.stderr)
+    except Exception as e:  # URLError, timeout, bad JSON, missing limits[]
+        st["limits_error"] = "network error"
+        print(f"claude_usage: {e}", file=sys.stderr)
+    else:
+        st["limits_fetched_at"] = now_epoch
+        if force:
+            st["limits_forced_at"] = now_epoch
+        st["limits_error"] = None
