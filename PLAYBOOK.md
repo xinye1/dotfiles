@@ -933,6 +933,31 @@ the same as anywhere else. All widget state — fetched limits, JSONL scan offse
 timestamps — lives in `~/.cache/claude-usage/`; deleting it forces a full rebuild on the next run
 (fresh JSONL scan, fresh fetch, TTL ignored).
 
+### 9.24 A CodeRabbit "Review failed" banner is the app failing, not a finding
+
+PR #5 opens with `> [!CAUTION] Review failed — The pull request is closed.` and carries **zero
+findings**. That box reports the GitHub App's own failure, not a verdict on the code: the PR was
+merged **eight seconds** after it was opened (`07:50:33Z` → `07:50:41Z`), long before the app got
+to it. The failure mode is entirely social — anyone landing on the PR months later sees a red
+CAUTION banner sitting over merged code and reasonably concludes the review found something bad.
+
+**It cannot be recovered after the fact.** `@coderabbitai full review` on the already-closed PR was
+tried on 2026-08-22: the app engages for a few seconds, then settles back to `Action not completed
+— Pull request is closed.` Verified, not assumed. So the rule is timing, not tooling — if app-side
+review is wanted, **leave the PR open until the app has posted its review**, then merge. Auto-merge
+on a fast-approving PR loses the review the same way.
+
+The CLI has no such dependency, because it does not need a PR to exist at all:
+
+```sh
+coderabbit review --base origin/main --committed
+```
+
+That is what actually covered #5 — range `4d6e404..b8702a0`, run twice, with the findings and their
+dispositions written up in `docs/specs/2026-08-22-claude-usage-widget-design.review.md`. Prefer it
+on this repo: work here lands in small PRs that are often merged the moment they go green, which is
+exactly the shape the app misses.
+
 ---
 
 ## 10. Troubleshooting
