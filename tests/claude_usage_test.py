@@ -2,6 +2,7 @@
 """Tests for waybar/.config/waybar/scripts/claude_usage.py (stdlib unittest)."""
 import importlib.util
 import os
+import tempfile
 import time
 import unittest
 from datetime import datetime, timezone
@@ -47,6 +48,22 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(cu.model_display("claude-haiku-4-5-20251001"), "Haiku 4.5")
         # Unknown ids prettified, date suffix dropped, version dotted.
         self.assertEqual(cu.model_display("claude-opus-4-1-20250805"), "Opus 4.1")
+
+
+class ThemeTest(unittest.TestCase):
+    def test_loads_roles_from_env_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "theme.gen.env"
+            p.write_text("# comment\nBG=#282828\nWARNING=#fe8019\nNOISE\n")
+            theme = cu.load_theme(p)
+        self.assertEqual(theme["bg"], "#282828")
+        self.assertEqual(theme["warning"], "#fe8019")
+        # Roles missing from the file keep the named-colour fallback.
+        self.assertEqual(theme["critical"], "red")
+
+    def test_missing_file_falls_back_entirely(self):
+        theme = cu.load_theme("/nonexistent/theme.gen.env")
+        self.assertEqual(theme, cu.FALLBACK_THEME)
 
 
 if __name__ == "__main__":

@@ -80,3 +80,16 @@ def model_display(model_id):
     words = [p.capitalize() for p in parts if p.isalpha()]
     nums = [p for p in parts if not p.isalpha()]
     return " ".join(words + ([".".join(nums)] if nums else [])) or model_id
+
+
+def load_theme(path):
+    theme = dict(FALLBACK_THEME)
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return theme
+    for line in text.splitlines():
+        m = re.fullmatch(r"([A-Z][A-Z0-9_]*)=(\S+)", line.strip())
+        if m:
+            theme[m.group(1).lower()] = m.group(2)
+    return theme
