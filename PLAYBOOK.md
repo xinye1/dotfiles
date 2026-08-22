@@ -137,6 +137,16 @@ when yazi arrived on 2026-08-16.
 (The pre-render scheme this replaced is described in
 `docs/archive/2026-08-17-stock-deviations.md`.)
 
+starship sits outside this whole scheme, deliberately. It has no `.tmpl` and sets no colours of its
+own — its upstream defaults are mostly named-ANSI styles, which take their actual colour from the
+terminal's palette and so already track a switch for free. A few modules pin fixed 256-colour
+indices instead, which do not: `starship print-config` — the defaults merged with the tracked
+overrides, fully resolved — shows `style = "149 bold"` for the C module among others, with indices
+149, 208 and 147 all appearing. Fixing those to the palette would mean giving starship a template,
+and `starship.toml`'s own header says "Only deviations from the defaults live here" — a template
+means restating every upstream default just to own the file, and inheriting whatever upstream
+changes next is worth more than exact parity on a handful of language modules.
+
 ---
 
 ## 3. The palettes
