@@ -57,11 +57,34 @@ def humanize(n):
 def countdown(resets_at, now):
     if not resets_at:
         return ""
+    if not isinstance(resets_at, str):
+        # fetch_limits() always coerces resets_at to str-or-None, so a fresh
+        # API response can't reach here with the wrong type. The only way in
+        # is state.json: main() only checks that the top-level object is a
+        # dict (`if not isinstance(st, dict)`), never the shape of what's
+        # nested inside it, so a corrupted or hand-edited cache file can still
+        # hand this a truthy int/dict/list. Without this guard that reaches
+        # `.replace` below and raises AttributeError, which the except clause
+        # doesn't catch -- same no-self-heal failure as the naive-timestamp
+        # case documented there: it escapes render() and main() before the
+        # state write, so the TTL never starts and every tick re-crashes.
+        return ""
     try:
         dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
-    except ValueError:
+        # A NAIVE timestamp is the one shape that used to blank the whole
+        # widget. The endpoint is undocumented (§9.23), so it is free to drop
+        # the trailing "Z" at any time; fromisoformat then parses happily and
+        # the subtraction below raises TypeError against a tz-aware `now`.
+        # That escaped render() and main() before the state write, so
+        # limits_fetched_at never advanced, the TTL never started, and every
+        # tick re-fetched and re-crashed: waybar showed nothing, for good.
+        # The endpoint speaks UTC, so read a bare timestamp as UTC. The widened
+        # except is belt and braces for whatever the next shape drift is.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        mins = int((dt - now).total_seconds() // 60)
+    except (ValueError, TypeError):
         return ""
-    mins = int((dt - now).total_seconds() // 60)
     if mins <= 0:
         return "now"
     d, h, m = mins // 1440, mins % 1440 // 60, mins % 60
@@ -286,7 +309,22 @@ def scan_jsonl(projects_dir, st, now_epoch):
             # cutoff_iso prescreen makes that pass cheap); anything genuinely
             # in-window is still covered by `seen`.
             offset = rec["offset"] if rec and fst.st_size > rec["size"] else 0
-            offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days)
+            # ~/.claude is foreign, read-only territory (§9.23): its files are
+            # written by another process and this widget gets no say in what is
+            # there. The stat above is guarded but open() has its own ways to
+            # fail — mode 000, the file removed between the stat and the open,
+            # EIO on a failing disk, the process out of file descriptors — and
+            # one of them used to abort the whole tick, losing every OTHER
+            # transcript's tokens with it. One unreadable file must cost
+            # exactly that one file. `continue` leaves files[path] as it was,
+            # so the byte offset survives to be resumed once the file is
+            # readable again rather than rescanning it from zero.
+            try:
+                offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso,
+                                    seen, days)
+            except OSError as e:
+                print(f"claude_usage: {path}: {e}", file=sys.stderr)
+                continue
             files[path] = {"size": fst.st_size, "mtime": fst.st_mtime,
                            "offset": offset}
     for path in list(files):
