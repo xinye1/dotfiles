@@ -776,27 +776,40 @@ class BarWidthTest(unittest.TestCase):
         self.assertIn(f'bgcolor="{fill}"', bar)
         self.assertEqual(cu.plain_len(bar), cu.BAR_CELLS)
 
-    def test_marker_past_the_fill_gets_no_background(self):
-        # There is nothing to cut into out here, and painting the cell would
-        # colour an unused cell as used — the one lie this bar must not tell.
+    def test_marker_past_the_fill_is_tinted_not_filled(self):
+        # The ░ track is still textured bar colour, so an unpainted cell notches
+        # it exactly as it notches the █ run. It gets the fill colour too, but
+        # at ░'s own density — opaque out here would colour unused capacity as
+        # used, which is the one lie this bar must not tell.
         fill = cu.FALLBACK_THEME["success"]
         bar = cu.cells(20, 12, self.COLOR, fill)         # 20% = 3 filled
-        self.assertNotIn("bgcolor", bar)
+        self.assertIn(f'bgcolor="{fill}"', bar)
+        self.assertIn('bgalpha="25%"', bar)
         self.assertEqual(cu.plain_len(bar), cu.BAR_CELLS)
 
-    def test_the_fill_edge_is_the_boundary_for_the_background(self):
+    def test_the_fill_edge_decides_opaque_versus_tinted(self):
         # The marker at index == filled is the FIRST unfilled cell, so it is
-        # already past the fill and must stay unpainted; index filled-1 is the
-        # last block and must be painted. Off-by-one here would either notch
-        # the bar or overstate usage by one cell.
+        # already past the fill and must be tinted; index filled-1 is the last
+        # block and must be opaque. Off-by-one here either notches the bar or
+        # overstates usage by a cell.
         fill = cu.FALLBACK_THEME["success"]
         for pct in (25, 50, 75):
             filled = round(pct * cu.BAR_CELLS / 100)
             with self.subTest(pct=pct):
-                self.assertIn("bgcolor",
-                              cu.cells(pct, filled - 1, self.COLOR, fill))
-                self.assertNotIn("bgcolor",
-                                 cu.cells(pct, filled, self.COLOR, fill))
+                self.assertNotIn("bgalpha",
+                                 cu.cells(pct, filled - 1, self.COLOR, fill))
+                self.assertIn("bgalpha",
+                              cu.cells(pct, filled, self.COLOR, fill))
+
+    def test_every_marked_cell_carries_a_background(self):
+        # The gap is the bug, so no reachable cell may be left unpainted —
+        # neither half of the bar, at any percentage.
+        fill = cu.FALLBACK_THEME["success"]
+        for pct in (0, 20, 53, 65, 89, 100):
+            for mark in range(cu.BAR_CELLS):
+                with self.subTest(pct=pct, mark=mark):
+                    self.assertIn(f'bgcolor="{fill}"',
+                                  cu.cells(pct, mark, self.COLOR, fill))
 
     def test_width_invariant_survives_the_background(self):
         # bgcolor rides inside the span tag, which plain_len() strips whole, so
