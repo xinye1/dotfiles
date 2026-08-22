@@ -2,9 +2,10 @@
 
 # The lock screen. Four callers: $mod+f1 (config.d/default), the 300s idle
 # timeout and before-sleep (config.d/autostart_applications, both passing -f),
-# and the power menu's Lock entry. Plain swaylock over a solid $desktop
-# background -- no clock, no power buttons, no avatar. §4.3 records what
-# replacing gtklock cost and why it was paid.
+# and the power menu's Lock entry. Plain swaylock over a random wallpaper from
+# the active palette's cache, falling back to the solid $desktop colour -- no
+# clock, no power buttons, no avatar. §4.3 records what replacing gtklock cost
+# and why it was paid, §9.25 how the wallpaper gets there.
 #
 # Why a script and not an inline `bindsym ... exec swaylock ...`: config.d/* is
 # read ALPHABETICALLY, so `default` is parsed before `theme` defines any colour,
@@ -42,16 +43,77 @@ color_desktop=${DESKTOP#\#}
 
 # THE FAIL-SAFE, and the reason this script is shaped the way it is. A missing
 # theme.gen.env (fresh clone, before `theme` has rendered) or a half-written one
-# leaves a role empty or malformed, and swaylock exits with a usage error on a
-# bad colour -- which would mean the screen never locked. So if ANY colour is not
-# six hex digits, throw the whole set away and lock with swaylock's own defaults.
-# An ugly lock screen beats an unlocked one; a missing theme file must never
-# leave the session open.
+# leaves a role empty or malformed. So if ANY colour is not six hex digits,
+# throw the whole set away and lock with swaylock's own defaults. An ugly lock
+# screen beats an unlocked one; a missing theme file must never leave the
+# session open.
+#
+# This note used to say swaylock exits with a usage error on a bad colour.
+# Measured on 1.8.6, it does not: `--color ''`, `zz` and `12345` are all
+# swallowed and it locks anyway. The guard stays regardless -- a lock screen
+# rendered from garbage is a defect even when it locks, and nothing here should
+# rest on an undocumented leniency that could tighten in any release.
+#
+# That bare exec stays bare for the same reason: no --image, no --scaling. It is
+# the path taken when the machine's own configuration is broken, so it must be
+# the shortest, dumbest, most obviously-valid swaylock invocation available --
+# every flag it does not carry is a flag that cannot be the reason it failed.
+# The wallpaper is a nicety and belongs on the healthy path only. It is chosen
+# below, AFTER this loop, so the ordering says so too.
 for c in "$color_bg" "$color_surface" "$color_fg" "$color_fg_bright" \
          "$color_accent" "$color_indicator" "$color_critical" \
          "$color_warning" "$color_success" "$color_desktop"; do
     [[ $c =~ ^[0-9a-fA-F]{6}$ ]] || exec swaylock "$@"
 done
+
+# THE WALLPAPER. A random image from the cache belonging to the ACTIVE palette,
+# or nothing at all.
+#
+# NOTHING HERE TOUCHES THE NETWORK, and that is the whole of the design. This
+# script runs when the idle timer fires, before suspend, and at $mod+f1 -- on a
+# train, on dead wifi, halfway through a resume. A lock that waits on a socket
+# is a lock that does not happen. So the images are pre-synced by `walls-sync`
+# (bin/.local/bin) into ~/Pictures/walls/<palette>/, and this only ever picks
+# from what is already on disk. That path is spelled in walls-sync too; the two
+# are a pair.
+#
+# Every branch below falls through to no wallpaper, deliberately: no palette
+# recorded, a name that is not a plain word, no such directory, a directory with
+# no images in it, a pick that is not a readable file. The screen locking
+# matters more than what it looks like while locked, so the wallpaper never gets
+# a vote on whether the lock happens. --color below is still set, so "no
+# wallpaper" is the solid $desktop lock screen this had before, unchanged.
+image_args=()
+palette=""
+palette_state=${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette
+[ -r "$palette_state" ] && read -r palette < "$palette_state"
+
+# The palette name becomes a PATH COMPONENT below, and that state file is an
+# ordinary file on disk: `../../etc` in it must not turn into a lock screen
+# rummaging through some other directory. Palette names are plain words --
+# gruvbox, nord -- so anything else is refused outright rather than sanitised,
+# which is the version of this that cannot be outsmarted.
+case $palette in
+    "" | *[!a-zA-Z0-9_-]*) palette="" ;;
+esac
+
+walls=$HOME/Pictures/walls/$palette
+if [ -n "$palette" ] && [ -d "$walls" ]; then
+    # -print0 / read -d '' because a filename may hold anything but NUL, and
+    # upstream's are whole sentences: `ls` and unquoted globs are both wrong
+    # here. Restricted to image extensions so the `.part` file a walls-sync
+    # interrupted mid-download leaves behind -- a truncated image by definition
+    # -- can never be the pick.
+    pick=""
+    IFS= read -r -d '' pick < <(
+        find "$walls" -maxdepth 1 -type f \
+             \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) \
+             -print0 2>/dev/null | shuf -z -n1)
+    # swaylock reads --image as [<output>:]<path>, so a colon anywhere in the
+    # path would be parsed as an output name and the image quietly dropped.
+    case $pick in *:*) pick="" ;; esac
+    [ -f "$pick" ] && [ -r "$pick" ] && image_args=(--image "$pick" --scaling fill)
+fi
 
 # "$@" is passed through, and comes last so a caller's flag wins over these
 # defaults. swayidle must pass -f (daemonize) or swaylock holds the timeout
@@ -94,4 +156,5 @@ exec swaylock \
     --indicator-radius 100 \
     --indicator-thickness 8 \
     --font "JetBrainsMono Nerd Font" \
+    "${image_args[@]}" \
     "$@"
