@@ -163,6 +163,33 @@ class RefreshTest(unittest.TestCase):
         cu.refresh_limits(st, self.creds, False, 1000.0, urlopen=boom)  # 100s < 300s
         boom.assert_not_called()
 
+    def test_ttl_skip_clears_a_stale_error(self):
+        # A transient failure since the last SUCCESSFUL fetch must not keep the
+        # "⚠ stale" banner up over data the TTL still calls current, so the
+        # skip branch clears the error instead of latching it for ~300s.
+        st = {"limits": LIMITS, "limits_fetched_at": 900.0,
+              "limits_error": "network error"}
+        boom = mock.MagicMock(side_effect=AssertionError("must not fetch"))
+        cu.refresh_limits(st, self.creds, False, 1000.0, urlopen=boom)
+        boom.assert_not_called()
+        self.assertIsNone(st["limits_error"])
+        self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], "warning")
+
+    def test_genuine_errors_survive_the_ttl_clear(self):
+        # Past the TTL the data really is stale: a failing retry must set the
+        # error, and the clearing above must not have made that unreachable.
+        st = {"limits": LIMITS, "limits_fetched_at": 400.0, "limits_error": None}
+        cu.refresh_limits(st, self.creds, False, 1000.0,
+                          urlopen=mock.MagicMock(
+                              side_effect=urllib.error.URLError("dns")))
+        self.assertEqual(st["limits_error"], "network error")
+        # Credentials errors are persistent, not transient: still latched.
+        self.creds.write_text(jsonlib.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 1}}))
+        st = {"limits": LIMITS, "limits_fetched_at": 900.0, "limits_error": None}
+        cu.refresh_limits(st, self.creds, False, 1000.0, urlopen=None)
+        self.assertEqual(st["limits_error"], "token expired")
+
     def test_force_bypasses_ttl_but_debounces(self):
         st = {"limits": [], "limits_fetched_at": 990.0, "limits_forced_at": 995.0}
         boom = mock.MagicMock(side_effect=AssertionError("must not fetch"))
@@ -181,6 +208,24 @@ class RefreshTest(unittest.TestCase):
         self.assertEqual(st["limits"], LIMITS)          # old data kept
         self.assertEqual(st["limits_fetched_at"], 400.0)  # age stays honest
         self.assertIn("network", st["limits_error"])
+
+    def test_creds_meta_merges_rather_than_replaces(self):
+        # read_credentials reports only the keys it found, so a later read
+        # missing one must not drop the tier label already on the tooltip.
+        self.creds.write_text(jsonlib.dumps({"claudeAiOauth": {
+            "accessToken": "tok", "expiresAt": 2e12,
+            "subscriptionType": "max", "rateLimitTier": "max_20x"}}))
+        st = {}
+        cu.refresh_limits(st, self.creds, False, 1000.0,
+                          urlopen=fake_urlopen({"limits": LIMITS}))
+        self.assertEqual(st["creds_meta"],
+                         {"subscriptionType": "max", "rateLimitTier": "max_20x"})
+        self.creds.write_text(jsonlib.dumps({"claudeAiOauth": {
+            "accessToken": "tok", "expiresAt": 2e12, "subscriptionType": "pro"}}))
+        cu.refresh_limits(st, self.creds, False, 2000.0,
+                          urlopen=fake_urlopen({"limits": LIMITS}))
+        self.assertEqual(st["creds_meta"],
+                         {"subscriptionType": "pro", "rateLimitTier": "max_20x"})
 
     def test_expired_token_short_circuits(self):
         self.creds.write_text(jsonlib.dumps(
@@ -307,6 +352,11 @@ class ScanTest(unittest.TestCase):
         cu.scan_jsonl(Path(self.td.name) / "projects", st, self.now)
         return st
 
+    @staticmethod
+    def set_tz(name):
+        os.environ["TZ"] = name
+        time.tzset()
+
     def test_within_file_duplicates_counted_once(self):
         # One line per content block, identical usage — the dominant mode.
         f = self.proj / "a.jsonl"
@@ -342,6 +392,27 @@ class ScanTest(unittest.TestCase):
         f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m9", "r9"))
         self.scan(st)
         self.assertIn("claude-opus-5", st["days"]["2026-08-22"])
+
+    def test_id_less_record_counted_once_across_a_rescan(self):
+        # A record missing message.id or requestId has no natural dedup key,
+        # and the byte offset is no protection: truncating the file resets it
+        # to 0, so the same in-window line is read a second time. Its tokens
+        # must still be counted exactly once, off the content-hash fallback.
+        f = self.proj / "a.jsonl"
+        rec = jsonlib.loads(
+            usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        del rec["requestId"]
+        idless = jsonlib.dumps(rec) + "\n"
+        keyed = usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m2", "r2")
+        f.write_text(idless + keyed)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"],
+                         {"claude-fable-5": 100, "claude-opus-5": 100})
+        # Rewrite shorter than before: size shrank, so the offset resets to 0
+        # and the id-less line is re-read from the top of the file.
+        f.write_text(idless)
+        self.scan(st)
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
 
     def test_partial_trailing_line_deferred(self):
         f = self.proj / "a.jsonl"
@@ -402,6 +473,23 @@ class ScanTest(unittest.TestCase):
         # Both models should now be in state (dedup prevents double-counting via seen set)
         self.assertIn("claude-fable-5", st["days"]["2026-08-22"])
 
+    def test_day_buckets_follow_the_local_zone_not_utc(self):
+        # TZ is pinned to UTC at import, so nothing else here exercises the
+        # `dt.astimezone().date()` bucketing under a real offset. Auckland is
+        # UTC+12 in August, so 22:00Z is already 10:00 the NEXT day locally and
+        # the token bar must land on the local day the user was working.
+        f = self.proj / "a.jsonl"
+        f.write_text(usage_line("2026-08-21T22:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        self.assertEqual(sorted(self.scan({})["days"]), ["2026-08-21"])  # UTC control
+        # tzset() is process-global and the suite shares one process: restore
+        # the pin on the way out, registered BEFORE the switch so a failed
+        # assertion below cannot leak Auckland into every later test.
+        self.addCleanup(self.set_tz, "UTC")
+        self.set_tz("Pacific/Auckland")
+        st = self.scan({})  # fresh state: rescan from offset 0, empty seen-set
+        self.assertEqual(sorted(st["days"]), ["2026-08-22"])
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+
     def test_wrong_shape_lines_skipped_offset_advances(self):
         # Wrong-shape lines that pass json.loads but not the expected shape
         # must be skipped (not crash the whole tick), and the offset must
@@ -448,10 +536,31 @@ class RenderTest(unittest.TestCase):
 
     def test_class_thresholds(self):
         st = self.fresh_state()
-        st["limits"] = [dict(LIMITS[0], percent=95)]
-        self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], "critical")
-        st["limits"] = [dict(LIMITS[0], percent=10)]
-        self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], "normal")
+        for percent, want in ((95, "critical"), (90, "critical"), (89, "warning"),
+                              (70, "warning"), (69, "normal"), (10, "normal")):
+            st["limits"] = [dict(LIMITS[0], percent=percent)]
+            self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], want,
+                             msg=f"percent={percent}")
+
+    def test_thresholds_follow_the_rounded_number_not_the_float(self):
+        # The bar shows int(round(percent)), so the class and the tooltip
+        # colour must be decided on that same integer. Judging the raw float
+        # printed "70%" in the normal colour and "90%" in warning.
+        st = self.fresh_state()
+        for percent, want_cls, want_color in (
+                (69.6, "warning", cu.FALLBACK_THEME["warning"]),
+                (89.6, "critical", cu.FALLBACK_THEME["critical"]),
+                (69.4, "normal", cu.FALLBACK_THEME["indicator"]),
+                (89.4, "warning", cu.FALLBACK_THEME["warning"])):
+            st["limits"] = [dict(LIMITS[0], percent=percent)]
+            out = cu.render(st, cu.FALLBACK_THEME, NOW)
+            shown = str(int(round(percent)))
+            self.assertEqual(out["text"], f"{cu.ICON}\n{shown}", msg=f"{percent}")
+            self.assertEqual(out["class"], want_cls, msg=f"percent={percent}")
+            # The bar's colour, on the exact bar — cells() still uses the float.
+            self.assertIn(f'<span color="{want_color}">{cu.cells(percent)}</span>',
+                          out["tooltip"], msg=f"percent={percent}")
+            self.assertIn(f"<b>{shown:>3}%</b>", out["tooltip"], msg=f"{percent}")
 
     def test_stale_class_and_banner(self):
         out = cu.render(self.fresh_state(limits_error="HTTP 429"),

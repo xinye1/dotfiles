@@ -5,6 +5,7 @@ Design: docs/specs/2026-08-22-claude-usage-widget-design.md. Read-only on
 ~/.claude; all state in ~/.cache/claude-usage/. Stdlib only.
 """
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -146,7 +147,12 @@ def fetch_limits(token, urlopen=None):
 def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     token, err, meta = read_credentials(creds_path, now_epoch)
     if meta:
-        st["creds_meta"] = meta
+        # Merge, don't replace: read_credentials only reports keys it actually
+        # found, so a read that turns up subscriptionType but not rateLimitTier
+        # would otherwise drop a tier label we already knew. Display-only (the
+        # tooltip header), which is why last-known beats blank.
+        prev = st.get("creds_meta")
+        st["creds_meta"] = {**prev, **meta} if isinstance(prev, dict) else meta
     if err:
         st["limits_error"] = err
         return
@@ -155,6 +161,11 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
             return
         st["limits_forced_at"] = now_epoch
     elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
+        # limits_fetched_at only moves on success, so landing here means the
+        # data on screen is inside the TTL — current by policy. A transient
+        # failure since then is water under the bridge; leaving its error set
+        # would fly "⚠ stale" over minutes-old data for the rest of the TTL.
+        st["limits_error"] = None
         return
     elif now_epoch - st.get("limits_attempt_at", 0) < FORCE_DEBOUNCE:
         # A fetch just ran and failed (e.g. a forced one whose signal re-exec
@@ -215,11 +226,23 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                 # or a later well-formed duplicate would be dropped.
                 tokens = sum(usage.get(k) or 0 for k in _USAGE_KEYS)
                 mid, rid = msg.get("id"), obj.get("requestId")
-                if mid and rid:
-                    key = f"{mid}|{rid}"
-                    if key in seen:
-                        continue
-                    seen[key] = ts_epoch
+                # Every counted line must land in `seen`, because the byte
+                # offset is not a durable guarantee that these bytes are read
+                # once: scan_jsonl resets to 0 whenever a file did not simply
+                # grow (truncate/rewrite) or its record aged out of the mtime
+                # window, and an un-keyed line would then be counted twice.
+                # So a line missing either id falls back to a hash of its own
+                # bytes, namespaced by a prefix a real "mid|rid" cannot wear
+                # (the digest carries no "|"). Content is a sound identity
+                # here rather than a lossy one: two byte-identical records
+                # agree on timestamp and on every token count, so nothing
+                # downstream could tell them apart even in principle, and
+                # collapsing them costs the chart nothing it could show.
+                key = (f"{mid}|{rid}" if mid and rid else
+                       "raw:" + hashlib.blake2b(raw, digest_size=16).hexdigest())
+                if key in seen:
+                    continue
+                seen[key] = ts_epoch
                 if ts_epoch < cutoff_epoch:
                     continue
                 day = dt.astimezone().date().isoformat()
@@ -253,6 +276,15 @@ def scan_jsonl(projects_dir, st, now_epoch):
             rec = files.get(path)
             if rec and rec["size"] == fst.st_size and rec["mtime"] == fst.st_mtime:
                 continue
+            # Reset to 0 unless the file only grew (truncate/rewrite invalidates
+            # the offset). This also catches a subtler path: a file that goes
+            # quiet ages past the mtime cutoff above, so it never joins `alive`
+            # and the prune below drops its record — resume it a month later and
+            # it rescans from byte 0. Acceptable because these files are
+            # append-only in timestamp order, so everything before the new tail
+            # is older than cutoff_epoch and the per-line cutoff drops it (the
+            # cutoff_iso prescreen makes that pass cheap); anything genuinely
+            # in-window is still covered by `seen`.
             offset = rec["offset"] if rec and fst.st_size > rec["size"] else 0
             offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days)
             files[path] = {"size": fst.st_size, "mtime": fst.st_mtime,
@@ -286,7 +318,17 @@ def cells(pct):
     return "█" * filled + "░" * (BAR_CELLS - filled)
 
 
-def _pct_color(pct, theme):
+def shown_pct(limit):
+    """The integer percent the user actually sees — and the only value the
+    70/90 thresholds may compare. Deciding on the raw float instead painted
+    69.6 as "70%" in the normal colour and 89.6 as "90%" in warning: the number
+    and its colour disagreed, which reads as a bug in the thresholds. Rounding
+    first makes the two agree by construction. `cells()` stays on the float —
+    it is a proportional bar, not a threshold."""
+    return int(round(limit.get("percent") or 0))
+
+
+def _pct_color(pct, theme):  # pct is the rounded, displayed integer
     if pct >= 90:
         return theme["critical"]
     if pct >= 70:
@@ -298,12 +340,12 @@ def render(st, theme, now):
     limits = st.get("limits") or []
     err = st.get("limits_error")
 
-    nums = [str(int(round(l.get("percent") or 0))) for l in limits]
-    text = ICON + ("\n" + "\n".join(nums) if nums else "\n–")
+    shown = [shown_pct(l) for l in limits]
+    text = ICON + ("\n" + "\n".join(str(p) for p in shown) if shown else "\n–")
     if err:
         cls = "stale"
     else:
-        worst = max((l.get("percent") or 0 for l in limits), default=0)
+        worst = max(shown, default=0)
         cls = "critical" if worst >= 90 else "warning" if worst >= 70 else "normal"
 
     meta = st.get("creds_meta") or {}
@@ -324,14 +366,14 @@ def render(st, theme, now):
         lines += ["", f'<span color="{sect}"><b>LIMITS</b></span>']
         width = max(len(limit_label(l)) for l in limits)
         for l in limits:
-            pct = l.get("percent") or 0
+            pct, disp = l.get("percent") or 0, shown_pct(l)
             label = pango_escape(limit_label(l))
             pad = " " * (width - len(limit_label(l)))
-            bar = f'<span color="{_pct_color(pct, theme)}">{cells(pct)}</span>'
+            bar = f'<span color="{_pct_color(disp, theme)}">{cells(pct)}</span>'
             reset = countdown(l.get("resets_at"), now)
             reset = (f'  <span color="{mut}">{ICON_RESET} {reset}</span>'
                      if reset else "")
-            lines.append(f"{label}{pad}  {bar}  <b>{int(round(pct)):>3}%</b>{reset}")
+            lines.append(f"{label}{pad}  {bar}  <b>{disp:>3}%</b>{reset}")
     elif not err:
         lines += ["", f'<span color="{mut}">no limit data yet</span>']
 
@@ -402,6 +444,9 @@ def main(argv=None):
     # Single writer: --refresh runs, signal re-execs, and interval runs must
     # not interleave read-modify-write (spec §2). Lock file, not state.json —
     # the atomic rename below would swap the locked inode out.
+    # "w" truncates on every run, deliberately: the file is never anything but
+    # an flock handle, nothing ever reads its (always empty) contents, and the
+    # lock lives on the inode rather than the bytes. No reason to open it "a".
     with open(cache_dir / "lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         state_path = cache_dir / "state.json"
