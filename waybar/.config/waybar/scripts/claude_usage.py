@@ -152,3 +152,92 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     else:
         st["limits_fetched_at"] = now_epoch
         st["limits_error"] = None
+
+
+_TS_RE = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
+_USAGE_KEYS = ("input_tokens", "output_tokens",
+               "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
+    with open(path, "rb") as f:
+        f.seek(offset)
+        for raw in f:
+            if not raw.endswith(b"\n"):
+                break  # partial trailing line: picked up next tick
+            if b'"usage"' not in raw:
+                offset += len(raw)
+                continue
+            # Cheap prescreen: the timestamp field sits near the END of Claude
+            # Code's lines (after the potentially huge message object), and
+            # zulu-ISO strings compare lexically.
+            m = _TS_RE.search(raw, max(0, raw.rfind(b'"timestamp"')))
+            if m and m.group(1).decode("utf-8", "replace") < cutoff_iso:
+                offset += len(raw)
+                continue
+            offset += len(raw)
+            try:
+                obj = json.loads(raw)
+            except ValueError:
+                continue
+            msg = obj.get("message") or {}
+            usage, model, ts = msg.get("usage"), msg.get("model"), obj.get("timestamp")
+            if not usage or not model or not ts or model == "<synthetic>":
+                continue
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            ts_epoch = dt.timestamp()
+            mid, rid = msg.get("id"), obj.get("requestId")
+            if mid and rid:
+                key = f"{mid}|{rid}"
+                if key in seen:
+                    continue
+                seen[key] = ts_epoch
+            if ts_epoch < cutoff_epoch:
+                continue
+            day = dt.astimezone().date().isoformat()
+            per_day = days.setdefault(day, {})
+            per_day[model] = per_day.get(model, 0) + sum(
+                usage.get(k) or 0 for k in _USAGE_KEYS)
+    return offset
+
+
+def scan_jsonl(projects_dir, st, now_epoch):
+    cutoff_epoch = now_epoch - WINDOW_DAYS * 86400
+    cutoff_iso = datetime.fromtimestamp(
+        cutoff_epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    files = st.setdefault("files", {})
+    seen = st.setdefault("seen", {})
+    days = st.setdefault("days", {})
+    alive = set()
+    for root, _dirs, names in os.walk(projects_dir):
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(root, name)
+            try:
+                fst = os.stat(path)
+            except OSError:
+                continue
+            if fst.st_mtime < cutoff_epoch:
+                continue  # nothing written inside the window
+            alive.add(path)
+            rec = files.get(path)
+            if rec and rec["size"] == fst.st_size and rec["mtime"] == fst.st_mtime:
+                continue
+            offset = rec["offset"] if rec and fst.st_size >= rec["offset"] else 0
+            offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days)
+            files[path] = {"size": fst.st_size, "mtime": fst.st_mtime,
+                           "offset": offset}
+    for path in list(files):
+        if path not in alive:
+            del files[path]
+    for key, ts in list(seen.items()):
+        if ts < cutoff_epoch:
+            del seen[key]
+    cutoff_day = datetime.fromtimestamp(cutoff_epoch).astimezone().date().isoformat()
+    for day in list(days):
+        if day < cutoff_day:
+            del days[day]

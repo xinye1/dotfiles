@@ -222,5 +222,94 @@ class CredsShapeTest(unittest.TestCase):
         self.assertEqual(meta, {})
 
 
+def usage_line(ts, model, mid, rid, tokens=100):
+    return jsonlib.dumps({
+        "parentUuid": "x", "message": {
+            "id": mid, "model": model,
+            "usage": {"input_tokens": tokens, "output_tokens": 0,
+                      "cache_creation_input_tokens": 0,
+                      "cache_read_input_tokens": 0}},
+        "requestId": rid, "timestamp": ts}) + "\n"
+
+
+class ScanTest(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.proj = Path(self.td.name) / "projects" / "p1"
+        self.proj.mkdir(parents=True)
+        self.now = NOW.timestamp()
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def scan(self, st):
+        cu.scan_jsonl(Path(self.td.name) / "projects", st, self.now)
+        return st
+
+    def test_within_file_duplicates_counted_once(self):
+        # One line per content block, identical usage — the dominant mode.
+        f = self.proj / "a.jsonl"
+        f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1") * 3)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+
+    def test_cross_file_duplicates_counted_once(self):
+        (self.proj / "a.jsonl").write_text(
+            usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        (self.proj / "b.jsonl").write_text(
+            usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+
+    def test_offset_resume_and_unchanged_skip(self):
+        f = self.proj / "a.jsonl"
+        f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        st = self.scan({})
+        rec = st["files"][str(f)]
+        self.assertEqual(rec["offset"], f.stat().st_size)
+        # Append a new message; only it is aggregated on the next tick.
+        with f.open("a") as fh:
+            fh.write(usage_line("2026-08-22T11:00:00.000Z", "claude-opus-5", "m2", "r2"))
+        self.scan(st)
+        self.assertEqual(st["days"]["2026-08-22"],
+                         {"claude-fable-5": 100, "claude-opus-5": 100})
+
+    def test_shrunk_file_rescans_from_zero(self):
+        f = self.proj / "a.jsonl"
+        f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1") * 2)
+        st = self.scan({})
+        f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m9", "r9"))
+        self.scan(st)
+        self.assertIn("claude-opus-5", st["days"]["2026-08-22"])
+
+    def test_partial_trailing_line_deferred(self):
+        f = self.proj / "a.jsonl"
+        full = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
+        f.write_text(full + '{"half": ')  # no trailing newline
+        st = self.scan({})
+        self.assertEqual(st["files"][str(f)]["offset"], len(full.encode()))
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+
+    def test_synthetic_and_old_lines_skipped_and_pruned(self):
+        f = self.proj / "a.jsonl"
+        f.write_text(
+            usage_line("2026-08-22T10:00:00.000Z", "<synthetic>", "m1", "r1")
+            + usage_line("2026-08-01T10:00:00.000Z", "claude-fable-5", "m2", "r2"))
+        st = {"days": {"2026-08-01": {"claude-fable-5": 5}},
+              "seen": {"old|old": self.now - 9 * 86400}}
+        self.scan(st)
+        self.assertNotIn("<synthetic>", st.get("days", {}).get("2026-08-22", {}))
+        self.assertNotIn("2026-08-01", st["days"])   # pruned past 8 days
+        self.assertNotIn("old|old", st["seen"])      # seen-set pruned too
+
+    def test_deleted_file_state_dropped(self):
+        f = self.proj / "a.jsonl"
+        f.write_text(usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        st = self.scan({})
+        f.unlink()
+        self.scan(st)
+        self.assertEqual(st["files"], {})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
