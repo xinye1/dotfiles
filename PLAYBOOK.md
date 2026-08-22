@@ -249,7 +249,6 @@ tables say *why* each package is here and what breaks without it; the two `Sourc
 | `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
 | `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout, before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
-| `~/Pictures/walls/` | **`walls-sync`** | The lock screen's wallpapers, one directory per palette, populated by `bin/.local/bin/walls-sync` from [dharmx/walls](https://github.com/dharmx/walls). Optional, ~320 MB, and a cache in the strict sense — deleting it loses nothing but time (§9.25) | Lock screen falls back to the solid `$desktop` colour. Nothing else changes; it still locks |
 | `nwg-drawer` | repo | App grid (`$mod+Shift+d`), also the waybar launcher button | |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
@@ -257,6 +256,12 @@ tables say *why* each package is here and what breaks without it; the two `Sourc
 | `pamixer` `brightnessctl` `playerctl` | repo | Media/brightness keys | Function keys dead |
 | `polkit-gnome` | repo | Auth prompts for GUI privilege escalation | GUI admin actions fail silently |
 | `stow` | repo | Deploys this repo | |
+
+**Optional — the setup is not broken without these; each has its own fallback.**
+
+| Resource | Source | Why | Symptom if missing |
+|---|---|---|---|
+| `~/Pictures/walls/` | **`walls-sync`** | The lock screen's wallpapers, one directory per palette, populated by `bin/.local/bin/walls-sync` from [dharmx/walls](https://github.com/dharmx/walls). Optional, ~320 MB, and a cache in the strict sense — deleting it loses nothing but time (§9.25) | Lock screen falls back to the solid `$desktop` colour. Nothing else changes; it still locks |
 
 ### 4.2 Added by this setup
 
@@ -1064,7 +1069,7 @@ this was written: 194 agreements, 0 disagreements.
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
 | Lock screen is a solid colour, no wallpaper | Cache never populated, or a palette was renamed without renaming its directory | `ls ~/Pictures/walls/"$(cat "${XDG_STATE_HOME:-$HOME/.local/state}"/theme/palette)"`, then `walls-sync`; §9.25 |
 | Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
-| `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it resumes and re-downloads nothing; §9.25 |
+| `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
 | GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
 | GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |

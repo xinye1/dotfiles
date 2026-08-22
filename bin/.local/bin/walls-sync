@@ -37,6 +37,7 @@ import re
 import shutil
 import struct
 import sys
+import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
@@ -46,7 +47,7 @@ API = "https://api.github.com/repos/dharmx/walls/contents/{}"
 # GitHub wants a User-Agent and rejects a request with none. urllib's default
 # would pass, but naming the tool is what you want in someone else's logs.
 UA = "walls-sync (+https://github.com/xinye1/dotfiles)"
-EXTS = (".png", ".jpg", ".jpeg")
+EXTS = (".png", ".jpg", ".jpeg", ".webp")
 
 # The resolution floor. The panel here is 3840x2160 and over half of upstream is
 # smaller than that -- nord ships a 435x492 and a 794x1024 -- which `--scaling
@@ -265,17 +266,49 @@ def probe_size(url):
 def download(entry, dest, minimum):
     """Fetch one image. Returns "new", "small", or None when it failed.
 
-    Written to a .part beside the target and moved with os.replace, atomic on
-    one filesystem: lock.sh can fire in the middle of a sync and will never see
-    a half-written JPEG. `.part` is also not one of the extensions lock.sh
-    selects on, so an interrupted run leaves nothing it can pick either.
+    Written to a private tempfile.mkstemp() file inside dest and moved with
+    os.replace, atomic on one filesystem: lock.sh can fire in the middle of a
+    sync and will never see a half-written image.
+
+    The temp name is unique per call, not the fixed "<name>.part" this used to
+    be. Two walls-sync processes syncing the same theme at once (a second
+    by-hand run started before the first finished, say) would otherwise both
+    write that identical path; once the first finishes and os.replace()s it
+    onto target, the second is still writing into the inode that IS now the
+    published cache file, so lock.sh could pick a half-written image mid-sync.
+    mkstemp's collision-proof name removes that window entirely.
+
+    The prefix/suffix are not incidental: the name must never be one lock.sh's
+    picker can select. That picker (and EXTS above) matches by extension --
+    .png/.jpg/.jpeg/.webp -- so a ".part" suffix guarantees a miss regardless
+    of uniqueness, and the leading "." keeps it out of sight the way ".part"
+    always has. Get the suffix wrong and an in-progress download becomes
+    eligible to be locked over the moment the file exists.
     """
     target = dest / entry["name"]
-    tmp = target.with_name(target.name + ".part")
     try:
-        with urllib.request.urlopen(request(entry["download_url"]),
-                                    timeout=TIMEOUT) as resp:
-            with open(tmp, "wb") as fh:
+        fd, tmp_name = tempfile.mkstemp(
+            dir=dest, prefix=f".{entry['name']}.", suffix=".part")
+    except OSError as err:
+        # dest missing or unwritable. Caught here rather than left to
+        # propagate so one file's bad luck still can't take the other 157
+        # down with it -- same contract as every OSError below.
+        problem(f"{entry['name']}: {err}")
+        return None
+    tmp = Path(tmp_name)
+    try:
+        # fdopen first, before anything that can raise: fd must be under the
+        # context manager's care from here on, or an exception between
+        # mkstemp and the first thing that owns fd leaks it.
+        with os.fdopen(fd, "wb") as fh:
+            # mkstemp always opens 0600, ignoring umask (right default for a
+            # secret, wrong one here) -- match the 0644 open() would have
+            # given the same file, so os.replace doesn't quietly lock other
+            # users out of a file every other image in the cache is readable
+            # by.
+            os.fchmod(fh.fileno(), 0o644)
+            with urllib.request.urlopen(request(entry["download_url"]),
+                                        timeout=TIMEOUT) as resp:
                 shutil.copyfileobj(resp, fh, CHUNK)
     except OSError as err:
         problem(f"{entry['name']}: {err}")

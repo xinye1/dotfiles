@@ -107,7 +107,7 @@ if [ -n "$palette" ] && [ -d "$walls" ]; then
     pick=""
     IFS= read -r -d '' pick < <(
         find "$walls" -maxdepth 1 -type f \
-             \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) \
+             \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) \
              -print0 2>/dev/null | shuf -z -n1)
     # swaylock reads --image as [<output>:]<path>, so a colon anywhere in the
     # path would be parsed as an output name and the image quietly dropped.
