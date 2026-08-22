@@ -35,15 +35,35 @@ icon_down=$'\uf071'         # nf-fa-warning
 # the only place that knows anything about JSON syntax.
 #
 # Order matters and is not negotiable: the backslash rule runs FIRST, or it
-# would go back over the backslashes the quote and newline rules just added and
-# double them. Only `"` used to be escaped, and only in the tooltip -- an SSID
-# like `C:\Users net` (a real thing people name a hotspot) put a lone backslash
-# into the JSON and waybar dropped the whole module as malformed.
+# would go back over the backslashes the quote and control-character rules
+# just added and double them. Only `"` used to be escaped, and only in the
+# tooltip -- an SSID like `C:\Users net` (a real thing people name a hotspot)
+# put a lone backslash into the JSON and waybar dropped the whole module as
+# malformed.
+#
+# JSON forbids a literal control character (U+0000-U+001F) anywhere in a
+# string, not just newline -- an SSID is arbitrary octets, so a tab, a bell, an
+# escape byte, anything in that range can show up and a parser rejects the
+# whole payload over it ("Invalid control character"). The five named escapes
+# below cover what JSON has a shorthand for; the loop after them sweeps the
+# rest of the range one code point at a time into \u00XX. 0x00 itself needs no
+# case: a NUL byte can't survive into a bash string to begin with.
 json_escape() {
-    local s=$1
+    local s=$1 i h raw esc
     s=${s//\\/\\\\}
     s=${s//\"/\\\"}
+    s=${s//$'\b'/\\b}
+    s=${s//$'\t'/\\t}
     s=${s//$'\n'/\\n}
+    s=${s//$'\f'/\\f}
+    s=${s//$'\r'/\\r}
+    for ((i = 1; i <= 0x1f; i++)); do
+        case $i in 8|9|10|12|13) continue ;; esac  # already named above
+        printf -v h '%02x' "$i"
+        printf -v raw "\\x$h"
+        esc="\\u00$h"
+        s=${s//$raw/$esc}
+    done
     printf '%s' "$s"
 }
 
