@@ -29,7 +29,7 @@ FALLBACK_THEME = {
     "bg": "black", "surface": "black", "sel": "gray", "muted": "gray",
     "fg": "white", "fg_bright": "white", "accent": "yellow", "accent2": "orange",
     "indicator": "lightgreen", "critical": "red", "warning": "orange",
-    "success": "green",
+    "success": "green", "desktop": "black",
 }
 
 MODEL_NAMES = (
@@ -86,10 +86,10 @@ def load_theme(path):
     theme = dict(FALLBACK_THEME)
     try:
         text = Path(path).read_text()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return theme
     for line in text.splitlines():
         m = re.fullmatch(r"([A-Z][A-Z0-9_]*)=(\S+)", line.strip())
-        if m:
+        if m and m.group(1).lower() in theme:
             theme[m.group(1).lower()] = m.group(2)
     return theme

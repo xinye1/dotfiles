@@ -65,6 +65,16 @@ class ThemeTest(unittest.TestCase):
         theme = cu.load_theme("/nonexistent/theme.gen.env")
         self.assertEqual(theme, cu.FALLBACK_THEME)
 
+    def test_ignores_unknown_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "theme.gen.env"
+            p.write_text("DESKTOP=#1d2021\nPAPIRUS_FOLDER=yellow\nGTK_THEME_NAME=Colloid\n")
+            theme = cu.load_theme(p)
+        self.assertEqual(theme["desktop"], "#1d2021")
+        self.assertNotIn("papirus_folder", theme)
+        self.assertNotIn("gtk_theme_name", theme)
+        self.assertEqual(len(theme), 13)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
