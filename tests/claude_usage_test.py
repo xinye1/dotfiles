@@ -408,5 +408,35 @@ class RenderTest(unittest.TestCase):
         self.assertNotIn("Sonnet 5", tip)                     # out-of-window model hidden
 
 
+import contextlib
+
+
+class MainTest(unittest.TestCase):
+    def test_end_to_end_against_fake_home(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            claude = home / ".claude" / "projects" / "p"
+            claude.mkdir(parents=True)
+            (home / ".claude" / ".credentials.json").write_text(jsonlib.dumps(
+                {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 2e12,
+                                   "rateLimitTier": "max_20x"}}))
+            (claude / "s.jsonl").write_text(
+                usage_line(NOW.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                           "claude-fable-5", "m1", "r1"))
+            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache")}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env), \
+                 mock.patch.object(cu.urllib.request, "urlopen",
+                                   fake_urlopen({"limits": LIMITS})), \
+                 contextlib.redirect_stdout(buf):
+                cu.main([])
+            out = jsonlib.loads(buf.getvalue())
+            self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
+            state = jsonlib.loads(
+                (home / ".cache" / "claude-usage" / "state.json").read_text())
+            self.assertEqual(state["limits"], LIMITS)
+            self.assertIn("2026-08-22", state["days"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

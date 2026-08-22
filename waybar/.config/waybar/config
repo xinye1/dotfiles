@@ -82,6 +82,7 @@
         "pulseaudio",
         "battery",
         "custom/network",
+        "custom/claude",
         "clock",
         "tray",
         "custom/power"
@@ -175,6 +176,19 @@
         "format": "{}",
         "justify": "center",
         "on-click": "kitty -T waybar_nmtui -e nmtui"
+    },
+
+    "custom/claude": {
+        "exec": "~/.config/waybar/scripts/claude_usage.py",
+        "return-type": "json",
+        "interval": 300,
+        // Signal 1 is custom/keyboard-layout's; on-click refreshes then pokes us.
+        "signal": 8,
+        // Default true would re-exec on every click — racing the --refresh run.
+        "exec-on-event": false,
+        "format": "{}",
+        "justify": "center",
+        "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 waybar"
     },
 
     "tray": {

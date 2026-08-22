@@ -76,6 +76,7 @@
 /* Every modules */
 #mode,
 #custom-network,
+#custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
 #cpu,
@@ -151,6 +152,11 @@
 #custom-network.disconnected {
     color: @critical;
 }
+
+#custom-claude          { color: @fg; }
+#custom-claude.warning  { color: @warning; }
+#custom-claude.critical { color: @critical; }
+#custom-claude.stale    { color: @muted; }
 
 #cpu.warning {
     color: @warning;

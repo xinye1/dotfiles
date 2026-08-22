@@ -350,3 +350,35 @@ def render(st, theme, now):
                   f' to refresh</span>']
     tooltip = f'<span face="{FACE}">' + "\n".join(lines) + "</span>"
     return {"text": text, "tooltip": tooltip, "class": cls}
+
+
+def main(argv=None):
+    force = "--refresh" in (argv if argv is not None else sys.argv[1:])
+    home = Path(os.environ.get("HOME", str(Path.home())))
+    cache_dir = Path(os.environ.get("XDG_CACHE_HOME",
+                                    home / ".cache")) / "claude-usage"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    # Single writer: --refresh runs, signal re-execs, and interval runs must
+    # not interleave read-modify-write (spec §2). Lock file, not state.json —
+    # the atomic rename below would swap the locked inode out.
+    with open(cache_dir / "lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state_path = cache_dir / "state.json"
+        try:
+            st = json.loads(state_path.read_text())
+        except (OSError, ValueError):
+            st = {}  # first run or corrupt: silent rebuild
+        now = datetime.now(timezone.utc)
+        refresh_limits(st, home / ".claude" / ".credentials.json",
+                       force, now.timestamp())
+        scan_jsonl(home / ".claude" / "projects", st, now.timestamp())
+        theme = load_theme(home / ".config" / "sway" / "theme.gen.env")
+        out = render(st, theme, now)
+        tmp = state_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(st))
+        tmp.replace(state_path)
+    print(json.dumps(out))
+
+
+if __name__ == "__main__":
+    main()
