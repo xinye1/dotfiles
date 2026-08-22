@@ -5,20 +5,53 @@ config="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
 if [ ! -f "$config" ]; then exit 1; fi
 
 gnome_schema="org.gnome.desktop.interface"
-gtk_theme="$(grep 'gtk-theme-name' "$config" | cut -d'=' -f2)"
-icon_theme="$(grep 'gtk-icon-theme-name' "$config" | cut -d'=' -f2)"
-cursor_theme="$(grep 'gtk-cursor-theme-name' "$config" | cut -d'=' -f2)"
-font_name="$(grep 'gtk-font-name' "$config" | cut -d'=' -f2)"
-gsettings set "$gnome_schema" gtk-theme "$gtk_theme"
-gsettings set "$gnome_schema" icon-theme "$icon_theme"
-gsettings set "$gnome_schema" cursor-theme "$cursor_theme"
-gsettings set "$gnome_schema" font-name "$font_name"
+
+# The value of one settings.ini key, or nothing at all.
+#
+# Anchored, and only the first match, because `grep gtk-theme-name` was
+# neither. It also matched a commented-out `#gtk-theme-name=...` and any line
+# of the generated banner that happens to name a key in prose, and `cut` then
+# handed back a TWO-LINE value. Trailing whitespace goes too: an ini file will
+# not show it and gsettings will happily store it.
+#
+# No variable is assigned in here on purpose: sh has no function-local scope,
+# so an assignment would be the caller's variable (see CLAUDE.md).
+setting() {
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$config" \
+        | sed -n '1s/[[:space:]]*$//p'
+}
+
+# usage: apply <gsettings key> <value> <settings.ini key>
+#
+# An absent or blank key must SKIP the write, not push an empty string.
+# `gsettings set ... ""` succeeds, and what it persists is an empty font-name
+# or gtk-theme in dconf -- outside this repo, where no `git status` and no diff
+# will ever show it, and where every GTK app then reads a nameless theme. This
+# script is `exec_always`, so the old version did that on every single reload.
+apply() {
+    if [ -n "$2" ]; then
+        gsettings set "$gnome_schema" "$1" "$2"
+    else
+        printf 'import-gsettings: no %s in %s; leaving %s in dconf alone\n' \
+            "$3" "$config" "$1" >&2
+    fi
+}
+
+apply gtk-theme    "$(setting gtk-theme-name)"        gtk-theme-name
+apply icon-theme   "$(setting gtk-icon-theme-name)"   gtk-icon-theme-name
+apply cursor-theme "$(setting gtk-cursor-theme-name)" gtk-cursor-theme-name
+apply font-name    "$(setting gtk-font-name)"         gtk-font-name
 
 # Added to the stock EndeavourOS script. libadwaita (GTK4) apps ignore gtk-theme
 # entirely and decide light vs dark from this key alone — without it they render
 # light against the Nord desktop no matter what settings.ini says. Derived from
 # gtk-application-prefer-dark-theme so the two can never disagree.
-prefer_dark="$(grep 'gtk-application-prefer-dark-theme' "$config" | cut -d'=' -f2)"
+# Not routed through apply(): this one has no empty case to skip. It is a
+# boolean read off settings.ini, and "absent" is a legitimate answer meaning
+# not-dark -- GTK's own default for the property. The anchoring still matters,
+# though: unanchored, a commented-out duplicate made the value "1\n0", which
+# equals neither branch and quietly chose light.
+prefer_dark="$(setting gtk-application-prefer-dark-theme)"
 if [ "$prefer_dark" = "1" ]; then
     gsettings set "$gnome_schema" color-scheme "prefer-dark"
 else
