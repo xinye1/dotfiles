@@ -310,6 +310,27 @@ class ScanTest(unittest.TestCase):
         self.scan(st)
         self.assertEqual(st["files"], {})
 
+    def test_same_size_different_content_rescans(self):
+        # File rewritten in-place without size change: mtime changed but size unchanged.
+        # Offset should reset to 0 and new content should be read.
+        f = self.proj / "a.jsonl"
+        line1 = usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m1", "rxx")
+        line2 = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m2", "r2")
+        # Ensure lines have identical byte length for the test to be meaningful
+        self.assertEqual(len(line1.encode()), len(line2.encode()),
+                        msg="Test fixture: lines must have same byte length")
+        f.write_text(line1)
+        st = self.scan({})
+        self.assertIn("claude-opus-5", st["days"]["2026-08-22"])
+        self.assertNotIn("claude-fable-5", st["days"]["2026-08-22"])
+        # Overwrite with different content, same size; force different mtime
+        f.write_text(line2)
+        t = self.now - 100  # mtime in the past but within the window
+        os.utime(f, (t, t))
+        self.scan(st)
+        # Both models should now be in state (dedup prevents double-counting via seen set)
+        self.assertIn("claude-fable-5", st["days"]["2026-08-22"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -227,7 +227,7 @@ def scan_jsonl(projects_dir, st, now_epoch):
             rec = files.get(path)
             if rec and rec["size"] == fst.st_size and rec["mtime"] == fst.st_mtime:
                 continue
-            offset = rec["offset"] if rec and fst.st_size >= rec["offset"] else 0
+            offset = rec["offset"] if rec and fst.st_size > rec["size"] else 0
             offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days)
             files[path] = {"size": fst.st_size, "mtime": fst.st_mtime,
                            "offset": offset}
