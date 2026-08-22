@@ -5,6 +5,7 @@ Design: docs/specs/2026-08-22-claude-usage-widget-design.md. Read-only on
 ~/.claude; all state in ~/.cache/claude-usage/. Stdlib only.
 """
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -225,17 +226,23 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                 # or a later well-formed duplicate would be dropped.
                 tokens = sum(usage.get(k) or 0 for k in _USAGE_KEYS)
                 mid, rid = msg.get("id"), obj.get("requestId")
-                # A line missing either key is counted but never recorded in
-                # `seen` — there is no key to record it under. That is only
-                # safe because the byte offset guarantees these bytes are never
-                # re-read: a rescan from 0 (shrunk/rewritten file, dropped
-                # record) would count them a second time with no dedup to stop
-                # it. Keep that in mind before widening when offsets reset.
-                if mid and rid:
-                    key = f"{mid}|{rid}"
-                    if key in seen:
-                        continue
-                    seen[key] = ts_epoch
+                # Every counted line must land in `seen`, because the byte
+                # offset is not a durable guarantee that these bytes are read
+                # once: scan_jsonl resets to 0 whenever a file did not simply
+                # grow (truncate/rewrite) or its record aged out of the mtime
+                # window, and an un-keyed line would then be counted twice.
+                # So a line missing either id falls back to a hash of its own
+                # bytes, namespaced by a prefix a real "mid|rid" cannot wear
+                # (the digest carries no "|"). Content is a sound identity
+                # here rather than a lossy one: two byte-identical records
+                # agree on timestamp and on every token count, so nothing
+                # downstream could tell them apart even in principle, and
+                # collapsing them costs the chart nothing it could show.
+                key = (f"{mid}|{rid}" if mid and rid else
+                       "raw:" + hashlib.blake2b(raw, digest_size=16).hexdigest())
+                if key in seen:
+                    continue
+                seen[key] = ts_epoch
                 if ts_epoch < cutoff_epoch:
                     continue
                 day = dt.astimezone().date().isoformat()
@@ -311,14 +318,14 @@ def cells(pct):
     return "█" * filled + "░" * (BAR_CELLS - filled)
 
 
-def shown_pct(l):
+def shown_pct(limit):
     """The integer percent the user actually sees — and the only value the
     70/90 thresholds may compare. Deciding on the raw float instead painted
     69.6 as "70%" in the normal colour and 89.6 as "90%" in warning: the number
     and its colour disagreed, which reads as a bug in the thresholds. Rounding
     first makes the two agree by construction. `cells()` stays on the float —
     it is a proportional bar, not a threshold."""
-    return int(round(l.get("percent") or 0))
+    return int(round(limit.get("percent") or 0))
 
 
 def _pct_color(pct, theme):  # pct is the rounded, displayed integer

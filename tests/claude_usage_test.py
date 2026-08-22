@@ -393,6 +393,27 @@ class ScanTest(unittest.TestCase):
         self.scan(st)
         self.assertIn("claude-opus-5", st["days"]["2026-08-22"])
 
+    def test_id_less_record_counted_once_across_a_rescan(self):
+        # A record missing message.id or requestId has no natural dedup key,
+        # and the byte offset is no protection: truncating the file resets it
+        # to 0, so the same in-window line is read a second time. Its tokens
+        # must still be counted exactly once, off the content-hash fallback.
+        f = self.proj / "a.jsonl"
+        rec = jsonlib.loads(
+            usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1"))
+        del rec["requestId"]
+        idless = jsonlib.dumps(rec) + "\n"
+        keyed = usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m2", "r2")
+        f.write_text(idless + keyed)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"],
+                         {"claude-fable-5": 100, "claude-opus-5": 100})
+        # Rewrite shorter than before: size shrank, so the offset resets to 0
+        # and the id-less line is re-read from the top of the file.
+        f.write_text(idless)
+        self.scan(st)
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+
     def test_partial_trailing_line_deferred(self):
         f = self.proj / "a.jsonl"
         full = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
