@@ -18,9 +18,9 @@ reviews:
       # construction. It is two files: the waybar widget, whose functions do
       # carry docstrings, and its test suite, which documents each case with a
       # `#` comment above it in the style of the rest of the repo. A PR
-      # touching a dozen tests therefore scores in the teens — 12.50% on #12,
-      # 15.38% on #14 — neither of which had anything wrong with its
-      # documentation.
+      # touching a dozen tests therefore scores in the teens — 14.29% on #12,
+      # 15.38% on #14, 16.67% on #15 — none of which had anything wrong with
+      # its documentation.
       #
       # Left on, it is a permanent warning on the one channel that has to stay
       # worth reading: §9.24 exists because a CodeRabbit banner must be read
