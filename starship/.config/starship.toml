@@ -9,6 +9,9 @@
 #   starship print-config    # defaults merged with this file, fully computed
 #   starship explain         # why each module is rendering in the current directory
 #   starship timings         # per-module cost (attributes start-up to the first module)
+#
+# Deliberately not palette-driven — no .tmpl, no {{role}} anywhere below. See
+# PLAYBOOK.md §2.3 for why that's accepted rather than fixed.
 
 "$schema" = 'https://starship.rs/config-schema.json'
 
