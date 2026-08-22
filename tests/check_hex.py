@@ -10,16 +10,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Suffix -> the regex matching a comment line in that language. The same table
+# lives in check_includes.py, which needs the identical knowledge for the
+# identical reason; keep the two in step.
 COMMENT_MARKERS = {
-    ".vim": (r'"', r'^\s*"'),
-    ".lua": (None, r'^\s*--'),
-    ".css": (None, r'^\s*(/\*|\*)'),
-    ".toml": (None, r'^\s*#'),
-    ".ini": (None, r'^\s*#'),
-    ".conf": (None, r'^\s*#'),
-    ".sh": (None, r'^\s*#'),
-    ".json": (None, r'^\s*//'),      # waybar's JSON accepts // comments
+    ".vim": r'^\s*"',
+    ".lua": r'^\s*--',
+    ".css": r'^\s*(/\*|\*)',
+    ".toml": r'^\s*#',
+    ".ini": r'^\s*#',
+    ".conf": r'^\s*#',
+    ".sh": r'^\s*#',
+    ".json": r'^\s*//',              # waybar's JSON accepts // comments
 }
+# Extensionless and unknown: `#` covers sway's config.d, foot, mako, htoprc and
+# the shell rc files. Deliberately NOT `"` — that is vimscript's rule alone,
+# and applying it everywhere is the bug this file's docstring describes.
 DEFAULT_COMMENT = r'^\s*#'
 # 3-, 4-, 6- and 8-digit forms are all legal CSS/GTK colours.
 HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
@@ -39,7 +45,7 @@ SKIP_EXACT = {"palettes.toml"}
 
 
 def comment_re(path):
-    return re.compile(COMMENT_MARKERS.get(path.suffix, (None, DEFAULT_COMMENT))[1])
+    return re.compile(COMMENT_MARKERS.get(path.suffix, DEFAULT_COMMENT))
 
 
 def main(repo):

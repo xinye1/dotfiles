@@ -137,7 +137,7 @@ if have tmux; then
         fmt=$(tmux -L "$sock" display-message -p \
               '#{E:status-format[0]}#{E:status-left}#{E:status-right}' 2>&1)
         case $fmt in
-            *"fg=]"*|*"fg= "*|*"bg=]"*)
+            *"fg=]"*|*"fg= "*|*"bg=]"*|*"bg= "*)
                 no "tmux resolves every colour role" \
                    "an empty fg=/bg= means colors.gen.conf is missing a @thm_ role" ;;
             *)  ok "tmux accepts its config and resolves every colour" ;;
@@ -171,7 +171,16 @@ fi
 # actually loaded is a question with a real answer.
 if have yazi; then
     if out=$(timeout 20 yazi --debug </dev/null 2>&1); then
-        case $(printf '%s\n' "$out" | grep -E '^ +Theme +:') in
+        # Captured, not piped straight into `case`. An absent line used to fall
+        # through the empty result to `*)` -> ok, so the sharper of the two
+        # assertions -- the one that catches yazi sitting quietly on preset
+        # colours -- would have gone green forever the day a yazi release
+        # renamed or reformatted its `Theme :` row. A check that can no longer
+        # see its subject reports that, rather than success.
+        themeline=$(printf '%s\n' "$out" | grep -E '^ +Theme +:' || true)
+        case "$themeline" in
+            "") no "yazi loaded its rendered theme" \
+                   "no 'Theme :' row in \`yazi --debug\` output — this check can no longer see whether the theme loaded; re-derive it from the current output" ;;
             *"No such file"*|*error*)
                 no "yazi loaded its rendered theme" \
                    "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
@@ -208,8 +217,14 @@ fi
 # --- GTK ---
 # No binary validates gtk.css, but an undefined @name renders as black with no
 # error, so the one thing worth asserting is that every @name is defined.
+#
+# Both files are called gtk.css, so the label carries the parent directory too:
+# `${css##*/}` alone printed "gtk.css" twice and a failure did not say which of
+# the two was broken.
 for css in "$HOME/.config/gtk-3.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css"; do
     [ -f "$css" ] || continue
+    dir=${css%/*}
+    label=${dir##*/}/${css##*/}
     if python3 - "$css" <<'PY'
 import re, sys
 text = open(sys.argv[1]).read()
@@ -220,8 +235,8 @@ if missing:
     print("undefined:", ", ".join(missing), file=sys.stderr)
 sys.exit(1 if missing else 0)
 PY
-    then ok "every @colour in ${css##*/} is defined"
-    else no "every @colour in ${css##*/} is defined"
+    then ok "every @colour in $label is defined"
+    else no "every @colour in $label is defined"
     fi
 done
 
