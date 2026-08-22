@@ -910,6 +910,29 @@ Interactively a bad config is not fatal either — yazi prints
 `Press <Enter> to continue with preset settings...` and starts anyway, which is why
 `check_consumers.sh` closes stdin and then asks whether the theme actually *loaded*.
 
+### 9.23 The claude usage widget: two data sources, one hard read-only rule
+
+`waybar/.config/waybar/scripts/claude_usage.py` (design:
+`docs/specs/2026-08-22-claude-usage-widget-design.md`) reads two independent sources: the
+undocumented `api.anthropic.com/api/oauth/usage` endpoint for limits/reset countdowns, and
+`~/.claude/projects/*.jsonl` (scanned incrementally by byte offset) for the per-model token bars.
+**`~/.claude` is read-only, full stop** — it reads `.credentials.json` for the access token but
+never refreshes it; Claude Code's own daemon owns rotation, and a second writer racing it is
+exactly the failure mode [claudebar](https://github.com/mryll/claudebar) has (it writes OAuth
+token refreshes back into `.credentials.json`) and exactly what this widget rejects as a design.
+Cadences follow from the endpoint being undocumented and rate-limiting aggressively: `API_TTL=300`
+(never poll faster), `FORCE_DEBOUNCE=30` (click-spam on `--refresh` must not be able to 429 the
+widget stale), `FETCH_TIMEOUT=5` (a stale bar beats a frozen one). `custom/claude`'s
+`exec-on-event: false` in waybar's config exists for the same reason — the default `true` re-execs
+the script on every click, racing the `--refresh` already in flight — and inside the script,
+`fcntl.flock` on `~/.cache/claude-usage/lock` makes the interval run, a clicked `--refresh`, and
+the signal-8 re-exec a single writer regardless of which one wins the race. If `theme.gen.env` is
+missing or a role fails to parse, `FALLBACK_THEME` uses **Pango named colours only** (`black`,
+`gray`, `yellow`, …) — `check_hex.py` scans this file too, and a hex literal here would fail it
+the same as anywhere else. All widget state — fetched limits, JSONL scan offsets, debounce
+timestamps — lives in `~/.cache/claude-usage/`; deleting it forces a full rebuild on the next run
+(fresh JSONL scan, fresh fetch, TTL ignored).
+
 ---
 
 ## 10. Troubleshooting
