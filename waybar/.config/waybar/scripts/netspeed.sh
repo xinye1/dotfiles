@@ -13,17 +13,43 @@
 
 set -uo pipefail
 
-state="${XDG_RUNTIME_DIR:-/tmp}/waybar-netspeed.state"
+# One sample of counters, to diff against the next one. $XDG_RUNTIME_DIR is a
+# private 0700 tmpfs and the right home for it; the fallback is ~/.cache and
+# NOT /tmp, which is world-writable, so a predictable name there is a symlink
+# anyone on the box can plant for the `>` below to follow. Stale state after a
+# reboot is already handled -- the uptime and counter deltas both go negative
+# and the sample is discarded -- so an on-disk fallback costs nothing.
+state_dir=${XDG_RUNTIME_DIR:-}
+if [[ -z $state_dir ]]; then
+    state_dir=${XDG_CACHE_HOME:-$HOME/.cache}
+    mkdir -p "$state_dir" 2>/dev/null
+fi
+state="$state_dir/waybar-netspeed.state"
 
 icon_wifi=$'\uf1eb'         # nf-fa-wifi
 icon_ethernet=$'\U000f0200'  # nf-md-ethernet
 icon_down=$'\uf071'         # nf-fa-warning
 
-# Waybar wants one JSON object per run; \n in the text is a real line break.
+# Waybar wants one JSON object per run. Every field is escaped here, and the
+# callers below pass REAL newlines rather than a hand-written \n, so this is
+# the only place that knows anything about JSON syntax.
+#
+# Order matters and is not negotiable: the backslash rule runs FIRST, or it
+# would go back over the backslashes the quote and newline rules just added and
+# double them. Only `"` used to be escaped, and only in the tooltip -- an SSID
+# like `C:\Users net` (a real thing people name a hotspot) put a lone backslash
+# into the JSON and waybar dropped the whole module as malformed.
+json_escape() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    printf '%s' "$s"
+}
+
 emit() {
-    local text=$1 tooltip=$2 class=$3
     printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' \
-        "$text" "${tooltip//\"/\\\"}" "$class"
+        "$(json_escape "$1")" "$(json_escape "$2")" "$(json_escape "$3")"
 }
 
 iface=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
@@ -77,6 +103,6 @@ else
     class=ethernet
 fi
 
-emit "$icon\\n$short_rx\\n$short_tx" \
-     "$header\\nDown $long_rx\\nUp   $long_tx" \
+emit "$icon"$'\n'"$short_rx"$'\n'"$short_tx" \
+     "$header"$'\n'"Down $long_rx"$'\n'"Up   $long_tx" \
      "$class"
