@@ -731,6 +731,33 @@ class BarWidthTest(unittest.TestCase):
                     self.assertEqual(cu.plain_len(cu.cells(pct, mark)),
                                      cu.BAR_CELLS)
 
+    def test_width_invariant_for_every_cell_index(self):
+        # The sweep above only exercises the handful of cells pace_mark()
+        # actually lands on for those inputs. The invariant cells() promises
+        # is unconditional -- every one of the sixteen real cell indices, not
+        # just the ones a particular resets_at happens to produce -- so cover
+        # 0..BAR_CELLS-1 explicitly, on top of None and the out-of-range marks.
+        pcts = (0, 0.4, 12.5, 40, 50, 69.6, 70, 89.6, 99.9, 100)
+        marks = list(range(cu.BAR_CELLS)) + [None, -1, 16, 99]
+        for pct in pcts:
+            for mark in marks:
+                with self.subTest(pct=pct, mark=mark):
+                    self.assertEqual(
+                        cu.plain_len(cu.cells(pct, mark, self.COLOR)), cu.BAR_CELLS)
+
+    def test_marker_count_invariant_holds_for_every_cell(self):
+        # Generic form of "replaces, never inserts": one PACE_MARK exactly,
+        # and the fill/empty/marker counts always sum to BAR_CELLS -- whether
+        # the marker lands inside the filled run or the empty track.
+        for pct in (0, 25, 50, 75, 100):
+            for mark in range(cu.BAR_CELLS):
+                with self.subTest(pct=pct, mark=mark):
+                    bar = cu.cells(pct, mark, self.COLOR)
+                    self.assertEqual(bar.count(cu.PACE_MARK), 1)
+                    self.assertEqual(
+                        bar.count("█") + bar.count("░") + bar.count(cu.PACE_MARK),
+                        cu.BAR_CELLS)
+
     def test_marker_replaces_the_cell_it_lands_on(self):
         # 40% used is 6 filled cells; the rule at cell 5 takes over the last of
         # them, so the fill still reaches past it — usage ahead of the clock.
