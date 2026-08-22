@@ -655,6 +655,16 @@ class PaceMarkTest(unittest.TestCase):
         self.assertEqual(cu.pace_mark("session", "2026-08-22T14:30:00", NOW), 8)
         self.assertEqual(cu.pace_mark("weekly_all", "2026-08-26T00:00:00", NOW), 8)
 
+    def test_trailing_z_timestamp_parses_the_same_as_an_offset(self):
+        # "Z" is the shape the endpoint actually sends; countdown() handles it
+        # by turning it into "+00:00" before fromisoformat, and pace_mark()
+        # shares that path. It must land on exactly the same cell as the
+        # naive form above and the explicit-offset form -- three spellings of
+        # the same instant, one answer.
+        aware = cu.pace_mark("session", "2026-08-22T14:30:00+00:00", NOW)
+        self.assertEqual(cu.pace_mark("session", "2026-08-22T14:30:00Z", NOW), aware)
+        self.assertEqual(aware, 8)
+
     def test_no_marker_when_resets_at_is_unusable(self):
         # Missing, empty, unparseable, or the wrong type entirely (only a
         # corrupted state.json can produce the last — fetch_limits coerces to
