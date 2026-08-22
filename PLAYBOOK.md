@@ -25,9 +25,10 @@ Built on and tested against:
 | Hardware | Dell laptop, single 3840×2160 internal panel (`eDP-1`), touchpad, lid switch |
 
 The Sway Community Edition matters. It ships an opinionated `~/.config/sway/config.d/` split, a
-`scripts/` directory, and a set of chosen applications (foot — since replaced as the default
-terminal by kitty — fuzzel, mako, nwg-drawer, gtklock,
-azote, swappy, cliphist). This playbook is written as a **diff against that**, not against
+`scripts/` directory, and a set of chosen applications (foot, fuzzel, mako, nwg-drawer, gtklock,
+azote, swappy, cliphist). Two of those have since been replaced here: kitty is the default terminal
+instead of foot (§9.11), and swaylock is the lock screen instead of gtklock (§4.3).
+This playbook is written as a **diff against that**, not against
 upstream sway's bare default config. On vanilla Arch + sway you would be starting from
 `/etc/sway/config`, and the "what stock does" column below would not apply.
 
@@ -139,19 +140,19 @@ isolation.
 
 | Role | What it is for |
 |---|---|
-| `bg` | window bg, waybar bg, terminal bg, gtklock bg |
+| `bg` | window bg, waybar bg, terminal bg, swaylock indicator inside |
 | `surface` | mako body, popovers, cards, fuzzel-adjacent chrome |
 | `sel` | fuzzel selection, terminal selection bg |
 | `muted` | unfocused border and text, placeholders, calendar weeks |
 | `fg` | body text everywhere |
 | `fg_bright` | focused window title, active text |
 | **`accent`** | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
-| `accent2` | focused-inactive border, calendar weekdays, gtklock buttons, waybar mode |
+| `accent2` | focused-inactive border, calendar weekdays, waybar mode |
 | `indicator` | sway split indicator — where the next window will open |
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
-| `desktop` | the wallpaper-less background, one shade below `bg` |
+| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen |
 
 `desktop` being darker than `bg` is what turns the gaps between windows into visible channels, and
 is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
@@ -247,7 +248,7 @@ tables say *why* each package is here and what breaks without it; the two `Sourc
 | `foot` | repo | Standalone fallback, still themed. No longer `$term` and no server is started; run `foot`. Wayland-only, which is why it is not the default | Nothing — `foot` is optional now |
 | `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `gtklock` | repo | Lock screen. Used by `$mod+f1`, the idle timeout, and before-sleep | **Machine never locks** |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout, before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `nwg-drawer` | repo | App grid (`$mod+Shift+d`), also the waybar launcher button | |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
@@ -279,9 +280,29 @@ that produces the same result, installs into `~/.themes` without root, and needs
 
 ### 4.3 Deliberately not used
 
-`swaylock` (gtklock does the job and is already themed), `wofi`/`rofi` (fuzzel), `dunst` (mako),
+`gtklock` (see below), `wofi`/`rofi` (fuzzel), `dunst` (mako),
 `lxappearance` (GTK3+ only reads settings.ini), `qt5ct`/`qt6ct` (no Qt apps in this setup yet —
 add them if that changes, as Qt apps will otherwise ignore the theme entirely).
+
+**`gtklock`, dropped for `swaylock`.** This entry used to read the other way round — swaylock was
+the one not used, "gtklock does the job and is already themed" — so read it as a reversal, not as a
+gap that was always there. The reason is the honest one: **the user did not want gtklock.** It
+worked and it was themed; that was not enough to keep it. This is the rare change in this repo
+driven by preference rather than by a defect, and it is written down as such so nobody later hunts
+for the bug that prompted it.
+
+What the switch costs, plainly, because the replacement is genuinely smaller: **no clock, no power
+buttons, and no user avatar on the lock screen.** gtklock is a GTK app with a window full of
+widgets; plain swaylock draws one password ring on a solid `$desktop` field and nothing else. The
+power buttons are the only real loss, and they are not lost — `$mod+Shift+e` reaches the same
+suspend/reboot/shutdown actions through `power_menu.sh`, from an unlocked session. The clock is on
+waybar. The avatar has no replacement and none is wanted.
+
+`swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined for the same
+reason the 22 MB gtklock wallpaper was: a solid palette colour is the point, and an unofficial fork
+is a dependency this setup does not need to carry. Configuration lives in
+`sway/.config/sway/scripts/lock.sh` rather than `~/.config/swaylock/config`, because a static config
+file cannot follow a palette switch and a script sourcing `theme.gen.env` at lock time can (§9.13).
 
 **mako's `group-by`**, tried and reverted. mako draws only the *first* member of a group, so
 `group-by=app-name` turned six notifications into one card reading `(6) …` with the other five
@@ -319,7 +340,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 
 | Package | Folded? | Reason |
 |---|---|---|
-| `sway` `mako` `fuzzel` `nwg-drawer` `gtklock` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `sway` `mako` `fuzzel` `nwg-drawer` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
 | `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so it behaves like `foot`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
@@ -1015,13 +1036,13 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
 
 ```sh
-for p in sway waybar foot kitty mako fuzzel gtklock nwg-drawer htop; do
+for p in sway waybar foot kitty mako fuzzel nwg-drawer htop; do
     printf '%-12s ' "$p"
     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
 done
 ```
 
-Nine lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+Eight lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
 see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
 
 Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar

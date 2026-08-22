@@ -84,7 +84,12 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `mako` | `~/.config/mako/config` |
 | `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
 | `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |
-| `gtklock` | `~/.config/gtklock/` |
+
+**The lock screen has no row of its own.** It is swaylock, which is configured entirely by the
+flags in `sway/.config/sway/scripts/lock.sh` — a file in the `sway` package, not a package of its
+own. swaylock does read `~/.config/swaylock/config` if one exists; deliberately none does, because
+a config file could not derive its colours from the active palette and the script can (PLAYBOOK
+§4.3, §9.13).
 
 `docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
 would install to `~/tests/…`.

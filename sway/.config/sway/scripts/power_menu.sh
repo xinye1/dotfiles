@@ -16,7 +16,7 @@ confirm_action() {
 
 case $SELECTION in
     *"󰌾 Lock"*)
-        gtklock;;
+        ~/.config/sway/scripts/lock.sh;;
     *"󰤄 Suspend"*)
         if confirm_action "Suspend"; then
             systemctl suspend

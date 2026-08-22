@@ -5,9 +5,14 @@ of breakage is silent at runtime and has to be caught here. It has happened:
 a revert restored the pre-rename include paths, the files they named no longer
 existed, and a sway reload still reported success.
 
-Paths are compared resolved, not by basename. Both `~/.config/waybar` and
-`~/.config/gtklock` hold a `colors.gen.css`, so a basename comparison passes an
-include that points at the right filename in the wrong directory.
+Paths are compared resolved, not by basename. `colors.gen.*` is the house name
+for a rendered palette, so the same basename recurs across packages and a
+basename comparison would pass an include that points at the right filename in
+the wrong directory. The collision that first made this concrete has since gone
+away — `~/.config/waybar` and `~/.config/gtklock` both held a `colors.gen.css`
+until gtklock was retired for swaylock — but the rule outlives the example: the
+next themed package to render a `colors.gen.css` reintroduces it silently, and
+nothing here would notice.
 """
 import re
 import subprocess

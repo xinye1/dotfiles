@@ -43,10 +43,10 @@ exec_always dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP=swa
 # `exec swayidle idlehint 1` stock used: pkill -x swayidle would otherwise kill
 # that process too on every reload and never bring it back.
 exec_always pkill -x swayidle; swayidle -w idlehint 300 \
-    timeout 300 'gtklock -d' \
+    timeout 300 '~/.config/sway/scripts/lock.sh -f' \
     timeout 600 'swaymsg "output * dpms off"' \
         resume 'swaymsg "output * dpms on"' \
-    before-sleep 'gtklock -d'
+    before-sleep '~/.config/sway/scripts/lock.sh -f'
 
 # Output hotplug. kanshi applies the profile in ~/.config/kanshi/config that
 # matches the currently connected displays. Same pkill reasoning as swayidle.
