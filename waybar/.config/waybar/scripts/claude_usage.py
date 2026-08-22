@@ -408,7 +408,7 @@ def pace_mark(kind, resets_at, now):
     return min(cell, BAR_CELLS - 1)  # a full window scales to 16, one past 15
 
 
-def cells(pct, mark=None, mark_color=None):
+def cells(pct, mark=None, mark_color=None, fill_color=None):
     """The usage bar: exactly BAR_CELLS *visible* characters, always.
 
     `mark` (from pace_mark) REPLACES a cell rather than inserting one. Every
@@ -417,12 +417,25 @@ def cells(pct, mark=None, mark_color=None):
     of line with its neighbours. Markup costs nothing there — plain_len strips
     tags before counting — so the marker takes its own colour by nesting a
     span inside the fill-coloured one render() wraps around this.
+
+    Inside the filled run that nested span also takes `fill_color` as its
+    BACKGROUND. PACE_MARK is a thin stroke on an otherwise empty cell, so
+    without it the tooltip's own background shows through on either side and
+    the rule reads as a notch bitten out of the bar rather than a line drawn
+    across it. The bright stroke is already distinct from every threshold
+    colour, so that gap was never what made it legible. Past the fill there is
+    nothing to cut into, so the background is left alone — painting it there
+    would colour an unused cell as used, which is the one thing this bar must
+    never do.
     """
     filled = round(min(max(pct, 0), 100) * BAR_CELLS / 100)
     bar = ["█"] * filled + ["░"] * (BAR_CELLS - filled)
     if mark is not None and 0 <= mark < BAR_CELLS:
-        bar[mark] = (f'<span color="{mark_color}">{PACE_MARK}</span>'
-                     if mark_color else PACE_MARK)
+        if mark_color:
+            bg = f' bgcolor="{fill_color}"' if fill_color and mark < filled else ""
+            bar[mark] = f'<span color="{mark_color}"{bg}>{PACE_MARK}</span>'
+        else:
+            bar[mark] = PACE_MARK
     return "".join(bar)
 
 
@@ -486,8 +499,9 @@ def render(st, theme, now):
             # threshold-coloured █ and the muted ░.
             mark = pace_mark(l.get("kind"), l.get("resets_at"), now)
             marked = marked or mark is not None
-            bar = (f'<span color="{_pct_color(disp, theme)}">'
-                   f'{cells(pct, mark, theme["fg_bright"])}</span>')
+            fill = _pct_color(disp, theme)
+            bar = (f'<span color="{fill}">'
+                   f'{cells(pct, mark, theme["fg_bright"], fill)}</span>')
             reset = countdown(l.get("resets_at"), now)
             reset = (f'  <span color="{mut}">{ICON_RESET} {reset}</span>'
                      if reset else "")
