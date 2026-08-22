@@ -34,6 +34,8 @@ triggers, not the full story: read the named section before working in its area.
   or the included file, never both (§9.12). foot's colours use `[colors-dark]` and foot has no
   config-reload signal at all; kitty reloads on SIGUSR1, sent only via kitty's own reloader,
   never `pkill` (§9.11).
+- waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
+  lives in `~/.cache/claude-usage/` (safe to delete) (§9.23).
 - tmux formats: wrap **every** dynamic value in `#{qh:…}` (trim runs before escape, the only safe
   order), and a hand-written `status-format[0]` needs `#[list=on]`/`#[nolist]` or every `align=`
   is ignored (§9.19, §9.20).

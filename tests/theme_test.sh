@@ -147,6 +147,11 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
   && ok "no tracked config carries a literal hex" \
   || no "no tracked config carries a literal hex"
 
+# The waybar claude widget's own unit tests (stdlib unittest). Deliberately not
+# ok/no-wrapped: a failure here must abort the suite via set -e, not just
+# decrement a counter -- claude_usage_test.py already prints its own failures.
+python3 "$REPO/tests/claude_usage_test.py" >/dev/null
+
 # Every colour file an application includes must be one a template produces.
 # This is the assertion that would have caught a repointing being reverted: the
 # include still named `colors.css`, no template produced it any more, and

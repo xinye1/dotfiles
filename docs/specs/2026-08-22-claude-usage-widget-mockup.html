@@ -1,0 +1,73 @@
+<meta charset="utf-8">
+<style>
+  body { background:#1d2021; color:#ebdbb2; font-family:"JetBrainsMono Nerd Font","JetBrainsMono NF",monospace; padding:2rem; }
+  h2 { font-size:1rem; color:#fabd2f; margin:1.5rem 0 .5rem; }
+  .row { display:flex; gap:3rem; align-items:flex-start; flex-wrap:wrap; }
+  .barcol { display:flex; flex-direction:column; gap:1rem; align-items:center; }
+  .bar {
+    width:45px; background:#282828; border:1px solid #3c3836;
+    display:flex; flex-direction:column; align-items:center;
+    padding:6px 0; gap:1px; font-size:13px;
+  }
+  .bar .icon { font-size:15px; }
+  .cap { font-size:11px; color:#7c6f64; text-align:center; }
+  .normal { color:#ebdbb2; } .warn { color:#fe8019; } .crit { color:#fb4934; }
+  .stale { color:#7c6f64; }
+  .tooltip {
+    background:#282828; border:1px solid #504945; border-radius:6px;
+    padding:14px 18px; font-size:13px; line-height:1.55; white-space:pre;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .hdr { color:#fbf1c7; font-weight:bold; }
+  .sub { color:#7c6f64; }
+  .sect { color:#fabd2f; font-weight:bold; }
+  .fill { color:#8ec07c; } .fill-warn { color:#fe8019; } .fill-crit { color:#fb4934; }
+  .track { color:#504945; }
+  .pct { color:#fbf1c7; font-weight:bold; }
+  .reset { color:#7c6f64; }
+  .day { color:#7c6f64; } .today { color:#fbf1c7; font-weight:bold; }
+  .val { color:#ebdbb2; }
+  .staleline { color:#fe8019; }
+</style>
+
+<h2>BAR MODULE — 45px vertical, states left→right: normal · warning ≥70% · critical ≥90% · stale</h2>
+<div class="row">
+  <div class="barcol"><div class="bar normal"><span class="icon">&#xec82;</span><span>6</span><span>40</span></div><div class="cap">normal<br>session 6%<br>weekly 40%</div></div>
+  <div class="barcol"><div class="bar warn"><span class="icon">&#xec82;</span><span>12</span><span>72</span></div><div class="cap">warning<br>(worst limit ≥70)</div></div>
+  <div class="barcol"><div class="bar crit"><span class="icon">&#xec82;</span><span>95</span><span>81</span></div><div class="cap">critical<br>(worst limit ≥90)</div></div>
+  <div class="barcol"><div class="bar stale"><span class="icon">&#xec82;</span><span>6</span><span>40</span></div><div class="cap">stale<br>(API unreachable /<br>token expired)</div></div>
+</div>
+
+<h2>TOOLTIP — on hover (Pango markup, monospace)</h2>
+<div class="row">
+<div class="tooltip"><span class="hdr">&#xec82; Claude Code</span> <span class="sub">· Max 20x</span>
+
+<span class="sect">LIMITS</span>
+Session   <span class="fill">█</span><span class="track">░░░░░░░░░░░░░░░</span>  <span class="pct"> 6%</span>  <span class="reset">&#xf0e2; 3h 13m</span>
+Weekly    <span class="fill">██████</span><span class="track">░░░░░░░░░░</span>  <span class="pct">40%</span>  <span class="reset">&#xf0e2; 4d 22h</span>
+Fable Wk  <span class="fill-warn">██████████</span><span class="track">░░░░░░</span>  <span class="pct">65%</span>  <span class="reset">&#xf0e2; 4d 22h</span>
+
+<span class="sect">TOKENS BY DAY</span>
+<span class="day">Sat</span>    <span class="fill">▏</span>              <span class="val">  7.9M</span>
+<span class="day">Sun</span>    <span class="fill">████████▌</span>      <span class="val">141.8M</span>
+<span class="day">Mon</span>    <span class="fill">████████████▋</span>  <span class="val">209.2M</span>
+<span class="day">Tue</span>    <span class="fill">████</span>           <span class="val"> 66.8M</span>
+<span class="day">Wed</span>    <span class="fill">███████████████▌</span><span class="val">256.2M</span>
+<span class="day">Thu</span>    <span class="fill">████████████▉</span>  <span class="val">212.2M</span>
+<span class="today">Today</span>  <span class="fill">███▍</span>           <span class="val"> 57.7M</span>
+
+<span class="sect">TOKENS BY MODEL</span> <span class="sub">(7d)</span>
+Opus 5    <span class="fill">████████████████</span> <span class="val">  1.0B</span>
+Fable 5   <span class="fill">████████▌</span>        <span class="val">552.7M</span>
+Haiku 4.5 <span class="fill">██</span>               <span class="val">122.4M</span>
+
+<span class="sub">updated 12:41 · click &#xec82; to refresh</span></div>
+
+<div class="tooltip"><span class="hdr">&#xec82; Claude Code</span> <span class="sub">· Max 20x</span>
+
+<span class="staleline">⚠ stale — API unreachable, data from 11:02</span>
+
+<span class="sect">LIMITS</span>
+Session   <span class="fill">█</span><span class="track">░░░░░░░░░░░░░░░</span>  <span class="pct"> 6%</span>  <span class="reset">&#xf0e2; 3h 13m</span>
+<span class="sub">… (rest identical, last-known values)</span></div>
+</div>

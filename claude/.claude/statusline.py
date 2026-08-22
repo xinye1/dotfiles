@@ -221,12 +221,14 @@ def main():
         usage_segment(ICON_CONTEXT, float(pct), 60, 85),
         paint(VALUE, f"${cost:.2f}"),
     ]
-    # Rate limits bite harder than context does — warn earlier.
+    # Rate limits cost delivery speed, not output quality — context (60/85
+    # above) is what degrades quality, so it is the one that warns earlier.
+    # 70/90 matches the waybar claude widget: one machine-wide definition.
     for icon, key in ((ICON_SESSION, "five_hour"), (ICON_WEEK, "seven_day")):
         window = limits.get(key)
         if window and window.get("used_percentage") is not None:
             rest.append(usage_segment(
-                icon, float(window["used_percentage"]), 50, 80,
+                icon, float(window["used_percentage"]), 70, 90,
                 resets_in(window.get("resets_at")),
             ))
     git = git_segment(cwd)
