@@ -27,6 +27,15 @@ COMMENT_MARKERS = {
 # the shell rc files. Deliberately NOT `"` — that is vimscript's rule alone,
 # and applying it everywhere is the bug this file's docstring describes.
 DEFAULT_COMMENT = r'^\s*#'
+# waybar's `config` is JSONC too, but has no suffix to key COMMENT_MARKERS on,
+# so without this it falls through to DEFAULT_COMMENT and a `//`-commented hex
+# reads as a live one. Keyed by the exact repo-relative path rather than
+# basename: kanshi and mako also ship an extensionless `config`, and those
+# really are `#`-commented, so matching on the filename alone would break
+# them. Same table, same reason, as check_includes.py — keep the two in step.
+PATH_COMMENT_MARKERS = {
+    "waybar/.config/waybar/config": r'^\s*//',
+}
 # 3-, 4-, 6- and 8-digit forms are all legal CSS/GTK colours.
 HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
 # ...but not every consumer spells a colour with a leading `#`. fuzzel's -t/-S
@@ -44,7 +53,9 @@ SKIP_PREFIX = ("tests/", "docs/")
 SKIP_EXACT = {"palettes.toml"}
 
 
-def comment_re(path):
+def comment_re(rel, path):
+    if rel in PATH_COMMENT_MARKERS:
+        return re.compile(PATH_COMMENT_MARKERS[rel])
     return re.compile(COMMENT_MARKERS.get(path.suffix, DEFAULT_COMMENT))
 
 
@@ -61,7 +72,7 @@ def main(repo):
             text = path.read_text()
         except (OSError, UnicodeDecodeError):
             continue
-        skip = comment_re(path)
+        skip = comment_re(rel, path)
         for n, line in enumerate(text.splitlines(), 1):
             if skip.match(line):
                 continue

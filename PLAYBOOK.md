@@ -86,7 +86,7 @@ There are four parallel mechanisms, and they do not agree with each other by def
                                        ← CONFIGURED BUT NOT INSTALLED (below)
 ```
 
-**Three of those four are live; the xsettingsd one is not.** `xsettingsd` is not installed on this
+**Four of those five are live; the xsettingsd one is not.** `xsettingsd` is not installed on this
 machine — there is no binary, nothing starts one, and nothing reads
 `~/.config/xsettingsd/xsettingsd.conf`. `theme` renders it with every switch and the result is
 inert. It is kept because it costs one template, and because the alternative is finding out at
@@ -245,11 +245,15 @@ server restart or a logout.
 
 The install lists a new machine actually consumes are `packages.txt` (official repos) and
 `packages-aur.txt` (AUR) at the repo root — `sudo pacman -S --needed $(cat packages.txt)`, then
-`yay -S --needed $(cat packages-aur.txt)`. `setup.sh` warns about anything from either list that is
-not installed. The files also carry the tools the configs here invoke that the tables below assume
-(vim, neovim, starship, htop, and yazi's `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The
-tables say *why* each package is here and what breaks without it; the two `Source: source` entries
-(the Colloid GTK theme, the vim colorschemes) cannot live in either file and are §8's job.
+`yay -S --needed $(cat packages-aur.txt)`. One entry needs a repo beyond Arch's own
+`core`/`extra`/`multilib`: `welcome` comes from `endeavouros`, enabled by default on this distro
+(§1) — EndeavourOS's own new-user greeter, resolved by a plain `pacman -S`, not AUR, and not the
+same package as the unrelated KDE `plasma-welcome`. `setup.sh` warns about anything from either
+list that is not installed. The files also carry the tools the configs here invoke that the
+tables below assume (vim, neovim, starship, htop, and yazi's
+`fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The tables say *why* each package is here
+and what breaks without it; the two `Source: source` entries (the Colloid GTK theme, the vim
+colorschemes) cannot live in either file and are §8's job.
 
 ### 4.1 Required — the setup is broken without these
 

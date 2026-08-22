@@ -50,13 +50,23 @@ COMMENT_MARKERS = {
     ".json": r'^\s*//',              # waybar's JSON accepts // comments
 }
 # Extensionless and unknown: `#` covers sway's config.d, foot, mako, htoprc and
-# the shell rc files. waybar's `config` is JSON with no suffix and lands here —
-# which is the point: `"` must not exempt it.
+# the shell rc files.
 DEFAULT_COMMENT = r'^\s*#'
+# waybar's `config` is JSONC too, but has no suffix to key COMMENT_MARKERS on,
+# so without this it falls through to DEFAULT_COMMENT and a `//`-commented
+# include reads as live. Keyed by the exact repo-relative path rather than
+# basename: kanshi and mako also ship an extensionless `config`, and those
+# really are `#`-commented, so matching on the filename alone would break
+# them. Same table, same reason, as check_hex.py — keep the two in step.
+PATH_COMMENT_MARKERS = {
+    "waybar/.config/waybar/config": r'^\s*//',
+}
 INTERESTING = re.compile(r'colors|colorscheme|theme\.')
 
 
-def comment_re(path):
+def comment_re(rel, path):
+    if rel in PATH_COMMENT_MARKERS:
+        return re.compile(PATH_COMMENT_MARKERS[rel])
     return re.compile(COMMENT_MARKERS.get(path.suffix, DEFAULT_COMMENT))
 
 
@@ -92,7 +102,7 @@ def main(repo):
             text = path.read_text()
         except (OSError, UnicodeDecodeError):
             continue
-        skip = comment_re(path)
+        skip = comment_re(rel, path)
         for line in text.splitlines():
             if skip.match(line):
                 continue

@@ -320,10 +320,16 @@ def download(entry, dest, minimum):
         return None
     tmp = Path(tmp_name)
     # Everything from here on is wrapped, because the temp file now exists and
-    # every exit has to take it with it. It used to be unlinked only inside the
-    # `except OSError` below -- and tmp.stat() and os.replace() sat OUTSIDE
-    # that try entirely, so an OSError from either, or any non-OSError from
-    # anywhere, left a .part file behind that nothing ever reclaimed.
+    # every exit has to take it with it. `finally` handles that unconditionally
+    # -- but `finally` with no matching `except` still lets the exception
+    # itself keep going: an OSError from tmp.stat() or os.replace() (the cache
+    # directory removed mid-run, ENOSPC, a cross-device rename) used to clean
+    # up its temp file and then propagate anyway, out of download(), out of
+    # sync(), out of main() -- aborting every later file and every later
+    # palette, the same abort class the `finally` was supposed to have closed.
+    # The `except OSError` below is what actually closes it -- same contract
+    # as the one on mkstemp() above, extended to cover the rest of the
+    # function.
     try:
         try:
             # fdopen first, before anything that can raise: fd must be under
@@ -360,6 +366,12 @@ def download(entry, dest, minimum):
             return "small"
         os.replace(tmp, target)
         return "new"
+    except OSError as err:
+        # Covers tmp.stat() and os.replace() -- see the comment above tmp's
+        # assignment. mkstemp() and the download itself already have their
+        # own handling, above and outside this block respectively.
+        problem(f"{entry['name']}: {err}")
+        return None
     finally:
         # A no-op on the success path -- os.replace has already consumed the
         # name -- which is exactly why it can be unconditional.
