@@ -83,7 +83,18 @@ There are four parallel mechanisms, and they do not agree with each other by def
 ~/.config/gtk-4.0/settings.ini  ────>  GTK4 apps
 ~/.config/gtk-4.0/gtk.css       ────>  libadwaita apps  ← the one that matters
 ~/.config/xsettingsd/           ────>  XSettings protocol, for XWayland clients
+                                       ← CONFIGURED BUT NOT INSTALLED (below)
 ```
+
+**Three of those four are live; the xsettingsd one is not.** `xsettingsd` is not installed on this
+machine — there is no binary, nothing starts one, and nothing reads
+`~/.config/xsettingsd/xsettingsd.conf`. `theme` renders it with every switch and the result is
+inert. It is kept because it costs one template, and because the alternative is finding out at
+install time that the one mechanism carrying GTK settings to XWayland clients was never themed;
+`pacman -S xsettingsd` plus something to start it is what makes the arrow above real. Until then
+XWayland clients fall back to what `gtk-3.0/settings.ini` and Xft give them. Note this is *not* the
+same as the nwg-look `export-xsettingsd` toggle in §9.1 — that one writes the file, and would
+clobber the template's output whether or not the daemon exists.
 
 **The critical thing to understand:** *libadwaita apps ignore `gtk-theme-name` completely.*
 Installing the Nordic GTK theme does nothing for them. They read named colours
@@ -112,8 +123,10 @@ waybar/.config/waybar/style.css                @import url("colors.gen.css");
 The include is static — `style.css` always names `colors.gen.css`, whichever palette is loaded.
 That is what makes switching a re-render rather than a reconfiguration.
 
-**Rendered files are build artefacts.** They match `*.gen.*`, git ignores them, and editing one is
-pointless because the next switch overwrites it. Seven files are the exception and cannot carry the
+**Rendered files are build artefacts.** They match `*.gen.*` — or a bare `*.gen`, which is what
+mako's `colors.gen` is, since its `include=` names the file with no suffix; `.gitignore` carries
+both globs for that reason. Git ignores them, and editing one is pointless because the next switch
+overwrites it. Seven files are the exception and cannot carry the
 marker, because the application reads them at a hardcoded path and takes no include: GTK and
 xsettingsd account for six — `gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`,
 `xsettingsd/xsettingsd.conf` and `.gtkrc-2.0` — and yazi's `theme.toml` for the seventh.
@@ -359,6 +372,8 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future themed file — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
+| `bash` | **Neither — no directory to fold** | Owns two loose files, `~/.bashrc` and `~/.config/dircolors`, and no directory of its own. `$HOME` and `~/.config` always exist, so stow has nothing to fold and always links file by file. Consequence: **a new file added to this package is silently absent until `stow -R bash`**, the same as an unfolded package, and it can never become folded by accident. |
+| `starship` | **Neither — no directory to fold** | Owns one loose file, `~/.config/starship.toml`. Same as `bash`: no directory, nothing to fold, `stow -R starship` needed for any file added later. |
 
 **Rendered palette files are the standing exception.** Every folded themed package now contains
 ignored `*.gen.*` artefacts, which is untracked content inside a folded directory — the thing the

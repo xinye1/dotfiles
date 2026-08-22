@@ -52,11 +52,18 @@ fi
 # directory into the repo. For these targets that would be a trap sprung later:
 # each one accumulates untracked content (installed binaries in ~/.local/bin,
 # plugin clones in ~/.vim, Claude Code state in ~/.claude, nwg-look output in
-# gtk-{3,4}.0, `ya pkg` installs in ~/.config/yazi), and folded, all of it
-# lands inside the repo. On a fresh $HOME none of these directories exist, so
-# create them before stow sees them. mkdir -p is a no-op when they already do.
+# gtk-{3,4}.0 and xsettingsd, `ya pkg` installs in ~/.config/yazi), and folded,
+# all of it lands inside the repo. On a fresh $HOME none of these directories
+# exist, so create them before stow sees them. mkdir -p is a no-op when they
+# already do.
+#
+# ~/.config/xsettingsd is on this list for the same reason gtk-{3,4}.0 are, not
+# because anything reads it: nwg-look's `export-xsettingsd` toggle (§9.1) writes
+# that directory exactly as its siblings' toggles write theirs. It happens to be
+# a real directory on this machine, which masked the gap — a fresh clone would
+# have folded it.
 for dir in "$HOME/.local/bin" "$HOME/.vim" "$HOME/.claude" "$HOME/.icons" \
-           "$HOME/.config/gtk-3.0" \
+           "$HOME/.config/gtk-3.0" "$HOME/.config/xsettingsd" \
            "$HOME/.config/gtk-4.0" "$HOME/.config/yazi"; do
     if [ -L "$dir" ]; then
         printf 'setup: %s is already a symlink — stow folded it on an earlier run.\n' "$dir" >&2

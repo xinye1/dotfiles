@@ -104,7 +104,8 @@ For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg
   see is worse than none. For a file parsed before `config.d/theme`, derive the colour at runtime
   — `sway/.config/sway/scripts/cliphist_delete.sh` is the worked example.
 - **Themed files are templates.** `<name>.tmpl` renders to `<name>` with `.tmpl` stripped.
-  Rendered files match `*.gen.*` and are gitignored; editing one is pointless. The seven files
+  Rendered files match `*.gen.*` — or a bare `*.gen`, which mako's `colors.gen` is, so `.gitignore`
+  carries both globs — and are gitignored; editing one is pointless. The seven files
   read at hardcoded paths can't carry the marker and are listed individually in `.gitignore` —
   that list is structural, not growing (§2.3).
 - **Switching is `theme <name>`** (`bin/.local/bin/theme`), deliberately unbound (§7). Never

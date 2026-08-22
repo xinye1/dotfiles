@@ -2,6 +2,7 @@ autotiling
 brightnessctl
 cliphist
 fd
+firewall-applet
 foot
 fuzzel
 fzf
@@ -14,9 +15,12 @@ kanshi
 kitty
 mako
 neovim
+network-manager-applet
+networkmanager
 nwg-drawer
 pamixer
 papirus-icon-theme
+pavucontrol
 playerctl
 polkit-gnome
 poppler
@@ -30,9 +34,12 @@ sway
 swaybg
 swayidle
 swaylock
+thunar
 tmux
 ttf-jetbrains-mono-nerd
 vim
 waybar
+welcome
 wl-clipboard
+yad
 yazi
