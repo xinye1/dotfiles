@@ -241,3 +241,112 @@ def scan_jsonl(projects_dir, st, now_epoch):
     for day in list(days):
         if day < cutoff_day:
             del days[day]
+
+
+def limit_label(l):
+    kind = l.get("kind")
+    if kind == "session":
+        return "Session"
+    if kind == "weekly_all":
+        return "Weekly"
+    if kind == "weekly_scoped":
+        name = ((l.get("scope") or {}).get("model") or {}).get("display_name")
+        return f"{name or 'Scoped'} Wk"
+    return str(kind)
+
+
+def cells(pct):
+    filled = round(min(max(pct, 0), 100) * BAR_CELLS / 100)
+    return "█" * filled + "░" * (BAR_CELLS - filled)
+
+
+def _pct_color(pct, theme):
+    if pct >= 90:
+        return theme["critical"]
+    if pct >= 70:
+        return theme["warning"]
+    return theme["indicator"]
+
+
+def render(st, theme, now):
+    limits = st.get("limits") or []
+    err = st.get("limits_error")
+
+    nums = [str(int(round(l.get("percent") or 0))) for l in limits]
+    text = ICON + ("\n" + "\n".join(nums) if nums else "\n–")
+    if err:
+        cls = "stale"
+    else:
+        worst = max((l.get("percent") or 0 for l in limits), default=0)
+        cls = "critical" if worst >= 90 else "warning" if worst >= 70 else "normal"
+
+    meta = st.get("creds_meta") or {}
+    tier = (meta.get("rateLimitTier") or meta.get("subscriptionType") or "")
+    tier = pango_escape(tier.replace("_", " ").title())
+    mut, sect = theme["muted"], theme["accent"]
+    lines = [f'<b>{ICON} Claude Code</b>'
+             + (f' <span color="{mut}">· {tier}</span>' if tier else "")]
+
+    if err:
+        fetched = st.get("limits_fetched_at")
+        age = (datetime.fromtimestamp(fetched).astimezone().strftime("%H:%M")
+               if fetched else "never")
+        lines += ["", f'<span color="{theme["warning"]}">⚠ stale — '
+                      f'{pango_escape(err)}, data from {age}</span>']
+
+    if limits:
+        lines += ["", f'<span color="{sect}"><b>LIMITS</b></span>']
+        width = max(len(limit_label(l)) for l in limits)
+        for l in limits:
+            pct = l.get("percent") or 0
+            label = pango_escape(limit_label(l))
+            pad = " " * (width - len(limit_label(l)))
+            bar = f'<span color="{_pct_color(pct, theme)}">{cells(pct)}</span>'
+            reset = countdown(l.get("resets_at"), now)
+            reset = (f'  <span color="{mut}">{ICON_RESET} {reset}</span>'
+                     if reset else "")
+            lines.append(f"{label}{pad}  {bar}  <b>{int(round(pct)):>3}%</b>{reset}")
+    elif not err:
+        lines += ["", f'<span color="{mut}">no limit data yet</span>']
+
+    days = st.get("days") or {}
+    if days:
+        today = now.astimezone().date()
+        window = [today - timedelta(days=i) for i in range(6, -1, -1)]
+        totals = {d: sum((days.get(d.isoformat()) or {}).values()) for d in window}
+        peak = max(totals.values()) or 1
+        lines += ["", f'<span color="{sect}"><b>TOKENS BY DAY</b></span>']
+        for d in window:
+            name = "Today" if d == today else d.strftime("%a")
+            pad = " " * (5 - len(name))  # pad on the raw name: tags have no width
+            label = (f"<b>{name}</b>" if d == today
+                     else f'<span color="{mut}">{name}</span>')
+            n = totals[d]
+            bar = "█" * round(n / peak * BAR_CELLS) or "▏"  # hairline for ~zero days
+            lines.append(f'{label}{pad}  '
+                         f'<span color="{theme["indicator"]}">{bar}</span>'
+                         f' {humanize(n):>6}')
+        by_model = {}
+        for per_day in days.values():
+            for model, n in per_day.items():
+                by_model[model] = by_model.get(model, 0) + n
+        if by_model:
+            lines += ["", f'<span color="{sect}"><b>TOKENS BY MODEL</b></span>'
+                          f' <span color="{mut}">(7d)</span>']
+            mpeak = max(by_model.values()) or 1
+            mwidth = max(len(model_display(m)) for m in by_model)
+            for model, n in sorted(by_model.items(), key=lambda kv: -kv[1]):
+                mname = pango_escape(model_display(model))
+                pad = " " * (mwidth - len(model_display(model)))
+                bar = "█" * max(1, round(n / mpeak * BAR_CELLS))
+                lines.append(f'{mname}{pad}  '
+                             f'<span color="{theme["indicator"]}">{bar}</span>'
+                             f' {humanize(n):>6}')
+
+    stamp = st.get("limits_fetched_at")
+    when = (datetime.fromtimestamp(stamp).astimezone().strftime("%H:%M")
+            if stamp else "–")
+    lines += ["", f'<span color="{mut}">updated {when} · click {ICON}'
+                  f' to refresh</span>']
+    tooltip = f'<span face="{FACE}">' + "\n".join(lines) + "</span>"
+    return {"text": text, "tooltip": tooltip, "class": cls}

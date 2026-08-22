@@ -332,5 +332,69 @@ class ScanTest(unittest.TestCase):
         self.assertIn("claude-fable-5", st["days"]["2026-08-22"])
 
 
+class RenderTest(unittest.TestCase):
+    def fresh_state(self, **over):
+        st = {"limits": LIMITS, "limits_fetched_at": NOW.timestamp() - 60,
+              "limits_error": None,
+              "creds_meta": {"subscriptionType": "max", "rateLimitTier": "max_20x"},
+              "days": {"2026-08-22": {"claude-fable-5": 57_700_000},
+                       "2026-08-20": {"claude-opus-5": 256_200_000}}}
+        st.update(over)
+        return st
+
+    def test_bar_text_stacks_all_limit_rows(self):
+        out = cu.render(self.fresh_state(), cu.FALLBACK_THEME, NOW)
+        self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
+        self.assertEqual(out["class"], "warning")  # worst = 70
+
+    def test_class_thresholds(self):
+        st = self.fresh_state()
+        st["limits"] = [dict(LIMITS[0], percent=95)]
+        self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], "critical")
+        st["limits"] = [dict(LIMITS[0], percent=10)]
+        self.assertEqual(cu.render(st, cu.FALLBACK_THEME, NOW)["class"], "normal")
+
+    def test_stale_class_and_banner(self):
+        out = cu.render(self.fresh_state(limits_error="HTTP 429"),
+                        cu.FALLBACK_THEME, NOW)
+        self.assertEqual(out["class"], "stale")
+        self.assertIn("stale", out["tooltip"])
+        self.assertIn("HTTP 429", out["tooltip"])
+
+    def test_never_logged_in(self):
+        out = cu.render({"limits_error": "not logged in"}, cu.FALLBACK_THEME, NOW)
+        self.assertEqual(out["text"], f"{cu.ICON}\n–")
+        self.assertEqual(out["class"], "stale")
+        self.assertIn("not logged in", out["tooltip"])
+
+    def test_tooltip_content_and_escaping(self):
+        st = self.fresh_state()
+        st["limits"] = [dict(LIMITS[2])]
+        st["limits"][0]["scope"] = {"model": {"display_name": "Fab<le&"}}
+        out = cu.render(st, cu.FALLBACK_THEME, NOW)
+        tip = out["tooltip"]
+        self.assertIn('face="JetBrainsMono Nerd Font"', tip)
+        self.assertIn("Fab&lt;le&amp; Wk", tip)      # escaped label
+        self.assertIn("TOKENS BY DAY", tip)
+        self.assertIn("Today", tip)
+        self.assertIn("57.7M", tip)
+        self.assertIn("Opus 5", tip)                  # model chart
+        self.assertIn("Max 20X", tip)                 # tier from creds_meta
+        self.assertNotIn("<synthetic>", tip)
+
+    def test_unknown_limit_kind_not_dropped(self):
+        st = self.fresh_state()
+        st["limits"] = [{"kind": "mystery_window", "percent": 12,
+                         "resets_at": None, "scope": None}]
+        out = cu.render(st, cu.FALLBACK_THEME, NOW)
+        self.assertIn("mystery_window", out["tooltip"])
+        self.assertEqual(out["text"], f"{cu.ICON}\n12")
+
+    def test_cells(self):
+        self.assertEqual(cu.cells(0), "░" * 16)
+        self.assertEqual(cu.cells(100), "█" * 16)
+        self.assertEqual(cu.cells(50).count("█"), 8)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
