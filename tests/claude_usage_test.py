@@ -179,6 +179,48 @@ class RefreshTest(unittest.TestCase):
         self.assertEqual(st["limits_error"], "token expired")
         boom.assert_not_called()
 
+    def test_force_debounce_survives_failure(self):
+        # With an always-failing urlopen, two forced calls 5s apart should make exactly ONE attempt
+        st = {}
+        fail_mock = mock.MagicMock(side_effect=Exception("fail"))
+        cu.refresh_limits(st, self.creds, True, 1000.0, urlopen=fail_mock)
+        fail_mock.assert_called_once()  # first call attempts fetch
+        self.assertEqual(st["limits_forced_at"], 1000.0)
+        self.assertEqual(st["limits_error"], "network error")
+        # Second call 5s later should be debounced (< 30s)
+        boom = mock.MagicMock(side_effect=AssertionError("must not fetch"))
+        cu.refresh_limits(st, self.creds, True, 1005.0, urlopen=boom)
+        boom.assert_not_called()
+
+
+class CredsShapeTest(unittest.TestCase):
+    def test_non_dict_json_null(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / ".credentials.json"
+            p.write_text("null")
+            tok, err, meta = cu.read_credentials(p, 0)
+        self.assertIsNone(tok)
+        self.assertEqual(err, "not logged in")
+        self.assertEqual(meta, {})
+
+    def test_non_dict_json_array(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / ".credentials.json"
+            p.write_text("[]")
+            tok, err, meta = cu.read_credentials(p, 0)
+        self.assertIsNone(tok)
+        self.assertEqual(err, "not logged in")
+        self.assertEqual(meta, {})
+
+    def test_non_dict_json_string(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / ".credentials.json"
+            p.write_text('"42"')
+            tok, err, meta = cu.read_credentials(p, 0)
+        self.assertIsNone(tok)
+        self.assertEqual(err, "not logged in")
+        self.assertEqual(meta, {})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

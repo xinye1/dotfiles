@@ -100,7 +100,11 @@ def read_credentials(path, now_epoch):
         data = json.loads(Path(path).read_text())
     except (OSError, ValueError):
         return None, "not logged in", {}
+    if not isinstance(data, dict):
+        return None, "not logged in", {}
     oauth = data.get("claudeAiOauth") or {}
+    if not isinstance(oauth, dict):
+        return None, "not logged in", {}
     meta = {k: oauth[k] for k in ("subscriptionType", "rateLimitTier") if oauth.get(k)}
     token = oauth.get("accessToken")
     if not token:
@@ -134,6 +138,7 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     if force:
         if now_epoch - st.get("limits_forced_at", 0) < FORCE_DEBOUNCE:
             return
+        st["limits_forced_at"] = now_epoch
     elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
         return
     try:
@@ -146,6 +151,4 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         print(f"claude_usage: {e}", file=sys.stderr)
     else:
         st["limits_fetched_at"] = now_epoch
-        if force:
-            st["limits_forced_at"] = now_epoch
         st["limits_error"] = None
