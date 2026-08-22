@@ -6,7 +6,12 @@ if [[ "$(systemctl is-enabled suspend.target 2>/dev/null)" == "masked" ]]; then
 fi
 LINE_COUNT="$(printf '%s' "$MENU" | grep -c .)"
 
-SELECTION="$(printf "$MENU" | fuzzel --dmenu -a top-right -l "$LINE_COUNT" -w 18 -p "Select an option: ")"
+# '%s\n' and not "$MENU": the menu is DATA, and `printf "$MENU"` hands it to
+# printf as the FORMAT string. It works only because no label happens to hold
+# a % or a backslash today. The day one does, printf eats it and that row goes
+# missing from the picker with no error anywhere -- a power menu quietly one
+# entry short. Same reason line 7 already spells it `printf '%s'`.
+SELECTION="$(printf '%s\n' "$MENU" | fuzzel --dmenu -a top-right -l "$LINE_COUNT" -w 18 -p "Select an option: ")"
 
 confirm_action() {
     local action="$1"
