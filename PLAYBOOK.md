@@ -65,7 +65,7 @@ greetd
 
 ### 2.2 How GTK theming actually reaches applications
 
-There are four parallel mechanisms, and they do not agree with each other by default:
+There are five parallel mechanisms, and they do not agree with each other by default:
 
 ```
 ~/.config/gtk-3.0/settings.ini ──┬──> GTK3 apps read this file directly
