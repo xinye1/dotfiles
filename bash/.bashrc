@@ -43,12 +43,20 @@ alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
 # working directory — so yazi writes the path to --cwd-file and the wrapper
 # reads it back. This is yazi's own documented recipe; the guards are ours.
 # https://yazi-rs.github.io/docs/quick-start/#shell-wrapper
+#
+# Two more guards on top of the recipe: bail out if mktemp itself fails
+# (otherwise --cwd-file="" and the read/rm below run on a path that was never
+# created), and capture yazi's exit status before the cleanup rm overwrites
+# $? — callers checking `y`'s exit code should see yazi's, not rm's.
 function y() {
-	local tmp cwd; tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+	local tmp cwd status
+	tmp="$(mktemp -t "yazi-cwd.XXXXXX")" || return
 	command yazi "$@" --cwd-file="$tmp"
+	status=$?
 	IFS= read -r -d '' cwd < "$tmp"
 	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd" || builtin true
 	command rm -f -- "$tmp"
+	return "$status"
 }
 
 # --- mise: per-project tool versions ---------------------------------------
