@@ -93,16 +93,22 @@ LIMITS = [
 
 
 def fake_urlopen(payload):
+    # Explicit raises, not bare asserts: these checks must survive `python -O`.
     def opener(req, timeout=None):
-        assert req.get_header("Authorization") == "Bearer tok"
-        # Header name capitalization is normalized by urllib on storage
-        # (add_header uses str.capitalize()); get_header applies the same
-        # normalization to its own argument, so "Anthropic-beta" is the
-        # correct lookup key for a header added as "anthropic-beta".
-        assert req.get_header("Anthropic-beta") == "oauth-2025-04-20"
-        assert timeout == cu.FETCH_TIMEOUT
+        # urllib normalizes header names on STORAGE (add_header uses
+        # str.capitalize()); get_header does a raw lookup, so
+        # "Anthropic-beta" is the correct key for "anthropic-beta".
+        if req.get_header("Authorization") != "Bearer tok":
+            raise AssertionError("missing/wrong Authorization header")
+        if req.get_header("Anthropic-beta") != "oauth-2025-04-20":
+            raise AssertionError("missing/wrong anthropic-beta header")
+        if timeout != cu.FETCH_TIMEOUT:
+            raise AssertionError(f"timeout {timeout!r} != FETCH_TIMEOUT")
         body = io.BytesIO(jsonlib.dumps(payload).encode())
-        return mock.MagicMock(__enter__=lambda s: body, __exit__=mock.MagicMock())
+        # __exit__ must return False — a truthy MagicMock would make the
+        # with-block suppress exceptions raised by the code under test.
+        return mock.MagicMock(__enter__=lambda s: body,
+                              __exit__=lambda *a: False)
     return opener
 
 
