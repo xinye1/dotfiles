@@ -418,21 +418,32 @@ def cells(pct, mark=None, mark_color=None, fill_color=None):
     tags before counting — so the marker takes its own colour by nesting a
     span inside the fill-coloured one render() wraps around this.
 
-    Inside the filled run that nested span also takes `fill_color` as its
-    BACKGROUND. PACE_MARK is a thin stroke on an otherwise empty cell, so
-    without it the tooltip's own background shows through on either side and
-    the rule reads as a notch bitten out of the bar rather than a line drawn
-    across it. The bright stroke is already distinct from every threshold
-    colour, so that gap was never what made it legible. Past the fill there is
-    nothing to cut into, so the background is left alone — painting it there
-    would colour an unused cell as used, which is the one thing this bar must
-    never do.
+    That nested span also carries a BACKGROUND built from `fill_color`, because
+    PACE_MARK is a thin stroke on an otherwise empty cell: without one the
+    tooltip's own background shows through either side and the rule reads as a
+    notch bitten out of the bar rather than a line drawn across it. The bright
+    stroke is already distinct from every threshold colour, so that gap was
+    never what made it legible.
+
+    The background reproduces the DENSITY of the glyph it replaced, which is
+    what makes the cell disappear into its neighbours in both halves of the
+    bar: opaque over a █, and 25% over a ░, U+2591 being the 25%-density
+    shade. Rendering the two side by side and measuring puts the light-shade
+    track at ~28% of the way from the tooltip background to the fill colour,
+    so the nominal 25% lands within a few percent of it by eye. Tinting rather
+    than filling is also what keeps the cell honest past the fill — an opaque
+    cell out there would colour unused capacity as used, which is the one lie
+    this bar must never tell.
     """
     filled = round(min(max(pct, 0), 100) * BAR_CELLS / 100)
     bar = ["█"] * filled + ["░"] * (BAR_CELLS - filled)
     if mark is not None and 0 <= mark < BAR_CELLS:
         if mark_color:
-            bg = f' bgcolor="{fill_color}"' if fill_color and mark < filled else ""
+            bg = ""
+            if fill_color:
+                bg = f' bgcolor="{fill_color}"'
+                if mark >= filled:
+                    bg += ' bgalpha="25%"'      # match ░, never read as used
             bar[mark] = f'<span color="{mark_color}"{bg}>{PACE_MARK}</span>'
         else:
             bar[mark] = PACE_MARK
