@@ -57,6 +57,18 @@ def humanize(n):
 def countdown(resets_at, now):
     if not resets_at:
         return ""
+    if not isinstance(resets_at, str):
+        # fetch_limits() always coerces resets_at to str-or-None, so a fresh
+        # API response can't reach here with the wrong type. The only way in
+        # is state.json: main() only checks that the top-level object is a
+        # dict (`if not isinstance(st, dict)`), never the shape of what's
+        # nested inside it, so a corrupted or hand-edited cache file can still
+        # hand this a truthy int/dict/list. Without this guard that reaches
+        # `.replace` below and raises AttributeError, which the except clause
+        # doesn't catch -- same no-self-heal failure as the naive-timestamp
+        # case documented there: it escapes render() and main() before the
+        # state write, so the TTL never starts and every tick re-crashes.
+        return ""
     try:
         dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
         # A NAIVE timestamp is the one shape that used to blank the whole

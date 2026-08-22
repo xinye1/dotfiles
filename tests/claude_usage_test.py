@@ -63,6 +63,22 @@ class FormatTest(unittest.TestCase):
         # body and raise TypeError there instead of on an attribute lookup.
         self.assertEqual(cu.countdown(b"2026-08-22T15:13:00Z", NOW), "")
 
+    def test_countdown_non_string_resets_at_from_corrupted_state(self):
+        # fetch_limits() always coerces resets_at to str-or-None, so this
+        # shape can only reach countdown() via a corrupted or hand-edited
+        # state.json -- main() only checks the top-level object is a dict,
+        # never what's nested inside it. A truthy non-string used to fail
+        # even earlier than the naive-timestamp case above: `resets_at
+        # .replace(...)` raised AttributeError, which the ValueError/
+        # TypeError except did not catch, so it escaped render() and main()
+        # the same way and for the same reason -- the crash precedes the
+        # state write, so the TTL never starts and every tick re-crashes.
+        self.assertEqual(cu.countdown(1750000000, NOW), "")
+
+    def test_countdown_dict_or_list_resets_at_from_corrupted_state(self):
+        self.assertEqual(cu.countdown({"x": 1}, NOW), "")
+        self.assertEqual(cu.countdown(["a"], NOW), "")
+
     def test_model_display(self):
         self.assertEqual(cu.model_display("claude-fable-5"), "Fable 5")
         self.assertEqual(cu.model_display("claude-opus-5"), "Opus 5")
@@ -535,6 +551,23 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
         self.assertEqual(st["files"][str(f)]["offset"], f.stat().st_size)
 
+    @staticmethod
+    def _break_scan_file(bad_path):
+        # chmod 000 does nothing to open() as root -- the locked transcript
+        # reads successfully and these tests would fail even though
+        # scan_jsonl() is correct. Patching _scan_file to raise for exactly
+        # one path exercises the same OSError boundary without depending on
+        # filesystem permissions (or who the test process runs as), and the
+        # side_effect still calls the real implementation for every other
+        # path so its behaviour isn't otherwise faked.
+        real_scan_file = cu._scan_file
+
+        def side_effect(path, *args, **kwargs):
+            if path == str(bad_path):
+                raise PermissionError(13, "Permission denied", path)
+            return real_scan_file(path, *args, **kwargs)
+        return mock.patch.object(cu, "_scan_file", side_effect=side_effect)
+
     def test_unreadable_file_costs_only_that_file(self):
         # ~/.claude is foreign, read-only territory (§9.23): the widget does
         # not own what is in there and cannot stop a file becoming unopenable.
@@ -548,10 +581,9 @@ class ScanTest(unittest.TestCase):
         locked = self.proj / "aaa-locked.jsonl"
         locked.write_text(
             usage_line("2026-08-22T10:00:00.000Z", "claude-opus-5", "m2", "r2"))
-        os.chmod(locked, 0o000)
-        with contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stderr(io.StringIO()), \
+             self._break_scan_file(locked):
             st = self.scan({})
-        os.chmod(locked, 0o600)
         self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 100})
         self.assertIn(str(good), st["files"])
         self.assertNotIn(str(locked), st["files"])
@@ -568,10 +600,9 @@ class ScanTest(unittest.TestCase):
         with f.open("a") as fh:  # grow it, so the next tick would want to read
             fh.write(usage_line("2026-08-22T11:00:00.000Z", "claude-opus-5",
                                 "m2", "r2"))
-        os.chmod(f, 0o000)
-        with contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stderr(io.StringIO()), \
+             self._break_scan_file(f):
             self.scan(st)
-        os.chmod(f, 0o600)
         self.assertEqual(st["files"][str(f)], before)
         self.scan(st)
         self.assertEqual(st["days"]["2026-08-22"],
@@ -668,6 +699,18 @@ class RenderTest(unittest.TestCase):
         out = cu.render(st, cu.FALLBACK_THEME, NOW)
         self.assertEqual(out["text"], f"{cu.ICON}\n44")
         self.assertIn("3h 13m", out["tooltip"])
+
+    def test_non_string_reset_timestamp_still_renders(self):
+        # The other half of the countdown() hardening: a corrupted state.json
+        # can hand render() an int/dict/list where resets_at should be a str.
+        # Before the isinstance guard this raised AttributeError out of
+        # countdown(), out of render(), out of main() -- the same
+        # no-self-heal failure as the naive-timestamp case above, from a
+        # different shape.
+        st = self.fresh_state()
+        st["limits"] = [dict(LIMITS[0], percent=44, resets_at=1750000000)]
+        out = cu.render(st, cu.FALLBACK_THEME, NOW)
+        self.assertEqual(out["text"], f"{cu.ICON}\n44")
 
     def test_cells(self):
         self.assertEqual(cu.cells(0), "░" * 16)
