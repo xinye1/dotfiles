@@ -7,7 +7,6 @@ fuzzel
 fzf
 git
 grim
-gtklock
 htop
 imagemagick
 jq
@@ -30,6 +29,7 @@ swappy
 sway
 swaybg
 swayidle
+swaylock
 tmux
 ttf-jetbrains-mono-nerd
 vim
