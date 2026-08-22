@@ -375,7 +375,17 @@ def download(entry, dest, minimum):
     finally:
         # A no-op on the success path -- os.replace has already consumed the
         # name -- which is exactly why it can be unconditional.
-        tmp.unlink(missing_ok=True)
+        #
+        # Guarded even so: missing_ok covers ENOENT and nothing else, so a
+        # cache directory that lost write permission raises PermissionError
+        # out of the `finally` itself and takes the whole run with it -- the
+        # exact abort the try/except above exists to prevent, reintroduced by
+        # the cleanup for it. Losing a temp file is worth a line of stderr,
+        # never the other 157 images.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError as err:
+            problem(f"{entry['name']}: could not remove {tmp.name}: {err}")
 
 
 # --- the sync itself ---------------------------------------------------------
