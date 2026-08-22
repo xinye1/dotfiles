@@ -118,7 +118,7 @@
         },
         "on-click": "kitty -T waybar_htop -e htop"
     },
-    
+
     "memory": {
         "interval": 5,
         "format": "\n{}%",

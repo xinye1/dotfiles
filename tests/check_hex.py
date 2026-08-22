@@ -10,17 +10,32 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Suffix -> the regex matching a comment line in that language. The same table
+# lives in check_includes.py, which needs the identical knowledge for the
+# identical reason; keep the two in step.
 COMMENT_MARKERS = {
-    ".vim": (r'"', r'^\s*"'),
-    ".lua": (None, r'^\s*--'),
-    ".css": (None, r'^\s*(/\*|\*)'),
-    ".toml": (None, r'^\s*#'),
-    ".ini": (None, r'^\s*#'),
-    ".conf": (None, r'^\s*#'),
-    ".sh": (None, r'^\s*#'),
-    ".json": (None, r'^\s*//'),      # waybar's JSON accepts // comments
+    ".vim": r'^\s*"',
+    ".lua": r'^\s*--',
+    ".css": r'^\s*(/\*|\*)',
+    ".toml": r'^\s*#',
+    ".ini": r'^\s*#',
+    ".conf": r'^\s*#',
+    ".sh": r'^\s*#',
+    ".json": r'^\s*//',              # waybar's JSON accepts // comments
 }
+# Extensionless and unknown: `#` covers sway's config.d, foot, mako, htoprc and
+# the shell rc files. Deliberately NOT `"` — that is vimscript's rule alone,
+# and applying it everywhere is the bug this file's docstring describes.
 DEFAULT_COMMENT = r'^\s*#'
+# waybar's `config` is JSONC too, but has no suffix to key COMMENT_MARKERS on,
+# so without this it falls through to DEFAULT_COMMENT and a `//`-commented hex
+# reads as a live one. Keyed by the exact repo-relative path rather than
+# basename: kanshi and mako also ship an extensionless `config`, and those
+# really are `#`-commented, so matching on the filename alone would break
+# them. Same table, same reason, as check_includes.py — keep the two in step.
+PATH_COMMENT_MARKERS = {
+    "waybar/.config/waybar/config": r'^\s*//',
+}
 # 3-, 4-, 6- and 8-digit forms are all legal CSS/GTK colours.
 HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
 # ...but not every consumer spells a colour with a leading `#`. fuzzel's -t/-S
@@ -38,8 +53,10 @@ SKIP_PREFIX = ("tests/", "docs/")
 SKIP_EXACT = {"palettes.toml"}
 
 
-def comment_re(path):
-    return re.compile(COMMENT_MARKERS.get(path.suffix, (None, DEFAULT_COMMENT))[1])
+def comment_re(rel, path):
+    if rel in PATH_COMMENT_MARKERS:
+        return re.compile(PATH_COMMENT_MARKERS[rel])
+    return re.compile(COMMENT_MARKERS.get(path.suffix, DEFAULT_COMMENT))
 
 
 def main(repo):
@@ -55,7 +72,7 @@ def main(repo):
             text = path.read_text()
         except (OSError, UnicodeDecodeError):
             continue
-        skip = comment_re(path)
+        skip = comment_re(rel, path)
         for n, line in enumerate(text.splitlines(), 1):
             if skip.match(line):
                 continue

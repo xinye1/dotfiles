@@ -37,12 +37,13 @@ you add or change a *role*, and it moves everywhere that role is used. That is t
 desktop previously drifted into four incompatible palettes precisely because each config was
 themed by hand.
 
-**Generated files are disposable, and named so you can tell.** Anything matching `*.gen.*` is a
-build artefact. Editing one is pointless — the next switch overwrites it. This is what lets
-`.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to be, and what
-makes "did switching dirty the tree?" a question with a permanent answer of no. Seven files cannot
-carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded name and take
-no include; those are listed one by one in `.gitignore`, next to the reason.
+**Generated files are disposable, and named so you can tell.** Anything matching `*.gen.*` — or a
+bare `*.gen`, which is what mako's `colors.gen` is, because mako's `include=` names the file with
+no suffix at all — is a build artefact. Editing one is pointless: the next switch overwrites it.
+That is what lets `.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to
+be, and what makes "did switching dirty the tree?" a question with a permanent answer of no. Seven
+files cannot carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded
+name and take no include; those are listed one by one in `.gitignore`, next to the reason.
 
 **Nothing is clever that could be obvious.** Stow does the linking; `setup.sh` only sequences the
 documented steps and would change nothing if you typed them from PLAYBOOK §8 instead. `theme`
@@ -55,7 +56,7 @@ will be broken.
 What this costs, stated plainly, because a reader deserves it up front:
 
 - You cannot theme one application differently from the rest without adding a role.
-- A palette switch is a render, not a symlink flip, so it writes ~18 files rather than relinking 18.
+- A palette switch is a render, not a symlink flip, so it writes 19 files rather than relinking 19.
 - `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
   adding a themed file to `gtk`, `vim` or `yazi` — the unfolded packages that carry
   templates. See PLAYBOOK §5.2.
@@ -81,7 +82,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
 | `sway` | `~/.config/sway/` — `config`, `config.d/`, `scripts/` |
 | `kanshi` | `~/.config/kanshi/config` |
-| `gtk` | `~/.config/gtk-3.0/`, `gtk-4.0/`, `xsettingsd/`, `~/.gtkrc-2.0` |
+| `gtk` | `~/.config/gtk-3.0/`, `gtk-4.0/`, `xsettingsd/`, `~/.gtkrc-2.0`, `~/.icons/` |
 | `mako` | `~/.config/mako/config` |
 | `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
 | `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |

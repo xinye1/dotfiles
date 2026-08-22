@@ -5,9 +5,16 @@
 # Wayland clients get their settings from gsettings instead (see
 # sway/.config/sway/scripts/import-gsettings).
 #
-# NOTE: xsettingsd is not currently running, so nothing is consuming this file
-# today. It is tracked and kept correct so that starting the daemon works
-# immediately; actually starting it is out of scope for this task.
+# NOTE: xsettingsd is NOT INSTALLED on this machine — not merely stopped. There
+# is no binary, nothing starts one, and nothing reads this file: as rendered it
+# is inert. "Not currently running" understated that for a long time and read
+# as if a daemon were one `systemctl start` away.
+#
+# It is tracked and kept correct anyway, because it costs one template and the
+# alternative is discovering at install time that the one GTK mechanism reaching
+# XWayland clients was never themed. `pacman -S xsettingsd` and something to
+# start it are what turn this file live; until then, XWayland clients fall back
+# to whatever gtk-3.0/settings.ini and Xft give them.
 Net/ThemeName "{{gtk_theme_name}}"
 Net/IconThemeName "Papirus-Dark"
 Gtk/CursorThemeName "Qogir-Dark"

@@ -41,14 +41,51 @@ rm -rf "$WORK/dotfiles/.git"
 SANDBOX=$WORK/dotfiles
 
 # Stubs: the desktop must never be touched by a test run.
+#
+# The list is DERIVED from `theme` itself, not hand-written. It was
+# hand-written, and it went stale: `kitty` became a reload target in `theme`
+# and was never added here, so shutil.which("kitty") found the REAL binary and
+# every run of this "never touches the live desktop" suite made all of the
+# user's live kitty windows re-read their config -- ten times per run,
+# discarding whatever runtime overrides they were holding. Every external
+# binary `theme` names is either a shutil.which("x") or the first element of a
+# subprocess argv list, so matching those two shapes cannot silently miss the
+# next reload target the way a hand-kept list did.
 mkdir -p "$WORK/bin"
-for stub in swaymsg sway makoctl papirus-folders; do
+stubs=$(grep -oE '(shutil\.which|run_ok|subprocess\.run)\(\[?"[a-z0-9_.-]+"' \
+            "$SANDBOX/bin/.local/bin/theme" \
+        | grep -oE '"[a-z0-9_.-]+"' | tr -d '"' | sort -u)
+# A floor, not the list. The derivation may only ever ADD to this; if it ever
+# matches nothing -- `theme` rewritten, a call spelled another way -- that has
+# to be loud here rather than silent on the user's desktop.
+for required in swaymsg sway makoctl papirus-folders kitty; do
+    printf '%s\n' $stubs | grep -qx "$required" || {
+        printf 'theme_test: no "%s" found in bin/.local/bin/theme by the stub\n' "$required" >&2
+        printf 'theme_test: derivation, so it would not be stubbed and the real\n' >&2
+        printf 'theme_test: binary would run. Refusing. Derived: %s\n' "$(printf '%s ' $stubs)" >&2
+        exit 2
+    }
+done
+for stub in $stubs; do
     printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/$stub"
     chmod +x "$WORK/bin/$stub"
 done
 HOME_REAL=$HOME
 PATH=$WORK/bin:$PATH
 export PATH HOME=$WORK
+# $HOME alone does not sandbox `theme`: state_file() reads $XDG_STATE_HOME
+# FIRST and only falls back to ~/.local/state, so an exported XDG_STATE_HOME
+# wins over the fake HOME and the suite writes the user's real remembered
+# palette -- after which the next bare `theme`, or ./setup.sh, flips their
+# desktop. It is merely unset on this machine today; one line in a profile is
+# all it takes. The note further down about being left "on a different palette.
+# Silently." is this same shape, caught once for the in-repo .theme file and
+# not for the XDG one. Point the whole set inside the sandbox, not just the one
+# variable `theme` happens to read today.
+export XDG_STATE_HOME=$WORK/.local/state
+export XDG_CACHE_HOME=$WORK/.cache
+export XDG_CONFIG_HOME=$WORK/.config
+export XDG_DATA_HOME=$WORK/.local/share
 
 theme() { python3 "$SANDBOX/bin/.local/bin/theme" "$@" 2>&1; }
 
@@ -97,17 +134,39 @@ case $missing in
     *)                ok "every placeholder resolves in both palettes" ;;
 esac
 
+# The checksums below are driven off the TEMPLATE list, never off a glob of the
+# outputs. `-name '*.gen*'` was the glob, and it structurally cannot match the
+# seven rendered files that carry no marker -- gtk-{3,4}.0/gtk.css,
+# gtk-{3,4}.0/settings.ini, xsettingsd.conf, .gtkrc-2.0, yazi/theme.toml --
+# because they are read at hardcoded paths and cannot be renamed (§2.3). Seven
+# of nineteen escaped both checks below, and they are precisely the ones whose
+# failure modes are silent: an undefined GTK @name renders black with no error
+# (§9.10), a dropped yazi key is ignored without a warning (§9.22).
+#
+# Every `*.tmpl` renders to itself with the suffix stripped, so the templates
+# ARE the list of outputs, and no naming convention can leave one out.
+rendered_files() { find "$SANDBOX" -name '*.tmpl' -type f | sed 's/\.tmpl$//' | sort; }
+rendered_sum()   { rendered_files | tr '\n' '\0' | xargs -0 cat | md5sum; }
+
+theme --no-icons gruvbox >/dev/null
+
+# ...which is only true while every template has actually produced its output.
+# A missing one would otherwise drop silently out of both checksums and take
+# its coverage with it -- the same failure the glob had, one level down.
+want=$(rendered_files | wc -l)
+got=$(rendered_files | while IFS= read -r f; do [ -f "$f" ] && printf 'x\n'; done | wc -l)
+check "every template renders an output the checksums cover" "$got" "$want"
+
 # Deterministic: rendering twice must produce identical bytes.
+sum1=$(rendered_sum)
 theme --no-icons gruvbox >/dev/null
-sum1=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
-theme --no-icons gruvbox >/dev/null
-sum2=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
+sum2=$(rendered_sum)
 check "rendering is deterministic" "$sum1" "$sum2"
 
 # Switching and switching back must return the original bytes.
 theme --no-icons nord >/dev/null
 theme --no-icons gruvbox >/dev/null
-sum3=$(find "$SANDBOX" -name '*.gen*' ! -name '*.tmpl' -type f -exec cat {} + | md5sum)
+sum3=$(rendered_sum)
 check "switching round-trips" "$sum3" "$sum1"
 
 # --- the palette table ------------------------------------------------------

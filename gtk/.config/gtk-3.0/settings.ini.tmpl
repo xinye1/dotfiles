@@ -3,6 +3,13 @@
 #
 # settings.ini has no include mechanism, so the whole file is switched. The
 # non-colour half (fonts, hinting, toolbar) is duplicated into
+# gtk-4.0/settings.ini.tmpl — or rather, the part of it GTK4 still reads is:
+# gtk-icon-theme-name, gtk-font-name, gtk-cursor-theme-name,
+# gtk-cursor-theme-size and gtk-application-prefer-dark-theme, byte-identical
+# there. The toolbar, button/menu-image, event-sound and Xft keys below are
+# GTK3-only, have no GTK4 counterpart, and are deliberately absent from it.
+# Only gtk-theme-name carries a placeholder — change a font or a cursor here
+# and it has to change there too, because nothing checks the two agree.
 [Settings]
 gtk-theme-name={{gtk_theme_name}}
 gtk-icon-theme-name=Papirus-Dark

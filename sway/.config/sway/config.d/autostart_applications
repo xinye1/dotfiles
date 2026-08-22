@@ -61,7 +61,7 @@ exec mako
 # foot server so $mod+Return was instant. $term is now plain `kitty`, one
 # process per window (config.d/default has the measurements behind that), so
 # there is no daemon to prewarm and nothing to translate the line into. An
-# `exec_always` starting one would be the process-per-reload leak §9.9 warns
+# `exec_always` starting one would be the process-per-reload leak §9.2 warns
 # about, and kitty starts in ~220ms anyway.
 #
 # foot is still installed and still works, standalone, as `foot`. It just is
@@ -73,7 +73,7 @@ exec autotiling
 # cliphist
 exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
-     
+
 # Network Applet
 exec nm-applet --indicator
 

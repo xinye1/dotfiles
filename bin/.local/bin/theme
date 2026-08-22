@@ -166,11 +166,25 @@ def run_ok(cmd):
 
 
 def reload_desktop(home):
-    """sway reload also restarts waybar, re-runs import-gsettings and nwg-drawer."""
+    """sway reload also restarts waybar, re-runs import-gsettings and nwg-drawer.
+
+    Returns False if sway's config is invalid, so the caller can still exit
+    non-zero — but only after every OTHER consumer has had its reload.
+
+    Nothing in here aborts, deliberately. By the time this runs, all nineteen
+    files and the state file are already written, so giving up early cannot
+    undo the switch; it only skips the consumers further down. An invalid sway
+    config used to die() on the spot, which left mako and every open kitty
+    window on the OLD palette for a reason that had nothing to do with either
+    of them, said nothing about the switch being half-applied, and sent a bare
+    `theme` afterwards straight back to the same place.
+    """
+    sway_valid = True
     if shutil.which("swaymsg") and run_ok(["swaymsg", "-t", "get_version"]):
         if not run_ok(["sway", "--validate", "-c", str(home / ".config/sway/config")]):
-            die("sway config is invalid; not reloading")
-        if run_ok(["swaymsg", "reload"]):
+            sway_valid = False
+            print("  sway  NOT reloaded: its config is invalid")
+        elif run_ok(["swaymsg", "reload"]):
             print("  sway, waybar, nwg-drawer, gsettings  reloaded")
         else:
             print("  swaymsg reload FAILED; the rendered files are in place "
@@ -181,6 +195,7 @@ def reload_desktop(home):
     if shutil.which("makoctl") and run_ok(["makoctl", "reload"]):
         print("  mako                                  reloaded")
     reload_kitty()
+    return sway_valid
 
 
 def reload_kitty():
@@ -248,9 +263,21 @@ def main(argv):
         die(f"no palette named '{name}' (have: {', '.join(sorted(data))})")
 
     apply_theme(root, name, data)
-    reload_desktop(Path(os.path.expanduser("~")))
+    sway_valid = reload_desktop(Path(os.path.expanduser("~")))
     if want_icons:
         reload_icons(bindings(data[name], name))
+    if not sway_valid:
+        # Same exit code the die() inside reload_desktop() used to give, but
+        # raised here — after mako, kitty and the icons have had their turn —
+        # and saying which half of the switch landed, because "not reloading"
+        # on its own reads as "nothing happened", and nothing is what did not
+        # happen.
+        die(f"sway's config is invalid, so sway was NOT reloaded — nor waybar, "
+            f"nwg-drawer or gsettings, which its reload restarts.\n"
+            f"       Everything else IS on [{name}]: the files are rendered, "
+            f"the palette is remembered, mako and kitty were reloaded above.\n"
+            f"       Fix it (sway --validate -c ~/.config/sway/config), then "
+            f"re-run: theme")
     return 0
 
 

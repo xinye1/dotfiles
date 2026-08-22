@@ -31,8 +31,43 @@ PATTERNS = [
     r'"(~/\.config/[^"]+)"',
     r"stdpath\('config'\) \.\. '(/[\w.-]+)'",
 ]
-COMMENT = re.compile(r'^\s*(#|//|--|"|/\*|\*)')
+# Comment syntax is per-language, and getting that wrong here silently disabled
+# the pattern this file exists for. A single alternation with `"` in it treats
+# a leading double quote as a comment marker in EVERY file type; every line of
+# waybar's JSON starts with a quoted key, so every one of them was skipped and
+# the `"include": [...]` pattern below could never fire. Repointing waybar's
+# include at a file no template renders still exited 0.
+#
+# Same table, same reason, as check_hex.py — keep the two in step.
+COMMENT_MARKERS = {
+    ".vim": r'^\s*"',
+    ".lua": r'^\s*--',
+    ".css": r'^\s*(/\*|\*)',
+    ".toml": r'^\s*#',
+    ".ini": r'^\s*#',
+    ".conf": r'^\s*#',
+    ".sh": r'^\s*#',
+    ".json": r'^\s*//',              # waybar's JSON accepts // comments
+}
+# Extensionless and unknown: `#` covers sway's config.d, foot, mako, htoprc and
+# the shell rc files.
+DEFAULT_COMMENT = r'^\s*#'
+# waybar's `config` is JSONC too, but has no suffix to key COMMENT_MARKERS on,
+# so without this it falls through to DEFAULT_COMMENT and a `//`-commented
+# include reads as live. Keyed by the exact repo-relative path rather than
+# basename: kanshi and mako also ship an extensionless `config`, and those
+# really are `#`-commented, so matching on the filename alone would break
+# them. Same table, same reason, as check_hex.py — keep the two in step.
+PATH_COMMENT_MARKERS = {
+    "waybar/.config/waybar/config": r'^\s*//',
+}
 INTERESTING = re.compile(r'colors|colorscheme|theme\.')
+
+
+def comment_re(rel, path):
+    if rel in PATH_COMMENT_MARKERS:
+        return re.compile(PATH_COMMENT_MARKERS[rel])
+    return re.compile(COMMENT_MARKERS.get(path.suffix, DEFAULT_COMMENT))
 
 
 def home_relative(package_path):
@@ -62,12 +97,14 @@ def main(repo):
     for rel in files:
         if rel.endswith((".tmpl", ".md")) or rel.startswith(("tests/", "docs/")):
             continue
+        path = repo / rel
         try:
-            text = (repo / rel).read_text()
+            text = path.read_text()
         except (OSError, UnicodeDecodeError):
             continue
+        skip = comment_re(rel, path)
         for line in text.splitlines():
-            if COMMENT.match(line):
+            if skip.match(line):
                 continue
             for pat in PATTERNS:
                 m = re.search(pat, line.strip())
