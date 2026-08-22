@@ -27,4 +27,12 @@ geom=$(swaymsg -t get_tree \
        | slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 1
 [ -n "$geom" ] || exit 1
 
-grim -g "$geom" - | swappy -f -
+# Via a file rather than `grim … - | swappy -f -`: in a pipeline swappy starts
+# regardless, so a grim that fails halfway still puts an empty editor on the
+# screen. Writing first means a grim failure ends the script (set -e) before
+# swappy is ever reached.
+shot=$(mktemp -t "screenshot_window.XXXXXX.png") || exit 1
+trap 'rm -f "$shot"' EXIT HUP INT TERM
+
+grim -g "$geom" "$shot"
+swappy -f "$shot"
