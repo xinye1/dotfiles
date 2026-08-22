@@ -765,6 +765,56 @@ class BarWidthTest(unittest.TestCase):
                         bar.count("█") + bar.count("░") + bar.count(cu.PACE_MARK),
                         cu.BAR_CELLS)
 
+    def test_marker_inside_the_fill_takes_the_bar_colour_as_background(self):
+        # PACE_MARK is a thin stroke on an otherwise empty cell. Landing it in
+        # the middle of a run of solid blocks would let the tooltip background
+        # show through either side, reading as a notch bitten out of the bar
+        # instead of a line drawn across it, so that one cell is painted in the
+        # fill colour behind the stroke.
+        fill = cu.FALLBACK_THEME["success"]
+        bar = cu.cells(80, 6, self.COLOR, fill)          # 80% = 13 filled
+        self.assertIn(f'bgcolor="{fill}"', bar)
+        self.assertEqual(cu.plain_len(bar), cu.BAR_CELLS)
+
+    def test_marker_past_the_fill_gets_no_background(self):
+        # There is nothing to cut into out here, and painting the cell would
+        # colour an unused cell as used — the one lie this bar must not tell.
+        fill = cu.FALLBACK_THEME["success"]
+        bar = cu.cells(20, 12, self.COLOR, fill)         # 20% = 3 filled
+        self.assertNotIn("bgcolor", bar)
+        self.assertEqual(cu.plain_len(bar), cu.BAR_CELLS)
+
+    def test_the_fill_edge_is_the_boundary_for_the_background(self):
+        # The marker at index == filled is the FIRST unfilled cell, so it is
+        # already past the fill and must stay unpainted; index filled-1 is the
+        # last block and must be painted. Off-by-one here would either notch
+        # the bar or overstate usage by one cell.
+        fill = cu.FALLBACK_THEME["success"]
+        for pct in (25, 50, 75):
+            filled = round(pct * cu.BAR_CELLS / 100)
+            with self.subTest(pct=pct):
+                self.assertIn("bgcolor",
+                              cu.cells(pct, filled - 1, self.COLOR, fill))
+                self.assertNotIn("bgcolor",
+                                 cu.cells(pct, filled, self.COLOR, fill))
+
+    def test_width_invariant_survives_the_background(self):
+        # bgcolor rides inside the span tag, which plain_len() strips whole, so
+        # it must not cost a visible cell anywhere on the bar.
+        fill = cu.FALLBACK_THEME["success"]
+        for pct in (0, 0.4, 12.5, 40, 50, 69.6, 70, 89.6, 99.9, 100):
+            for mark in list(range(cu.BAR_CELLS)) + [None, -1, 16, 99]:
+                with self.subTest(pct=pct, mark=mark):
+                    self.assertEqual(
+                        cu.plain_len(cu.cells(pct, mark, self.COLOR, fill)),
+                        cu.BAR_CELLS)
+
+    def test_omitting_the_fill_colour_leaves_the_markup_unpainted(self):
+        # render() is the only caller that passes one; the default has to stay
+        # a plain coloured span so every other caller and test is unaffected.
+        self.assertNotIn("bgcolor", cu.cells(80, 6, self.COLOR))
+        self.assertIn(cu.PACE_MARK, cu.cells(80, 6, self.COLOR))
+
     def test_marker_replaces_the_cell_it_lands_on(self):
         # 40% used is 6 filled cells; the rule at cell 5 takes over the last of
         # them, so the fill still reaches past it — usage ahead of the clock.
@@ -812,12 +862,15 @@ class RenderTest(unittest.TestCase):
             self.assertEqual(out["text"], f"{cu.ICON}\n{shown}", msg=f"{percent}")
             self.assertEqual(out["class"], want_cls, msg=f"percent={percent}")
             # The bar's colour, on the exact bar — cells() still uses the float.
-            # The expectation has to ask for the same pace marker render() drew
-            # (LIMITS[0] is a session limit with a live resets_at); what this
-            # asserts is the FILL colour tracking the rounded percent, and the
-            # marker riding along inside that span without disturbing it.
+            # The expectation has to ask for the same pace marker render()
+            # drew (LIMITS[0] is a session limit with a live resets_at), and
+            # for the same fill colour behind it, since a marker inside the
+            # filled run is painted with it. What this asserts is the FILL
+            # colour tracking the rounded percent, and the marker riding along
+            # inside that span without disturbing it.
             mark = cu.pace_mark("session", LIMITS[0]["resets_at"], NOW)
-            bar = cu.cells(percent, mark, cu.FALLBACK_THEME["fg_bright"])
+            bar = cu.cells(percent, mark, cu.FALLBACK_THEME["fg_bright"],
+                           want_color)
             self.assertIn(f'<span color="{want_color}">{bar}</span>',
                           out["tooltip"], msg=f"percent={percent}")
             self.assertIn(f"<b>{shown:>3}%</b>", out["tooltip"], msg=f"{percent}")
@@ -914,9 +967,9 @@ class RenderTest(unittest.TestCase):
         tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
         mark = cu.pace_mark("session", LIMITS[0]["resets_at"], NOW)
         self.assertEqual(mark, 5)          # 3h13m left of 5h ⇒ 35.7% elapsed
-        self.assertIn(f'<span color="{cu.FALLBACK_THEME["indicator"]}">'
-                      f'{cu.cells(40.0, mark, cu.FALLBACK_THEME["fg_bright"])}'
-                      f'</span>', tip)
+        fill = cu.FALLBACK_THEME["indicator"]
+        bar = cu.cells(40.0, mark, cu.FALLBACK_THEME["fg_bright"], fill)
+        self.assertIn(f'<span color="{fill}">{bar}</span>', tip)
 
     def test_legend_appears_only_when_a_marker_was_drawn(self):
         self.assertIn("ahead of pace",
