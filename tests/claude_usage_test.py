@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for waybar/.config/waybar/scripts/claude_usage.py (stdlib unittest)."""
+import contextlib
 import importlib.util
 import io
 import json as jsonlib
@@ -94,6 +95,11 @@ LIMITS = [
 def fake_urlopen(payload):
     def opener(req, timeout=None):
         assert req.get_header("Authorization") == "Bearer tok"
+        # Header name capitalization is normalized by urllib on storage
+        # (add_header uses str.capitalize()); get_header applies the same
+        # normalization to its own argument, so "Anthropic-beta" is the
+        # correct lookup key for a header added as "anthropic-beta".
+        assert req.get_header("Anthropic-beta") == "oauth-2025-04-20"
         assert timeout == cu.FETCH_TIMEOUT
         body = io.BytesIO(jsonlib.dumps(payload).encode())
         return mock.MagicMock(__enter__=lambda s: body, __exit__=mock.MagicMock())
@@ -192,6 +198,24 @@ class RefreshTest(unittest.TestCase):
         cu.refresh_limits(st, self.creds, True, 1005.0, urlopen=boom)
         boom.assert_not_called()
 
+    def test_drifted_limits_shape_survives_refresh_and_render(self):
+        # A non-dict entry and a string `percent` in the API response must
+        # not crash refresh_limits or render — coerce/drop, degrade never.
+        st = {}
+        payload = {"limits": [
+            "not-a-dict",  # drifted shape: rejected, not crashed on
+            {"kind": "session", "percent": "50",
+             "resets_at": "2026-08-22T15:13:00+00:00", "scope": None},
+        ]}
+        cu.refresh_limits(st, self.creds, False, 1000.0,
+                          urlopen=fake_urlopen(payload))
+        self.assertIsNone(st["limits_error"])
+        self.assertEqual(len(st["limits"]), 1)
+        self.assertEqual(st["limits"][0]["percent"], 50.0)
+        out = cu.render(st, cu.FALLBACK_THEME, NOW)
+        self.assertEqual(out["text"], f"{cu.ICON}\n50")
+        self.assertIn("50", out["tooltip"])
+
 
 class CredsShapeTest(unittest.TestCase):
     def test_non_dict_json_null(self):
@@ -220,6 +244,17 @@ class CredsShapeTest(unittest.TestCase):
         self.assertIsNone(tok)
         self.assertEqual(err, "not logged in")
         self.assertEqual(meta, {})
+
+    def test_non_numeric_expires_at(self):
+        # A string expiresAt must degrade to a stale reason, not raise
+        # TypeError at the `/1000` comparison.
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / ".credentials.json"
+            p.write_text(jsonlib.dumps({"claudeAiOauth": {
+                "accessToken": "tok", "expiresAt": "soon"}}))
+            tok, err, meta = cu.read_credentials(p, 0)
+        self.assertIsNone(tok)
+        self.assertIsNotNone(err)
 
 
 def usage_line(ts, model, mid, rid, tokens=100):
@@ -331,6 +366,34 @@ class ScanTest(unittest.TestCase):
         # Both models should now be in state (dedup prevents double-counting via seen set)
         self.assertIn("claude-fable-5", st["days"]["2026-08-22"])
 
+    def test_wrong_shape_lines_skipped_offset_advances(self):
+        # Wrong-shape lines that pass json.loads but not the expected shape
+        # must be skipped (not crash the whole tick), and the offset must
+        # still advance past them so the widget doesn't get stuck retrying
+        # the same poisoned line forever.
+        f = self.proj / "a.jsonl"
+        ts = "2026-08-22T10:00:00.000Z"
+        array_line = jsonlib.dumps(["usage", "oops"]) + "\n"  # top-level array
+        list_usage_line = jsonlib.dumps({
+            "parentUuid": "x",
+            "message": {"id": "m-list", "model": "claude-fable-5",
+                        "usage": [1, 2, 3]},  # list-valued usage
+            "requestId": "r-list", "timestamp": ts,
+        }) + "\n"
+        string_tokens_line = jsonlib.dumps({
+            "parentUuid": "x",
+            "message": {"id": "m-str", "model": "claude-fable-5",
+                        "usage": {"input_tokens": "100", "output_tokens": "0",
+                                  "cache_creation_input_tokens": "0",
+                                  "cache_read_input_tokens": "0"}},  # string tokens
+            "requestId": "r-str", "timestamp": ts,
+        }) + "\n"
+        good_line = usage_line(ts, "claude-fable-5", "m-good", "r-good")
+        f.write_text(array_line + list_usage_line + string_tokens_line + good_line)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
+        self.assertEqual(st["files"][str(f)]["offset"], f.stat().st_size)
+
 
 class RenderTest(unittest.TestCase):
     def fresh_state(self, **over):
@@ -406,9 +469,6 @@ class RenderTest(unittest.TestCase):
         tip = out["tooltip"]
         self.assertIn("Fable 5", tip)                         # in-window model appears
         self.assertNotIn("Sonnet 5", tip)                     # out-of-window model hidden
-
-
-import contextlib
 
 
 class MainTest(unittest.TestCase):

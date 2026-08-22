@@ -109,7 +109,10 @@ def read_credentials(path, now_epoch):
     token = oauth.get("accessToken")
     if not token:
         return None, "not logged in", meta
-    if (oauth.get("expiresAt") or 0) / 1000 <= now_epoch:
+    expires_at = oauth.get("expiresAt")
+    if not isinstance(expires_at, (int, float)):
+        expires_at = 0  # missing/drifted shape: treat as already expired
+    if expires_at / 1000 <= now_epoch:
         return None, "token expired", meta
     return token, None, meta
 
@@ -125,7 +128,19 @@ def fetch_limits(token, urlopen=None):
     limits = data.get("limits")
     if not isinstance(limits, list):
         raise ValueError("no limits[] in response")
-    return limits
+    cleaned = []
+    for entry in limits:
+        if not isinstance(entry, dict):
+            continue  # API/shape drift: drop, don't crash the render
+        entry = dict(entry)
+        try:
+            entry["percent"] = float(entry.get("percent") or 0)
+        except (TypeError, ValueError):
+            entry["percent"] = 0.0
+        resets_at = entry.get("resets_at")
+        entry["resets_at"] = resets_at if isinstance(resets_at, str) else None
+        cleaned.append(entry)
+    return cleaned
 
 
 def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
@@ -176,31 +191,33 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                 offset += len(raw)
                 continue
             offset += len(raw)
+            # Wrong-shape lines (top-level array, list-valued usage, string
+            # token counts, ...) must never survive past this offset bump —
+            # once offset has advanced the line is gone for good, so any
+            # parse/shape surprise below just skips it rather than crashing
+            # the whole tick (spec §5: "Malformed JSONL line -> Skip line").
             try:
                 obj = json.loads(raw)
-            except ValueError:
-                continue
-            msg = obj.get("message") or {}
-            usage, model, ts = msg.get("usage"), msg.get("model"), obj.get("timestamp")
-            if not usage or not model or not ts or model == "<synthetic>":
-                continue
-            try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            ts_epoch = dt.timestamp()
-            mid, rid = msg.get("id"), obj.get("requestId")
-            if mid and rid:
-                key = f"{mid}|{rid}"
-                if key in seen:
+                msg = obj.get("message") or {}
+                usage, model, ts = msg.get("usage"), msg.get("model"), obj.get("timestamp")
+                if not usage or not model or not ts or model == "<synthetic>":
                     continue
-                seen[key] = ts_epoch
-            if ts_epoch < cutoff_epoch:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                ts_epoch = dt.timestamp()
+                mid, rid = msg.get("id"), obj.get("requestId")
+                if mid and rid:
+                    key = f"{mid}|{rid}"
+                    if key in seen:
+                        continue
+                    seen[key] = ts_epoch
+                if ts_epoch < cutoff_epoch:
+                    continue
+                day = dt.astimezone().date().isoformat()
+                per_day = days.setdefault(day, {})
+                per_day[model] = per_day.get(model, 0) + sum(
+                    usage.get(k) or 0 for k in _USAGE_KEYS)
+            except (AttributeError, TypeError, ValueError):
                 continue
-            day = dt.astimezone().date().isoformat()
-            per_day = days.setdefault(day, {})
-            per_day[model] = per_day.get(model, 0) + sum(
-                usage.get(k) or 0 for k in _USAGE_KEYS)
     return offset
 
 
