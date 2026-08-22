@@ -256,6 +256,26 @@ class CredsShapeTest(unittest.TestCase):
         self.assertIsNone(tok)
         self.assertIsNotNone(err)
 
+    def test_failed_force_backs_off_signal_rerun(self):
+        # A failed forced fetch must not let the signal-triggered normal run
+        # (arriving ~1s later) make a second attempt — otherwise every click
+        # during an outage costs one API call, bypassing the debounce.
+        with tempfile.TemporaryDirectory() as td:
+            creds = Path(td) / ".credentials.json"
+            creds.write_text(jsonlib.dumps(
+                {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 2e12}}))
+            st = {"limits": LIMITS, "limits_fetched_at": 400.0}
+            failing = mock.MagicMock(side_effect=urllib.error.URLError("down"))
+            cu.refresh_limits(st, creds, True, 1000.0, urlopen=failing)
+            self.assertEqual(failing.call_count, 1)
+            boom = mock.MagicMock(side_effect=AssertionError("must not fetch"))
+            cu.refresh_limits(st, creds, False, 1001.0, urlopen=boom)
+            boom.assert_not_called()
+            # Once the attempt backoff (FORCE_DEBOUNCE) passes, retries resume.
+            cu.refresh_limits(st, creds, False, 1035.0,
+                              urlopen=fake_urlopen({"limits": LIMITS}))
+            self.assertIsNone(st["limits_error"])
+
 
 def usage_line(ts, model, mid, rid, tokens=100):
     return jsonlib.dumps({
@@ -344,6 +364,16 @@ class ScanTest(unittest.TestCase):
         f.unlink()
         self.scan(st)
         self.assertEqual(st["files"], {})
+
+    def test_malformed_line_does_not_poison_dedup(self):
+        # A malformed line must not record its (id, requestId) as seen, or a
+        # later well-formed duplicate would be silently dropped.
+        f = self.proj / "a.jsonl"
+        good = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
+        bad = good.replace('"input_tokens": 100', '"input_tokens": "oops"')
+        f.write_text(bad + good)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"]["claude-fable-5"], 100)
 
     def test_same_size_different_content_rescans(self):
         # File rewritten in-place without size change: mtime changed but size unchanged.
@@ -496,6 +526,27 @@ class MainTest(unittest.TestCase):
                 (home / ".cache" / "claude-usage" / "state.json").read_text())
             self.assertEqual(state["limits"], LIMITS)
             self.assertIn("2026-08-22", state["days"])
+
+    def test_non_dict_state_file_rebuilds(self):
+        # state.json holding valid JSON that isn't an object must rebuild,
+        # not crash the tick.
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            (home / ".claude" / "projects").mkdir(parents=True)
+            (home / ".claude" / ".credentials.json").write_text(jsonlib.dumps(
+                {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 2e12}}))
+            cache = home / ".cache" / "claude-usage"
+            cache.mkdir(parents=True)
+            (cache / "state.json").write_text("[]")
+            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache")}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env), \
+                 mock.patch.object(cu.urllib.request, "urlopen",
+                                   fake_urlopen({"limits": LIMITS})), \
+                 contextlib.redirect_stdout(buf):
+                cu.main([])
+            out = jsonlib.loads(buf.getvalue())
+            self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
 
 
 if __name__ == "__main__":

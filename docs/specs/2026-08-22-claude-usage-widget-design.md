@@ -53,9 +53,10 @@ Waybar wiring (`config`):
 
 Module sits in `modules-right`, between `custom/network` and `clock`. The click path forces a
 fetch, writes state, then signals waybar; the re-exec'd module reads the just-written cache, so no
-double fetch. Concurrency: every run takes an exclusive `flock` on the state file for its whole
-read-modify-write; a `--refresh` result can therefore never be clobbered by a slower interval run
-that started earlier. `--refresh` is debounced: if the last *forced* fetch was under 30s ago it
+double fetch. Concurrency: every run takes an exclusive `flock` on a dedicated
+`~/.cache/claude-usage/lock` file (not `state.json` — the atomic rename would swap the locked
+inode out) for its whole read-modify-write; a `--refresh` result can therefore never be clobbered
+by a slower interval run that started earlier. `--refresh` is debounced: if the last *forced* fetch was under 30s ago it
 reuses the cache (click-spamming must not be able to 429 the widget into staleness).
 
 ## §3 Data sources

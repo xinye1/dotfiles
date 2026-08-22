@@ -156,6 +156,12 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         st["limits_forced_at"] = now_epoch
     elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
         return
+    elif now_epoch - st.get("limits_attempt_at", 0) < FORCE_DEBOUNCE:
+        # A fetch just ran and failed (e.g. a forced one whose signal re-exec
+        # lands here); without this gate every click during an outage would
+        # make one API attempt, bypassing the debounce entirely.
+        return
+    st["limits_attempt_at"] = now_epoch
     try:
         st["limits"] = fetch_limits(token, urlopen)
     except urllib.error.HTTPError as e:
@@ -204,6 +210,10 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                     continue
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                 ts_epoch = dt.timestamp()
+                # Token total before the dedup-record: a shape surprise here
+                # must not leave the key marked seen with nothing counted,
+                # or a later well-formed duplicate would be dropped.
+                tokens = sum(usage.get(k) or 0 for k in _USAGE_KEYS)
                 mid, rid = msg.get("id"), obj.get("requestId")
                 if mid and rid:
                     key = f"{mid}|{rid}"
@@ -214,8 +224,7 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                     continue
                 day = dt.astimezone().date().isoformat()
                 per_day = days.setdefault(day, {})
-                per_day[model] = per_day.get(model, 0) + sum(
-                    usage.get(k) or 0 for k in _USAGE_KEYS)
+                per_day[model] = per_day.get(model, 0) + tokens
             except (AttributeError, TypeError, ValueError):
                 continue
     return offset
@@ -400,6 +409,8 @@ def main(argv=None):
             st = json.loads(state_path.read_text())
         except (OSError, ValueError):
             st = {}  # first run or corrupt: silent rebuild
+        if not isinstance(st, dict):
+            st = {}  # valid JSON but not an object: rebuild too
         now = datetime.now(timezone.utc)
         refresh_limits(st, home / ".claude" / ".credentials.json",
                        force, now.timestamp())
