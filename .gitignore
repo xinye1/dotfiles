@@ -50,3 +50,11 @@ yazi/.config/yazi/theme.toml
 # $XDG_STATE_HOME/theme/palette (default ~/.local/state), because which palette
 # is applied is state belonging to this machine, not to the configuration, and
 # state does not belong in a source tree. `theme` migrates the old file once.
+
+
+#.ruff_cache/ sits at the repo root — a stray from CodeRabbit's ruff runs.
+# It's harmless and self-managing (ruff writes its own .gitignore containing *,
+# which is why the tree still reads clean), so nothing is at risk of being committed.
+# But it's clutter in a tree that's otherwise tidy, and the repo doesn't use ruff itself.
+.ruff_cache/
+
