@@ -9,7 +9,7 @@ import tempfile
 import time
 import unittest
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -609,6 +609,126 @@ class ScanTest(unittest.TestCase):
                          {"claude-fable-5": 100, "claude-opus-5": 100})
 
 
+class PaceMarkTest(unittest.TestCase):
+    """Where `now` sits inside each limit's OWN window, as a bar cell index."""
+
+    @staticmethod
+    def resets_in(seconds):
+        return (NOW + timedelta(seconds=seconds)).isoformat()
+
+    @staticmethod
+    def set_tz(name):
+        os.environ["TZ"] = name
+        time.tzset()
+
+    def test_marker_walks_the_five_hour_session_window(self):
+        # NOW is fixed, so the marker is a pure function of what is left of the
+        # window — the payload carries no start time, only `resets_at`.
+        cases = {5 * 3600: 0,                # nothing elapsed yet: first cell
+                 2.5 * 3600: 8,              # halfway: ninth of sixteen
+                 3600: 12,                   # 4h of the 5h gone
+                 0: cu.BAR_CELLS - 1}        # fully elapsed: last cell, not past
+        for remaining, want in cases.items():
+            with self.subTest(remaining=remaining):
+                self.assertEqual(
+                    cu.pace_mark("session", self.resets_in(remaining), NOW), want)
+
+    def test_both_weekly_kinds_use_a_seven_day_window(self):
+        cases = {7 * 86400: 0, 3.5 * 86400: 8, 0: cu.BAR_CELLS - 1}
+        for kind in ("weekly_all", "weekly_scoped"):
+            for remaining, want in cases.items():
+                with self.subTest(kind=kind, remaining=remaining):
+                    self.assertEqual(
+                        cu.pace_mark(kind, self.resets_in(remaining), NOW), want)
+
+    def test_fraction_clamped_at_both_ends(self):
+        # A reset already in the past, and one further out than the window is
+        # long (clock skew, or the API quietly changing a window's length):
+        # both must still land on a real cell rather than off either end.
+        self.assertEqual(cu.pace_mark("session", self.resets_in(-99999), NOW),
+                         cu.BAR_CELLS - 1)
+        self.assertEqual(cu.pace_mark("session", self.resets_in(99999), NOW), 0)
+
+    def test_naive_timestamp_read_as_utc(self):
+        # countdown()'s discipline, for countdown()'s reason: the endpoint is
+        # undocumented and free to drop the zone, and it speaks UTC.
+        self.assertEqual(cu.pace_mark("session", "2026-08-22T14:30:00", NOW), 8)
+        self.assertEqual(cu.pace_mark("weekly_all", "2026-08-26T00:00:00", NOW), 8)
+
+    def test_no_marker_when_resets_at_is_unusable(self):
+        # Missing, empty, unparseable, or the wrong type entirely (only a
+        # corrupted state.json can produce the last — fetch_limits coerces to
+        # str-or-None). Every one of them means no marker, never a crash.
+        for resets_at in (None, "", "garbage", 1750000000, {"x": 1}, ["a"],
+                          b"2026-08-22T14:30:00Z"):
+            with self.subTest(resets_at=resets_at):
+                self.assertIsNone(cu.pace_mark("session", resets_at, NOW))
+
+    def test_no_marker_for_a_window_of_unknown_length(self):
+        # An API that adds a fourth limit type must cost the three that work
+        # nothing. The unhashable kinds are the drifted-JSON case: a bare
+        # LIMIT_WINDOWS.get(kind) would raise TypeError on them.
+        for kind in ("mystery_window", "", None, 7, ["session"], {"k": "v"}):
+            with self.subTest(kind=kind):
+                self.assertIsNone(cu.pace_mark(kind, self.resets_in(600), NOW))
+
+    def test_marker_does_not_move_with_the_local_zone(self):
+        # Unlike the day buckets, this arithmetic is entirely in aware UTC: a
+        # user in Auckland must see the marker in the same cell as one in
+        # London. tzset() is process-global and the suite shares one process,
+        # so the UTC pin is restored BEFORE the switch, not after the assert.
+        self.addCleanup(self.set_tz, "UTC")
+        self.set_tz("Pacific/Auckland")
+        self.assertEqual(
+            cu.pace_mark("session", self.resets_in(2.5 * 3600), NOW), 8)
+
+
+class BarWidthTest(unittest.TestCase):
+    """The bar is exactly BAR_CELLS *visible* characters, in every case there is.
+
+    plain_len() column-aligns the entire tooltip, so a bar that renders 15 or
+    17 visible cells silently shifts that one row's percent and countdown out
+    of line with its neighbours. It is the failure the marker invites most
+    easily, because a marker that INSERTS rather than replaces looks perfectly
+    correct on its own row.
+    """
+    COLOR = cu.FALLBACK_THEME["fg_bright"]
+
+    def marks(self):
+        live = [cu.pace_mark("session", (NOW + timedelta(hours=h)).isoformat(),
+                             NOW) for h in (0, 1, 2, 3, 4, 5)]
+        # Every fallback path, each of which yields None:
+        fallbacks = [cu.pace_mark(*a, NOW) for a in (
+            ("mystery_window", (NOW + timedelta(hours=1)).isoformat()),
+            (["session"], (NOW + timedelta(hours=1)).isoformat()),
+            ("session", None), ("session", "garbage"), ("session", 17))]
+        self.assertEqual(fallbacks, [None] * 5)
+        # ...plus positions off either end of the bar, which cells() must
+        # refuse even though pace_mark() cannot currently produce them.
+        return live + fallbacks + [None, -1, 16, 99]
+
+    def test_every_percent_and_marker_combination(self):
+        for pct in (-5, 0, 0.4, 3.1, 12.5, 40, 50, 64, 69.6, 70, 89, 89.6,
+                    99.9, 100, 250):
+            for mark in self.marks():
+                with self.subTest(pct=pct, mark=mark):
+                    bar = cu.cells(pct, mark, self.COLOR)
+                    self.assertEqual(cu.plain_len(bar), cu.BAR_CELLS)
+                    self.assertEqual(
+                        cu.PACE_MARK in bar,
+                        mark is not None and 0 <= mark < cu.BAR_CELLS)
+                    # Uncoloured is the same bar minus the nested span.
+                    self.assertEqual(cu.plain_len(cu.cells(pct, mark)),
+                                     cu.BAR_CELLS)
+
+    def test_marker_replaces_the_cell_it_lands_on(self):
+        # 40% used is 6 filled cells; the rule at cell 5 takes over the last of
+        # them, so the fill still reaches past it — usage ahead of the clock.
+        self.assertEqual(cu.cells(40.0, 5), "█████│░░░░░░░░░░")
+        # Behind the clock: same rule, now sitting in the empty track.
+        self.assertEqual(cu.cells(40.0, 12), "██████░░░░░░│░░░")
+
+
 class RenderTest(unittest.TestCase):
     def fresh_state(self, **over):
         st = {"limits": LIMITS, "limits_fetched_at": NOW.timestamp() - 60,
@@ -648,7 +768,13 @@ class RenderTest(unittest.TestCase):
             self.assertEqual(out["text"], f"{cu.ICON}\n{shown}", msg=f"{percent}")
             self.assertEqual(out["class"], want_cls, msg=f"percent={percent}")
             # The bar's colour, on the exact bar — cells() still uses the float.
-            self.assertIn(f'<span color="{want_color}">{cu.cells(percent)}</span>',
+            # The expectation has to ask for the same pace marker render() drew
+            # (LIMITS[0] is a session limit with a live resets_at); what this
+            # asserts is the FILL colour tracking the rounded percent, and the
+            # marker riding along inside that span without disturbing it.
+            mark = cu.pace_mark("session", LIMITS[0]["resets_at"], NOW)
+            bar = cu.cells(percent, mark, cu.FALLBACK_THEME["fg_bright"])
+            self.assertIn(f'<span color="{want_color}">{bar}</span>',
                           out["tooltip"], msg=f"percent={percent}")
             self.assertIn(f"<b>{shown:>3}%</b>", out["tooltip"], msg=f"{percent}")
 
@@ -716,6 +842,47 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(cu.cells(0), "░" * 16)
         self.assertEqual(cu.cells(100), "█" * 16)
         self.assertEqual(cu.cells(50).count("█"), 8)
+
+    def test_limit_rows_stay_column_aligned_around_the_marker(self):
+        # One shared reset time and one shared label width, so every row must
+        # come out at exactly the same plain width — including the unknown-kind
+        # row, which gets no marker at all. A marker that inserted a 17th cell
+        # instead of replacing one would make the three known kinds wider.
+        resets = "2026-08-22T15:13:00+00:00"
+        st = self.fresh_state(limits=[
+            {"kind": "session", "percent": 40, "resets_at": resets},
+            {"kind": "weekly_all", "percent": 64, "resets_at": resets},
+            {"kind": "weekly_scoped", "percent": 89, "resets_at": resets,
+             "scope": {"model": {"display_name": "Fable"}}},
+            {"kind": "mystery_window", "percent": 12, "resets_at": resets},
+        ])
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        rows = [ln for ln in tip.split("\n") if "%</b>" in ln]
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(len({cu.plain_len(r) for r in rows}), 1)
+        self.assertEqual([r.count(cu.PACE_MARK) for r in rows], [1, 1, 1, 0])
+
+    def test_marker_is_neutral_coloured_inside_the_fill_span(self):
+        # fg_bright, never a status colour: the signal is the comparison
+        # between rule and fill, so the rule must not carry a verdict of its
+        # own — and it has to stay visible on both █ and ░.
+        st = self.fresh_state(limits=[dict(LIMITS[0], percent=40.0)])
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        mark = cu.pace_mark("session", LIMITS[0]["resets_at"], NOW)
+        self.assertEqual(mark, 5)          # 3h13m left of 5h ⇒ 35.7% elapsed
+        self.assertIn(f'<span color="{cu.FALLBACK_THEME["indicator"]}">'
+                      f'{cu.cells(40.0, mark, cu.FALLBACK_THEME["fg_bright"])}'
+                      f'</span>', tip)
+
+    def test_legend_appears_only_when_a_marker_was_drawn(self):
+        self.assertIn("ahead of pace",
+                      cu.render(self.fresh_state(), cu.FALLBACK_THEME, NOW)["tooltip"])
+        # Unknown kinds only: no markers on any row, so no key to explain.
+        st = self.fresh_state(limits=[{"kind": "mystery_window", "percent": 12,
+                                       "resets_at": "2026-08-22T15:13:00+00:00"}])
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertNotIn("ahead of pace", tip)
+        self.assertNotIn(cu.PACE_MARK, tip)
 
     def test_tokens_by_model_respects_window(self):
         st = self.fresh_state()
