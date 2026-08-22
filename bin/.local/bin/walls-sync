@@ -374,12 +374,17 @@ def main(argv):
     themes, args = [], list(argv)
     while args:
         arg = args.pop(0)
+        if arg in ("-h", "--help"):
+            # The docstring is the usage message; keeping one copy means the
+            # help can never drift from the explanation above it.
+            print(__doc__.strip())
+            return 0
         if arg == "--min" and args:
             minimum = parse_min(args.pop(0))
         elif arg.startswith("--min="):
             minimum = parse_min(arg.split("=", 1)[1])
         elif arg.startswith("-"):
-            die(f"unknown option {arg}")
+            die(f"unknown option {arg} (try --help)")
         else:
             themes.append(arg)
 
