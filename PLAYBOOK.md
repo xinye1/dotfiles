@@ -275,7 +275,7 @@ colorschemes) cannot live in either file and are §8's job.
 | `foot` | repo | Standalone fallback, still themed. No longer `$term` and no server is started; run `foot`. Wayland-only, which is why it is not the default | Nothing — `foot` is optional now |
 | `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout, before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `nwg-drawer` | repo | App grid (`$mod+Shift+d`), also the waybar launcher button | |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
@@ -1097,6 +1097,46 @@ lossless WebP, and it is 1017x572, i.e. the single worst image in that folder wa
 extension-trusting check would have kept. All 194 files were cross-checked against `identify` while
 this was written: 194 agreements, 0 disagreements.
 
+### 9.26 Idle policy depends on AC vs battery, and lives in `idle.sh`
+
+`config.d/autostart_applications` no longer execs `swayidle` with a fixed timeout chain. It execs
+**`scripts/idle.sh`**, a small daemon that owns that decision because it is the one thing about the
+idle chain that `config.d/*` cannot express: it has to change *while the session is running*, on a
+plug/unplug, with no `swaymsg reload`.
+
+**The policy.** On AC: lock at 300s, never auto-suspend — a machine plugged in and idle is not one
+anyone wants asleep on its own. On battery: lock **and** `systemctl suspend` both at 300s — idle
+screen time on battery is exactly what this exists to stop. Screen-off via DPMS at 600s is
+unconditional, unchanged from before. Ordering between the 300s lock and the 300s suspend on
+battery does not matter: `before-sleep` still calls `lock.sh -f` independently of what triggered
+the sleep, so a suspend that somehow beat the lock still comes back locked — the same double
+insurance that already existed for lid-close and the power menu's Suspend entry.
+
+**Why polled, not event-driven.** `idle.sh` reads `/sys/class/power_supply/AC/online` every 15s
+and only touches `swayidle` when that value changes. `udevadm monitor` or `acpid` would be event-
+driven and cheaper, but `acpid` is not installed (a new package for one boolean), and `udevadm
+monitor`'s output is a debugging format this repo would have to trust to keep parsing correctly
+across systemd releases for something nobody is timing to the second. A 15s lag between unplugging
+and the policy actually switching is not a defect here.
+
+**The fail-safe.** A read of `AC/online` that fails (missing, unreadable) is treated as AC — lock
+only, no auto-suspend — not battery. Same reasoning as `lock.sh`'s own fail-safes (§9.25): losing
+track of power state must never be the reason a machine suspends itself.
+
+**Process hygiene.** `idle.sh` is itself a long-lived daemon started via `exec_always`, so it needs
+the same `pkill -x idle.sh;` prefix any `exec_always` daemon does (§9.2) — and it also
+`pkill -x swayidle`s its own child every time it switches state, plus once more from
+`autostart_applications` on every reload, so a reload or a power-source flip can never leave a
+`swayidle` running that nothing still points at:
+
+```sh
+pgrep -xc idle.sh      # exactly 1
+pgrep -xc swayidle     # exactly 1
+```
+
+**Changing the timeouts.** Edit `scripts/idle.sh`, not `config.d/autostart_applications` — the
+latter only starts the wrapper now and has no timeout values of its own.
+
 ---
 
 ## 10. Troubleshooting
@@ -1106,8 +1146,9 @@ this was written: 194 agreements, 0 disagreements.
 | Config change had no effect | Package unfolded, new file not linked | `[ -L ~/.config/<pkg> ] && echo folded \|\| echo unfolded` (§5.2 — `ls -la \| grep` silently passes when it shouldn't); `stow -R <pkg>` |
 | Config change had no effect | Symlink points outside the repo | `readlink -f ~/.config/<pkg>` |
 | Change needs a full logout to apply | Used `exec` instead of `exec_always` | §9.2 |
-| Screen never locks | swayidle not running, or many are | `pgrep -xc swayidle` — must be exactly `1` |
+| Screen never locks | swayidle not running, or many are | `pgrep -xc idle.sh` and `pgrep -xc swayidle` — both must be exactly `1` |
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
+| Machine suspends when plugged in, or never suspends on battery | `idle.sh` hasn't noticed a power-source change yet (15s poll), or `AC/online` is unreadable | Wait 15s; `cat /sys/class/power_supply/AC/online`; §9.26 |
 | Lock screen is a solid colour, no wallpaper | Cache never populated, or a palette was renamed without renaming its directory | `ls ~/Pictures/walls/"$(cat "${XDG_STATE_HOME:-$HOME/.local/state}"/theme/palette)"`, then `walls-sync`; §9.25 |
 | Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
 | `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
@@ -1143,6 +1184,7 @@ this was written: 194 agreements, 0 disagreements.
 
 ```sh
 sway --validate -c ~/.config/sway/config     # before any reload
+pgrep -xc idle.sh                             # exactly 1
 pgrep -xc swayidle                            # exactly 1
 fc-match "JetBrainsMono Nerd Font"            # not NotoSansMono
 swaymsg -t get_outputs                        # scale 2 on eDP-1

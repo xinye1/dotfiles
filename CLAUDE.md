@@ -21,7 +21,10 @@ triggers, not the full story: read the named section before working in its area.
   per reload; `exec` only runs at startup so a fix using it can't be tested with `swaymsg reload`;
   `exec export FOO=bar` does nothing (§9.2). `config.d/*` is read alphabetically and `theme` sorts
   last, so a `$role` in an earlier file fails `sway --validate` — scripts source `theme.gen.env`
-  at runtime instead (§9.6, §9.13).
+  at runtime instead (§9.6, §9.13). swayidle's timeout chain is AC/battery-dependent and owned by
+  `scripts/idle.sh`, not a static list in `config.d/*` — it polls power state and restarts
+  swayidle on change; edit timeouts there, not by hand-writing a new `exec_always swayidle …`
+  line (§9.26).
 - **`vim.pack` writes `nvim-pack-lock.json` into the folded `~/.config/nvim`** — i.e. the repo —
   and it is tracked **on purpose**: a pinned revision is configuration, unlike the active palette.
   Commit the lockfile diff; never gitignore it (§5.2, §8).

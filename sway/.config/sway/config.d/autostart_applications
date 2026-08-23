@@ -32,21 +32,19 @@ exec_always dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP=swa
 # `swaymsg reload` without killing the previous instance — this had accumulated
 # roughly forty live swayidle processes, every one of them racing to lock the
 # screen. The pkill makes the exec_always idempotent. Check with:
+#   pgrep -xc idle.sh      # must be 1
 #   pgrep -xc swayidle     # must be 1
 #
 # Second, stock had `before-sleep` only: no timeout clauses at all, so the screen
 # never locked or blanked on idle no matter how long the machine sat unattended.
-#   300s  lock
-#   600s  screen off (and back on when input resumes)
 #
-# idlehint is folded into this single invocation rather than left as the separate
-# `exec swayidle idlehint 1` stock used: pkill -x swayidle would otherwise kill
-# that process too on every reload and never bring it back.
-exec_always pkill -x swayidle; swayidle -w idlehint 300 \
-    timeout 300 '~/.config/sway/scripts/lock.sh -f' \
-    timeout 600 'swaymsg "output * dpms off"' \
-        resume 'swaymsg "output * dpms on"' \
-    before-sleep '~/.config/sway/scripts/lock.sh -f'
+# The actual timeout chain (lock at 300s always; suspend at 300s too, but only
+# on battery; screen off at 600s) lives in scripts/idle.sh, not here, because it
+# depends on AC vs battery and has to change without a sway reload — see the
+# script's own header and PLAYBOOK.md §9.26. `pkill -x swayidle` still runs here
+# in addition to idle.sh's own bookkeeping, so a reload can never leave a
+# swayidle behind that idle.sh no longer knows about.
+exec_always pkill -x idle.sh; pkill -x swayidle; ~/.config/sway/scripts/idle.sh
 
 # Output hotplug. kanshi applies the profile in ~/.config/kanshi/config that
 # matches the currently connected displays. Same pkill reasoning as swayidle.
