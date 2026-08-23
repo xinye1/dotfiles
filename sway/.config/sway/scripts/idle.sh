@@ -29,7 +29,7 @@ AC=/sys/class/power_supply/AC/online
 state=""
 
 on_ac() {
-    ! [ -r "$AC" ] || [ "$(cat "$AC" 2>/dev/null)" = "1" ]
+    [ "$(cat "$AC" 2>/dev/null)" != "0" ]
 }
 
 start() {
