@@ -90,6 +90,54 @@
     margin: 1px 0px;
 }
 
+/* Every module again, for paint this time — a firewall against the system GTK
+ * theme, not styling of our own.
+ *
+ * A waybar state class is a bare GTK style class, and `warning` is also the
+ * stock GtkInfoBar class name. The Nordic theme styles that set *unscoped* —
+ * `.info, .warning, .question, .error { background-color: … }` — so any widget
+ * carrying one of those names picks up a solid infobar fill from the theme.
+ * cpu, memory and battery take `warning` from their `states` in `config`, and
+ * custom-claude takes it from scripts/claude_usage.py, which sits there for
+ * most of a working day: the module painted an orange block behind text this
+ * file had only ever given a *colour* to.
+ *
+ * It stayed invisible for as long as the palette it was written under did.
+ * Colloid, gruvbox's GTK theme, only ever scopes the class (`infobar.warning`,
+ * `entry.warning`), so nothing leaked; the first switch to nord lit it up. The
+ * lesson is the general one — a module inherits from whatever GTK theme the
+ * palette happens to name, and that theme is not ours.
+ *
+ * So the paint is declared rather than inherited: a module is text on the
+ * bar's own background until a rule below says otherwise (`#mode` does, and
+ * wins by coming later at equal specificity). `border` and `box-shadow` are
+ * here because Nordic's infobar rules supply those too.
+ *
+ * Not `#waybar *`, which would catch this and more: `#workspaces button` takes
+ * a background from the GTK theme under *both* palettes and always has, so
+ * flattening it is a look change rather than a fix. tests/check_waybar_paint.py
+ * holds this line for every GTK theme palettes.toml names — including the
+ * classes waybar does not emit today. */
+#custom-launcher,
+#mode,
+#window,
+#custom-network,
+#custom-claude,
+#custom-keyboard-layout,
+#idle_inhibitor,
+#cpu,
+#memory,
+#backlight,
+#pulseaudio,
+#battery,
+#clock,
+#tray,
+#custom-power {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
 /* -----------------------------------------------------------------------------
  * Module styles
  * -------------------------------------------------------------------------- */

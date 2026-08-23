@@ -1097,6 +1097,62 @@ lossless WebP, and it is 1017x572, i.e. the single worst image in that folder wa
 extension-trusting check would have kept. All 194 files were cross-checked against `identify` while
 this was written: 194 agreements, 0 disagreements.
 
+### 9.27 A waybar state class is a *GTK* class, and the GTK theme styles it too
+
+(§9.26 is PR #17's. This one is numbered past it so the two branches do not fight over a heading.)
+
+waybar puts a module's state into a bare CSS class — `warning`, `critical`, `muted`,
+`disconnected`. Those go straight onto the GTK widget, into the same flat namespace GTK's own
+stock classes live in. **`warning` is one of GTK's own.** It is part of GtkInfoBar's set —
+`.info`, `.warning`, `.question`, `.error` — and the Nordic theme styles that set *unscoped*:
+
+```css
+/* /usr/share/themes/Nordic/gtk-3.0/gtk-dark.css */
+.info, .warning, .question, .error { background-color: … }
+.warning { background-color: #c3674a; }
+```
+
+so any waybar module in its warning state painted a solid infobar fill. cpu, memory and battery
+take `warning` from their `states` in `config`; `custom-claude` takes it from
+`scripts/claude_usage.py` and sits there for most of a working day, which is why that one is where
+it was noticed — an orange block behind digits that `style.css` had only ever given a *colour* to.
+
+**Nothing in this repo was wrong when it was written, and that is the interesting part.** The
+widget was built under gruvbox, whose GTK theme is Colloid, and Colloid only ever *scopes* the
+class — `infobar.warning`, `entry.warning`. A bare `.warning` matches nothing there. The
+stylesheet's silence about backgrounds was therefore correct under one palette and a bug under the
+other, and the switch that exposed it came months later. Same shape as §9.10: not a value that is
+wrong, a value that was never declared, with something else quietly supplying it.
+
+**The fix is to declare the paint rather than inherit it.** `style.css` lists every module once
+more, purely to say `background: transparent; border: none; box-shadow: none` — the three
+properties Nordic's infobar rules supply. `#mode` still gets its `@accent2` by coming later at
+equal specificity, and the `blink-warning`/`blink-critical` keyframes still drive the background,
+because an animated value outranks a normal declaration.
+
+Deliberately **not** `#waybar *`: `#workspaces button` is a real GtkButton and takes a background
+from the GTK theme under *both* palettes, as it always has. Flattening it is a look change, not a
+fix, and there is no way to say "the theme's button background, minus the infobar rules" in CSS —
+the override would have to invent a colour. The residual is that a workspace *named* `warning`
+would still get an orange pill; workspaces here are numbered.
+
+**Verification is a render, not a grep.** Reading `style.css` back for the missing
+`background-color` only re-checks the fix. `tests/check_waybar_paint.py` builds each module
+offscreen — a widget of that name inside a `#waybar` parent — bare and then once per class, under
+**every** GTK theme `palettes.toml` names, and fails on any class that changes the painted
+background. Testing the theme that is *not* switched on is the entire point: this bug was green
+under gruvbox for as long as gruvbox was on. It tests the whole stock set rather than the classes
+waybar emits today, because the next collision will be a name nobody thought to look up, and it
+turns `gtk-enable-animations` off so `#memory.critical`'s blink does not make the sample depend on
+when the frame was grabbed. It needs a display and the themes installed, so it lives in
+`check_consumers.sh`, and it exits 77 → `skip` rather than green when it cannot run.
+
+Confirmed on the live desktop by starting a second waybar with `-s` pointed at the fixed
+stylesheet: sway gives it its own exclusive zone, so it lands *beside* the real bar rather than on
+top and the two photograph side by side. 13103 pixels of `#c3674a` in the old one, 0 in the new,
+with the same 297 pixels of `@warning` on the digits — the state and its colour intact, only the
+theme's block gone.
+
 ---
 
 ## 10. Troubleshooting
@@ -1111,6 +1167,7 @@ this was written: 194 agreements, 0 disagreements.
 | Lock screen is a solid colour, no wallpaper | Cache never populated, or a palette was renamed without renaming its directory | `ls ~/Pictures/walls/"$(cat "${XDG_STATE_HOME:-$HOME/.local/state}"/theme/palette)"`, then `walls-sync`; §9.25 |
 | Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
 | `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
+| A waybar module has a coloured block behind it | Its state class collides with a GTK stock one the theme styles bare | `sh tests/check_consumers.sh` names the module and the class; §9.27 |
 | GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
 | GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |

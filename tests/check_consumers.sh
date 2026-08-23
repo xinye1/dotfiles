@@ -17,10 +17,15 @@
 
 set -u
 
-pass=0; fail=0
+pass=0; fail=0; skip=0
 ok() { pass=$((pass+1)); printf '  ok    %s\n' "$1"; }
 no() { fail=$((fail+1)); printf '  FAIL  %s\n' "$1"; [ $# -lt 2 ] || printf '        %s\n' "$2"; }
+# A check that cannot run says so out loud rather than going quiet, so a green
+# run never means "it passed" when it meant "it never looked".
+sk() { skip=$((skip+1)); printf '  skip  %s\n' "$1"; [ $# -lt 2 ] || printf '        %s\n' "$2"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo=${here%/tests}
 
 printf '\nconsumers\n'
 
@@ -88,6 +93,29 @@ if have waybar; then
            "$(grep -m1 -i 'error' "$log" 2>/dev/null | head -1)"
     fi
     rm -f "$log"
+fi
+
+# --- waybar paint ---
+# Surviving startup is not the same as looking right. waybar's state classes are
+# bare GTK style classes, so `warning` collides with GtkInfoBar's stock one --
+# which the Nordic theme styles unscoped, painting an orange infobar fill behind
+# any module in a warning state. waybar started perfectly happily either way.
+#
+# check_waybar_paint.py renders each module offscreen under every GTK theme
+# palettes.toml names, so it answers for the palette that is NOT switched on
+# too; that is the whole point, since this bug shipped green under gruvbox and
+# only appeared on the switch to nord months later.
+if have python3 && [ -f "$HOME/.config/waybar/style.css" ]; then
+    out=$(python3 "$here/check_waybar_paint.py" "$repo" \
+              "$HOME/.config/waybar/style.css" \
+              "$HOME/.config/waybar/config" 2>&1)
+    case $? in
+        0)  ok "no waybar module inherits paint from the GTK theme ($(printf '%s' "$out" | tail -1))" ;;
+        77) sk "no waybar module inherits paint from the GTK theme" \
+               "$(printf '%s' "$out" | head -1)" ;;
+        *)  no "no waybar module inherits paint from the GTK theme" \
+               "$(printf '%s' "$out" | head -1)" ;;
+    esac
 fi
 
 # --- mako ---
@@ -240,5 +268,7 @@ PY
     fi
 done
 
-printf '\n%s  %d consumer checks\n\n' "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))"
+printf '\n%s  %d consumer checks%s\n\n' \
+    "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))" \
+    "$([ "$skip" -eq 0 ] || printf ', %d skipped' "$skip")"
 [ "$fail" -eq 0 ]

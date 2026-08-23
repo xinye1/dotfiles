@@ -34,6 +34,13 @@ triggers, not the full story: read the named section before working in its area.
   or the included file, never both (§9.12). foot's colours use `[colors-dark]` and foot has no
   config-reload signal at all; kitty reloads on SIGUSR1, sent only via kitty's own reloader,
   never `pkill` (§9.11).
+- **A waybar state class is a bare GTK class** — `warning` collides with GtkInfoBar's stock one,
+  which Nordic styles unscoped, so any module in that state paints an orange block. `style.css`
+  declares `background`/`border`/`box-shadow` on every module for this reason; never delete that
+  rule as "redundant". It renders correct under a GTK theme that scopes the class (gruvbox's
+  Colloid does) and breaks on the switch, so verify by rendering, not by reading —
+  `tests/check_waybar_paint.py`, via `check_consumers.sh`, does it under *both* palettes' GTK
+  themes (§9.27).
 - waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
   lives in `~/.cache/claude-usage/` (safe to delete) (§9.23).
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
@@ -84,8 +91,11 @@ sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 a fake `$HOME` and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live
 desktop. `check_consumers.sh` is the one that would have caught the breakages that reached the
 desktop: it asks waybar, foot, sway, vim, nvim, tmux and yazi whether they accept what was
-rendered, rather than inspecting files from outside; it briefly starts a second waybar. `tests/`
-is a repo-root directory like `docs/`, **not** a stow package — never name it in a `stow` command.
+rendered, rather than inspecting files from outside; it briefly starts a second waybar, and it
+offscreen-renders every waybar module under **both** palettes' GTK themes (§9.27). A check there
+can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.
+`tests/` is a repo-root directory like `docs/`, **not** a stow package — never name it in a
+`stow` command.
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload).
