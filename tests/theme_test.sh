@@ -228,6 +228,14 @@ python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
 
+# A `;` outside quotes on an exec line runs only the first segment at sway
+# startup -- the daemon appears after `swaymsg reload` and never at login, so
+# the repo's own reload-based check cannot see it. Asserted across every exec
+# line, not just the two that were found broken.
+python3 "$REPO/tests/check_sway_exec.py" "$REPO" \
+  && ok "no sway exec line splits on an unquoted semicolon" \
+  || no "no sway exec line splits on an unquoted semicolon"
+
 # packages.txt / packages-aur.txt are consumed as $(cat file) by pacman, which
 # chokes on comments; sorted-unique keeps every diff a one-line change.
 for f in packages.txt packages-aur.txt; do

@@ -611,7 +611,7 @@ git -C ~/repos/dotfiles status
 stow -R gtk
 ```
 
-### 9.2 `exec` vs `exec_always` — two distinct bugs
+### 9.2 `exec` vs `exec_always` — three distinct bugs
 
 - **`exec_always` without cleanup leaks processes.** Every reload spawns another copy. This is what
   produced 40 swayidle processes. Any `exec_always` that starts a long-lived daemon needs
@@ -620,6 +620,32 @@ stow -R gtk
 - **`exec` cannot be repaired by a reload.** It only runs at startup, so a fix that uses `exec`
   appears not to work until you log out and back in. This bit the `XDG_CURRENT_DESKTOP` fix during
   development.
+- **An unquoted `;` on an exec line is split, and only at startup.** sway dispatches an exec line by
+  two different routes. At a *reload* the config is already active and the line goes straight to
+  `sh -c` with its `;` intact. At *startup* the same line is deferred into a queue and replayed
+  through the parser `swaymsg` uses — and that one splits a command string on `;`. So the two rules
+  above, applied naively, produce a line that is broken exactly at login:
+
+  ```
+  exec_always pkill -x idle.sh; pkill -x swayidle; ~/.config/sway/scripts/idle.sh
+  ```
+
+  runs `pkill -x idle.sh` and nothing else, the remaining two segments being rejected as unknown
+  sway commands. The correct form hands sway **one** command and lets the inner shell own the `;`:
+
+  ```
+  exec_always sh -c 'pkill -x idle.sh; pkill -x swayidle; exec ~/.config/sway/scripts/idle.sh'
+  ```
+
+  `exec` on the last segment keeps the wrapper shell from lingering as an extra process, and leaves
+  the daemon's own name in `comm` so `pkill -x <name>` still matches it.
+
+  **This is the failure mode a reload cannot show you.** The machine booted with no `swayidle` at
+  all — no idle lock, ever — and `pgrep -xc swayidle` returned 1 the moment anyone ran
+  `swaymsg reload` to check. `kanshi` had been broken the same way for as long as its line existed,
+  and nobody noticed because a reload always repaired it. `tests/check_sway_exec.py` asserts the
+  invariant across every exec line; `sway --validate` does not catch it, because at validate time
+  the line is syntactically a perfectly good `exec`.
 
 Also: `exec export FOO=bar` does nothing. sway runs the command in a subshell that exits
 immediately, taking the variable with it. Use `systemctl --user set-environment`.
@@ -1124,7 +1150,7 @@ only, no auto-suspend — not battery. Same reasoning as `lock.sh`'s own fail-sa
 track of power state must never be the reason a machine suspends itself.
 
 **Process hygiene.** `idle.sh` is itself a long-lived daemon started via `exec_always`, so it needs
-the same `pkill -x idle.sh;` prefix any `exec_always` daemon does (§9.2) — and it also
+the same `sh -c 'pkill -x idle.sh; …'` treatment any `exec_always` daemon does (§9.2) — and it also
 `pkill -x swayidle`s its own child every time it switches state, plus once more from
 `autostart_applications` on every reload, so a reload or a power-source flip can never leave a
 `swayidle` running that nothing still points at:
@@ -1133,6 +1159,10 @@ the same `pkill -x idle.sh;` prefix any `exec_always` daemon does (§9.2) — an
 pgrep -xc idle.sh      # exactly 1
 pgrep -xc swayidle     # exactly 1
 ```
+
+Check those **after a fresh login**, not only after a `swaymsg reload`. The two take different code
+paths through sway, and the reload path is the forgiving one: this exact pair read 1/1 on demand
+while the machine had in fact booted with neither process running (§9.2).
 
 **Changing the timeouts.** Edit `scripts/idle.sh`, not `config.d/autostart_applications` — the
 latter only starts the wrapper now and has no timeout values of its own.

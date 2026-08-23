@@ -44,11 +44,21 @@ exec_always dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP=swa
 # script's own header and PLAYBOOK.md §9.26. `pkill -x swayidle` still runs here
 # in addition to idle.sh's own bookkeeping, so a reload can never leave a
 # swayidle behind that idle.sh no longer knows about.
-exec_always pkill -x idle.sh; pkill -x swayidle; ~/.config/sway/scripts/idle.sh
+#
+# Third: the `sh -c '…'` wrapper is load-bearing, not style. At sway *startup*
+# exec commands are deferred and replayed through the same parser `swaymsg` uses,
+# and that parser splits a command on `;`. Unwrapped, this line ran `pkill -x
+# idle.sh` at login and rejected the other two segments as unknown sway commands,
+# so the machine came up with no swayidle at all. A reload takes a different path
+# that does not split, which is why the daemon appeared after `swaymsg reload` and
+# never at login — the one failure mode a reload-based test cannot see (§9.2).
+exec_always sh -c 'pkill -x idle.sh; pkill -x swayidle; exec ~/.config/sway/scripts/idle.sh'
 
 # Output hotplug. kanshi applies the profile in ~/.config/kanshi/config that
-# matches the currently connected displays. Same pkill reasoning as swayidle.
-exec_always pkill -x kanshi; kanshi
+# matches the currently connected displays. Same pkill reasoning as swayidle, and
+# the same mandatory `sh -c` wrapper — unwrapped, kanshi never started at login
+# either (§9.2).
+exec_always sh -c 'pkill -x kanshi; exec kanshi'
 
 # Desktop notifications
 exec mako
