@@ -228,6 +228,35 @@ python3 "$REPO/tests/check_includes.py" "$REPO" \
   && ok "every include names a file a template renders" \
   || no "every include names a file a template renders"
 
+# A `;` outside quotes on an exec line runs only the first segment at sway
+# startup -- the daemon appears after `swaymsg reload` and never at login, so
+# the repo's own reload-based check cannot see it. Asserted across every exec
+# line, not just the two that were found broken.
+python3 "$REPO/tests/check_sway_exec.py" "$REPO" \
+  && ok "no sway exec line splits on an unquoted semicolon" \
+  || no "no sway exec line splits on an unquoted semicolon"
+
+# Prove check_sway_exec.py actually fires on the failure it exists for -- an
+# unquoted `;` on an exec line -- in both separators sway accepts between a
+# command and its arguments. It shipped blind to the tab spelling once already.
+# The rule being satisfied is this repo's own, and the precedent is check_hex.py
+# passing for months while blind to bare RRGGBBAA: a green assertion the guard
+# cannot see is worse than no assertion at all.
+guard_flags() {
+    rm -rf "$WORK/swayguard"
+    mkdir -p "$WORK/swayguard/sway/.config/sway/config.d"
+    : > "$WORK/swayguard/sway/.config/sway/config"
+    printf '%b\n' "$1" > "$WORK/swayguard/sway/.config/sway/config.d/probe"
+    ! python3 "$REPO/tests/check_sway_exec.py" "$WORK/swayguard" >/dev/null 2>&1
+}
+if guard_flags 'exec_always pkill -x a; a' \
+   && guard_flags 'exec_always\tpkill -x a; a' \
+   && ! guard_flags "exec_always sh -c 'pkill -x a; exec a'"; then
+    ok "the sway exec guard catches an unquoted semicolon, space- or tab-separated"
+else
+    no "the sway exec guard catches an unquoted semicolon, space- or tab-separated"
+fi
+
 # packages.txt / packages-aur.txt are consumed as $(cat file) by pacman, which
 # chokes on comments; sorted-unique keeps every diff a one-line change.
 for f in packages.txt packages-aur.txt; do
