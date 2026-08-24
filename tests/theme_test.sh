@@ -236,9 +236,12 @@ python3 "$REPO/tests/check_sway_exec.py" "$REPO" \
   && ok "no sway exec line splits on an unquoted semicolon" \
   || no "no sway exec line splits on an unquoted semicolon"
 
-# A guard that cannot see the failure it exists for is worse than none -- the
-# reason check_hex.py was blind to bare RRGGBBAA for months. Prove this one
-# fires, on both separators sway accepts between a command and its arguments.
+# Prove check_sway_exec.py actually fires on the failure it exists for -- an
+# unquoted `;` on an exec line -- in both separators sway accepts between a
+# command and its arguments. It shipped blind to the tab spelling once already.
+# The rule being satisfied is this repo's own, and the precedent is check_hex.py
+# passing for months while blind to bare RRGGBBAA: a green assertion the guard
+# cannot see is worse than no assertion at all.
 guard_flags() {
     rm -rf "$WORK/swayguard"
     mkdir -p "$WORK/swayguard/sway/.config/sway/config.d"
