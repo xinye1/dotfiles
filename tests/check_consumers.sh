@@ -105,7 +105,17 @@ fi
 # palettes.toml names, so it answers for the palette that is NOT switched on
 # too; that is the whole point, since this bug shipped green under gruvbox and
 # only appeared on the switch to nord months later.
-if have python3 && [ -f "$HOME/.config/waybar/style.css" ]; then
+#
+# Only python3 is guarded here, and nothing else is. Every other block in this
+# file goes silent when its tool is absent, which is right for them -- no foot
+# means nothing about foot to check. This one is the opposite: the subject is
+# still there, only the instrument is missing, and going quiet about that is
+# how a green run comes to mean "never looked". check_waybar_paint.py already
+# reports its own missing pieces -- no stylesheet, no bindings, no display, no
+# installed GTK theme -- as exit 77, with the reason on stderr. Re-testing any
+# of those here would just be a second, wordless copy that swallows the answer
+# the script was about to give.
+if have python3; then
     out=$(python3 "$here/check_waybar_paint.py" "$repo" \
               "$HOME/.config/waybar/style.css" \
               "$HOME/.config/waybar/config" 2>&1)
@@ -116,6 +126,9 @@ if have python3 && [ -f "$HOME/.config/waybar/style.css" ]; then
         *)  no "no waybar module inherits paint from the GTK theme" \
                "$(printf '%s' "$out" | head -1)" ;;
     esac
+else
+    sk "no waybar module inherits paint from the GTK theme" \
+       "no python3 — the check could not run at all"
 fi
 
 # --- mako ---
