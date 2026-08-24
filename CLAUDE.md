@@ -17,11 +17,16 @@ triggers, not the full story: read the named section before working in its area.
   and replaces the libadwaita `gtk-4.0/gtk.css`. After ever opening it: `git status`, then
   `stow -R gtk`. It is never needed at runtime — `settings.ini` is the source of truth and
   `import-gsettings` pushes it on every reload (§9.1, §2.2).
-- sway: `exec_always` starting a daemon needs `pkill -x <name>;` in front or it leaks one process
-  per reload; `exec` only runs at startup so a fix using it can't be tested with `swaymsg reload`;
-  `exec export FOO=bar` does nothing (§9.2). `config.d/*` is read alphabetically and `theme` sorts
-  last, so a `$role` in an earlier file fails `sway --validate` — scripts source `theme.gen.env`
-  at runtime instead (§9.6, §9.13).
+- sway: `exec_always` starting a daemon needs `sh -c 'pkill -x <name>; exec <name>'` — the `pkill`
+  or it leaks one process per reload, **and** the `sh -c` wrapper because an unquoted `;` on an
+  exec line is split at startup (not at reload), so the daemon never starts at login while every
+  `swaymsg reload` check reports 1. `exec` only runs at startup so a fix using it can't be tested
+  with `swaymsg reload`; `exec export FOO=bar` does nothing (§9.2). `config.d/*` is read
+  alphabetically and `theme` sorts last, so a `$role` in an earlier file fails `sway --validate`
+  — scripts source `theme.gen.env` at runtime instead (§9.6, §9.13). swayidle's timeout chain is
+  AC/battery-dependent and owned by `scripts/idle.sh`, not a static list in `config.d/*` — it
+  polls power state and restarts swayidle on change; edit timeouts there, not by hand-writing a
+  new `exec_always swayidle …` line (§9.26).
 - **`vim.pack` writes `nvim-pack-lock.json` into the folded `~/.config/nvim`** — i.e. the repo —
   and it is tracked **on purpose**: a pinned revision is configuration, unlike the active palette.
   Commit the lockfile diff; never gitignore it (§5.2, §8).
@@ -98,7 +103,9 @@ can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally lin
 `stow` command.
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
-`pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload).
+`pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload). A reload proves
+nothing about **login** — it takes a different code path — so `tests/theme_test.sh` carries the
+startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you touch (§9.2).
 
 ## Conventions
 
