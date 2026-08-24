@@ -74,7 +74,13 @@ def main(repo):
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
-            head, _, rest = stripped.partition(" ")
+            # Split on whitespace, not a literal space: sway accepts a tab
+            # between a command and its arguments (`sway --validate` takes
+            # `exec_always\ttrue`), and a guard that skips that spelling is
+            # exactly the blind spot this file exists to close.
+            parts = stripped.split(None, 1)
+            head = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
             if head not in KEYWORDS:
                 continue
             if unquoted_semicolon(rest):

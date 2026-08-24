@@ -236,6 +236,24 @@ python3 "$REPO/tests/check_sway_exec.py" "$REPO" \
   && ok "no sway exec line splits on an unquoted semicolon" \
   || no "no sway exec line splits on an unquoted semicolon"
 
+# A guard that cannot see the failure it exists for is worse than none -- the
+# reason check_hex.py was blind to bare RRGGBBAA for months. Prove this one
+# fires, on both separators sway accepts between a command and its arguments.
+guard_flags() {
+    rm -rf "$WORK/swayguard"
+    mkdir -p "$WORK/swayguard/sway/.config/sway/config.d"
+    : > "$WORK/swayguard/sway/.config/sway/config"
+    printf '%b\n' "$1" > "$WORK/swayguard/sway/.config/sway/config.d/probe"
+    ! python3 "$REPO/tests/check_sway_exec.py" "$WORK/swayguard" >/dev/null 2>&1
+}
+if guard_flags 'exec_always pkill -x a; a' \
+   && guard_flags 'exec_always\tpkill -x a; a' \
+   && ! guard_flags "exec_always sh -c 'pkill -x a; exec a'"; then
+    ok "the sway exec guard catches an unquoted semicolon, space- or tab-separated"
+else
+    no "the sway exec guard catches an unquoted semicolon, space- or tab-separated"
+fi
+
 # packages.txt / packages-aur.txt are consumed as $(cat file) by pacman, which
 # chokes on comments; sorted-unique keeps every diff a one-line change.
 for f in packages.txt packages-aur.txt; do
