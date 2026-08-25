@@ -12,10 +12,15 @@ sel = "#434c5e"
 muted = "#4c566a"
 # Secondary *text*, where `muted` is structure. Nord has nothing between nord3
 # (#4c566a, its own comment colour) and nord4 (#d8dee9): on the GTK tooltip
-# background nord3 measures 1.87:1, under even the 3:1 large-text floor. This
-# is essentially their midpoint nudged up to clear 4.5:1 with margin — 5.01:1
-# there, and 2.0x quieter than `fg`, so the hierarchy still reads. §3.1.
-dim = "#939cb0"
+# background nord3 measures 1.87:1, under even the 3:1 large-text floor.
+#
+# 60% of the way from nord3 to nord4 — the shortest step up that line that
+# clears 4.5:1 on BOTH composites of the translucent tooltip: 5.77:1 over this
+# desktop's dark windows and 4.63:1 over a white one, which is the worse case
+# and the one a midpoint value missed at 3.92:1. Stopping at the first passing
+# step is the point — every further step buys contrast the floor does not ask
+# for and spends hierarchy, and this still sits 1.8x quieter than `fg`. §3.1.
+dim = "#a0a8b6"
 fg = "#d8dee9"
 fg_bright = "#eceff4"
 accent = "#88c0d0"
@@ -57,9 +62,9 @@ surface = "#3c3836"
 sel = "#504945"
 muted = "#7c6f64"
 # gruvbox's own `fg4`/gray — the colour the scheme already uses for comments,
-# so nothing is invented here. 6.37:1 on this palette's tooltip background
-# against `muted`'s 3.64:1, and the same 2.0x step down from `fg` that nord's
-# `dim` makes. §3.1.
+# so nothing is invented here, and it clears the floor unchanged: 6.37:1 on
+# this palette's tooltip over dark and 4.86:1 over white, against `muted`'s
+# 3.64:1. §3.1.
 dim = "#a89984"
 fg = "#ebdbb2"
 fg_bright = "#fbf1c7"

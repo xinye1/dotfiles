@@ -181,7 +181,9 @@ isolation.
 **`muted` and `dim` are not shades of one idea, and the split is the whole point.** `muted` says
 "this is chrome" — a border, a rule, a weekday header — and is allowed to be almost invisible.
 `dim` says "this is text you are meant to read, quietly", and therefore carries a floor: **4.5:1
-against the background it lands on**, in *both* palettes. Before it existed, everything secondary
+against the background it lands on**, in *both* palettes — and where that background is
+translucent, against the worse of its composites, not the flattering one (§9.28). Before it
+existed, everything secondary
 used `muted`, which measured 1.87:1 on the GTK tooltip under nord — the widget was written under
 gruvbox, where the same role scrapes 3.64:1 and merely looks quiet (§9.28). If a new role is ever
 added for text, give it a measured floor in this table or it will drift the same way.
@@ -1232,7 +1234,7 @@ theme's block gone.
 
 ### 9.28 A role can be legible in one palette and unreadable in the other
 
-The waybar tooltip's secondary text — the header subtitle, the `` reset countdowns, the weekday
+The waybar tooltip's secondary text — the header subtitle, the reset countdowns, the weekday
 labels, the pace legend, `(7d)`, the footer — was all painted `muted`. Under nord it was very
 nearly invisible, and measuring says why:
 
@@ -1252,11 +1254,25 @@ and translucent, so a light window behind them is the worst case for light text.
 the surface the text actually lands on, not the palette's nominal background.
 
 **The fix is the `dim` role** (§3.1), not a nudge to `muted`: the two jobs are different, and
-`muted` still has to be able to disappear where it is chrome. Values are `#939cb0` for nord —
-nord has nothing between nord3 and nord4, so this is essentially their midpoint nudged to clear
-4.5:1 with margin — and `#a89984` for gruvbox, which is the scheme's own `fg4`/comment grey, so
-nothing is invented. Both land ~2.0x quieter than `fg`, which is what keeps the hierarchy
-readable as hierarchy.
+`muted` still has to be able to disappear where it is chrome. Values are `#a0a8b6` for nord — nord
+has nothing between nord3 and nord4, so this is 60% of the way up that line — and `#a89984` for
+gruvbox, which is the scheme's own `fg4`/comment grey, so nothing is invented.
+
+**The floor has to hold on the worse composite, and translucency decides which that is.** A
+tooltip at 93% alpha is 7% whatever is behind it, so a white window lightens the background and
+*reduces* contrast for light text. Measure both ends:
+
+| | over the desktop's dark windows | over a white window |
+|---|---|---|
+| nord `#a0a8b6` on Nordic's tooltip | 5.77:1 | **4.63:1** |
+| gruvbox `#a89984` on Colloid's tooltip | 6.37:1 | **4.86:1** |
+
+The first nord value tried was the plain nord3↔nord4 midpoint, which measured a comfortable 5.01:1
+over dark and **3.92:1** over white — under the floor in exactly the case that is easy not to
+look at. CodeRabbit caught it on PR #19 by compositing over white; the fix was to walk up the same
+line to the *first* step that passes, not to the most contrast available. Every step past that
+buys margin the floor never asked for and spends hierarchy: `#a0a8b6` still sits 1.8x quieter
+than `fg`, which is what keeps the hierarchy readable as hierarchy.
 
 **Verified by rendering, not by arithmetic alone.** `pango-view --markup --margin=8
 --background=<the tooltip colour>` on the widget's real tooltip output, one image per palette,

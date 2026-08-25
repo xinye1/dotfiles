@@ -150,9 +150,9 @@ class ThemeTest(unittest.TestCase):
         # back to a named colour rather than a palette one, silently.
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "theme.gen.env"
-            p.write_text("DIM=#939cb0\n")
+            p.write_text("DIM=#a0a8b6\n")
             theme = cu.load_theme(p)
-        self.assertEqual(theme["dim"], "#939cb0")
+        self.assertEqual(theme["dim"], "#a0a8b6")
         self.assertNotEqual(theme["dim"], theme["muted"])
 
 
