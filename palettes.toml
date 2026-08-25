@@ -10,6 +10,12 @@ bg = "#2e3440"
 surface = "#3b4252"
 sel = "#434c5e"
 muted = "#4c566a"
+# Secondary *text*, where `muted` is structure. Nord has nothing between nord3
+# (#4c566a, its own comment colour) and nord4 (#d8dee9): on the GTK tooltip
+# background nord3 measures 1.87:1, under even the 3:1 large-text floor. This
+# is essentially their midpoint nudged up to clear 4.5:1 with margin — 5.01:1
+# there, and 2.0x quieter than `fg`, so the hierarchy still reads. §3.1.
+dim = "#939cb0"
 fg = "#d8dee9"
 fg_bright = "#eceff4"
 accent = "#88c0d0"
@@ -50,6 +56,11 @@ bg = "#282828"
 surface = "#3c3836"
 sel = "#504945"
 muted = "#7c6f64"
+# gruvbox's own `fg4`/gray — the colour the scheme already uses for comments,
+# so nothing is invented here. 6.37:1 on this palette's tooltip background
+# against `muted`'s 3.64:1, and the same 2.0x step down from `fg` that nord's
+# `dim` makes. §3.1.
+dim = "#a89984"
 fg = "#ebdbb2"
 fg_bright = "#fbf1c7"
 accent = "#fabd2f"

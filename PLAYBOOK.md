@@ -166,7 +166,8 @@ isolation.
 | `bg` | window bg, waybar bg, terminal bg, swaylock indicator inside |
 | `surface` | mako body, popovers, cards, fuzzel-adjacent chrome |
 | `sel` | fuzzel selection, terminal selection bg |
-| `muted` | unfocused border and text, placeholders, calendar weeks |
+| `muted` | unfocused border, placeholders, calendar weeks — **structure, not prose** |
+| `dim` | secondary *text* that still has to be read: tooltip subtitles, reset countdowns, chart labels, footers (§9.28) |
 | `fg` | body text everywhere |
 | `fg_bright` | focused window title, active text |
 | **`accent`** | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
@@ -176,6 +177,14 @@ isolation.
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
 | `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen when no wallpaper is cached (§9.25) |
+
+**`muted` and `dim` are not shades of one idea, and the split is the whole point.** `muted` says
+"this is chrome" — a border, a rule, a weekday header — and is allowed to be almost invisible.
+`dim` says "this is text you are meant to read, quietly", and therefore carries a floor: **4.5:1
+against the background it lands on**, in *both* palettes. Before it existed, everything secondary
+used `muted`, which measured 1.87:1 on the GTK tooltip under nord — the widget was written under
+gruvbox, where the same role scrapes 3.64:1 and merely looks quiet (§9.28). If a new role is ever
+added for text, give it a measured floor in this table or it will drift the same way.
 
 `desktop` being darker than `bg` is what turns the gaps between windows into visible channels, and
 is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
@@ -921,7 +930,7 @@ have to be moved back.
 lualine's default `theme = 'auto'` reads `g:colors_name` and loads its *own* bundled theme of that
 name — it ships both `nord` and `gruvbox`, so it always finds one and paints the bar a few shades
 off the waybar above it, erroring never. `nvim/.config/nvim/statusline.lua` hands it a table built
-from the thirteen roles instead. Apply the same rule to any future self-theming plugin: if it can
+from the fourteen roles instead. Apply the same rule to any future self-theming plugin: if it can
 choose colours, feed it the roles explicitly.
 
 ### 9.18 tmux has no colour indirection, and no error for a missing one
@@ -1221,6 +1230,46 @@ top and the two photograph side by side. 13103 pixels of `#c3674a` in the old on
 with the same 297 pixels of `@warning` on the digits — the state and its colour intact, only the
 theme's block gone.
 
+### 9.28 A role can be legible in one palette and unreadable in the other
+
+The waybar tooltip's secondary text — the header subtitle, the `` reset countdowns, the weekday
+labels, the pace legend, `(7d)`, the footer — was all painted `muted`. Under nord it was very
+nearly invisible, and measuring says why:
+
+| | `muted` on that palette's GTK tooltip background | |
+|---|---|---|
+| nord | `#4c566a` on `#282d37` | **1.87:1** — under even the 3:1 large-text floor |
+| gruvbox | `#7c6f64` on `#191818` | 3.64:1 — under 4.5:1, but legible |
+
+**It was never right; gruvbox was just forgiving enough to hide it.** The widget was built under
+gruvbox, and the same role there merely reads as quiet. Exactly the shape of §9.27 one section up,
+from the other direction: that one was the GTK theme supplying a value this repo never declared,
+this one is a value this repo did declare being wrong for half the palettes.
+
+Note the background is **not** `bg`. GTK paints tooltips from its own theme —
+`rgba(40, 45, 55, 0.93)` in Nordic, `rgba(25, 23, 23, 0.9)` in Colloid — both darker than the bar,
+and translucent, so a light window behind them is the worst case for light text. Measure against
+the surface the text actually lands on, not the palette's nominal background.
+
+**The fix is the `dim` role** (§3.1), not a nudge to `muted`: the two jobs are different, and
+`muted` still has to be able to disappear where it is chrome. Values are `#939cb0` for nord —
+nord has nothing between nord3 and nord4, so this is essentially their midpoint nudged to clear
+4.5:1 with margin — and `#a89984` for gruvbox, which is the scheme's own `fg4`/comment grey, so
+nothing is invented. Both land ~2.0x quieter than `fg`, which is what keeps the hierarchy
+readable as hierarchy.
+
+**Verified by rendering, not by arithmetic alone.** `pango-view --markup --margin=8
+--background=<the tooltip colour>` on the widget's real tooltip output, one image per palette,
+compared against the same tooltip built with the old code. The contrast numbers say a change
+happened; the images say it reads.
+
+While in there: the header showed `· Default Claude Ai`. Two faults, one line. It preferred
+`rateLimitTier` over `subscriptionType` where the design doc says
+`<subscriptionType/rateLimitTier>` — and `rateLimitTier` is the constant `default_claude_ai` for
+everyone, i.e. no information, where `subscriptionType` is the plan. And `str.title()` renders
+`ai` as `Ai`, which reads as a typo. Now `· Pro`, via a `title_case()` that keeps an acronym set;
+it also stops mangling `max_20x` into `Max 20X`, since Anthropic writes that multiplier lowercase.
+
 ---
 
 ## 10. Troubleshooting
@@ -1237,6 +1286,7 @@ theme's block gone.
 | Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
 | `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
 | A waybar module has a coloured block behind it | Its state class collides with a GTK stock one the theme styles bare | `sh tests/check_consumers.sh` names the module and the class; §9.27 |
+| Tooltip text is there but barely visible | `muted` used where `dim` belongs — `muted` is chrome and may disappear | §3.1, §9.28; measure against the GTK tooltip background, not `bg` |
 | GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
 | GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |

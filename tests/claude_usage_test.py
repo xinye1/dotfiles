@@ -103,6 +103,21 @@ class FormatTest(unittest.TestCase):
         # Unknown ids prettified, date suffix dropped, version dotted.
         self.assertEqual(cu.model_display("claude-opus-4-1-20250805"), "Opus 4.1")
 
+    def test_title_case_rescues_acronyms_from_str_title(self):
+        # str.title() renders this "Default Claude Ai", which reads as a typo
+        # in the tooltip header.
+        self.assertEqual(cu.title_case("default_claude_ai"), "Default Claude AI")
+        self.assertEqual(cu.title_case("pro"), "Pro")
+        # "Max 20x", not str.title()'s "Max 20X": .title() capitalises the
+        # first letter of every alphanumeric run, so it was already mangling
+        # the multiplier, which Anthropic writes lowercase. Per-word
+        # .capitalize() leaves a word starting with a digit alone.
+        self.assertEqual(cu.title_case("max_20x"), "Max 20x")
+        # Splitting on whitespace, not on "_", so a doubled separator cannot
+        # produce an empty word (and "".capitalize() cannot leak a stray space).
+        self.assertEqual(cu.title_case("a__b"), "A B")
+        self.assertEqual(cu.title_case(""), "")
+
 
 class ThemeTest(unittest.TestCase):
     def test_loads_roles_from_env_file(self):
@@ -127,7 +142,18 @@ class ThemeTest(unittest.TestCase):
         self.assertEqual(theme["desktop"], "#1d2021")
         self.assertNotIn("papirus_folder", theme)
         self.assertNotIn("gtk_theme_name", theme)
-        self.assertEqual(len(theme), 13)
+        self.assertEqual(len(theme), 14)
+
+    def test_dim_is_a_role_the_env_file_can_set(self):
+        # `dim` is the newest role and the one the tooltip's secondary text
+        # hangs on; if theme.gen.env.tmpl ever stops emitting DIM this falls
+        # back to a named colour rather than a palette one, silently.
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "theme.gen.env"
+            p.write_text("DIM=#939cb0\n")
+            theme = cu.load_theme(p)
+        self.assertEqual(theme["dim"], "#939cb0")
+        self.assertNotEqual(theme["dim"], theme["muted"])
 
 
 LIMITS = [
@@ -913,8 +939,51 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Today", tip)
         self.assertIn("57.7M", tip)
         self.assertIn("Opus 5", tip)                  # model chart
-        self.assertIn("Max 20X", tip)                 # tier from creds_meta
+        self.assertIn("Max", tip)                     # plan from creds_meta
         self.assertNotIn("<synthetic>", tip)
+
+    def test_header_prefers_the_subscription_over_the_rate_limit_tier(self):
+        # The design doc says `<subscriptionType/rateLimitTier>` and the code
+        # had the two the wrong way round. It matters because rateLimitTier is
+        # the constant `default_claude_ai` for everyone right now — no
+        # information at all — while subscriptionType is the plan name.
+        st = self.fresh_state(creds_meta={"subscriptionType": "pro",
+                                          "rateLimitTier": "default_claude_ai"})
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("· Pro", tip)
+        self.assertNotIn("Default Claude", tip)
+
+    def test_header_falls_back_to_the_tier_when_no_subscription(self):
+        st = self.fresh_state(creds_meta={"rateLimitTier": "default_claude_ai"})
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("· Default Claude AI", tip)     # not "Ai"
+
+    def test_header_has_no_separator_without_creds_meta(self):
+        st = self.fresh_state(creds_meta={})
+        self.assertIn(f"<b>{cu.ICON} Claude Code</b>",
+                      cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"])
+        self.assertNotIn("·", cu.render(st, cu.FALLBACK_THEME,
+                                        NOW)["tooltip"].split("\n")[0])
+
+    def test_secondary_text_uses_dim_and_never_muted(self):
+        """The whole role, across every branch that draws de-emphasised text.
+
+        `muted` is a structural colour: it measures 1.87:1 against the GTK
+        tooltip's own background under nord, below even the 3:1 large-text
+        floor, which is what made the reset countdowns, day names and header
+        subtitle unreadable rather than merely quiet. Asserting the invariant
+        over the whole tooltip rather than the lines I happened to think of —
+        a new `dim` line added later is covered without touching this test,
+        and a `muted` one fails it immediately.
+        """
+        theme = dict(cu.FALLBACK_THEME, muted="MUTEDROLE", dim="DIMROLE")
+        for name, st in (("populated", self.fresh_state()),
+                         ("no limits", self.fresh_state(limits=[])),
+                         ("stale", self.fresh_state(limits_error="HTTP 429")),
+                         ("no days", self.fresh_state(days={}))):
+            tip = cu.render(st, theme, NOW)["tooltip"]
+            self.assertNotIn("MUTEDROLE", tip, msg=name)
+            self.assertIn("DIMROLE", tip, msg=name)
 
     def test_unknown_limit_kind_not_dropped(self):
         st = self.fresh_state()
