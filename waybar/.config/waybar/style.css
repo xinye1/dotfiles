@@ -204,7 +204,11 @@
 #custom-claude          { color: @fg; }
 #custom-claude.warning  { color: @warning; }
 #custom-claude.critical { color: @critical; }
-#custom-claude.stale    { color: @muted; }
+/* @dim, not @muted: stale still shows the last-known percentages, and stale is
+   exactly when you want to read them. @muted is chrome and may disappear — on
+   this bar it measures 1.69:1 under nord, so the module read as blank rather
+   than as quiet (§3.1, §9.28). */
+#custom-claude.stale    { color: @dim; }
 
 #cpu.warning {
     color: @warning;

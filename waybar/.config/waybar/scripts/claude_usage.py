@@ -29,9 +29,9 @@ PACE_MARK = "│"        # U+2502: an ordinary box-drawing char, not a PUA glyph
 # Pango named colours only: tests/check_hex.py scans this file for hex literals.
 FALLBACK_THEME = {
     "bg": "black", "surface": "black", "sel": "gray", "muted": "gray",
-    "fg": "white", "fg_bright": "white", "accent": "yellow", "accent2": "orange",
-    "indicator": "lightgreen", "critical": "red", "warning": "orange",
-    "success": "green", "desktop": "black",
+    "dim": "silver", "fg": "white", "fg_bright": "white", "accent": "yellow",
+    "accent2": "orange", "indicator": "lightgreen", "critical": "red",
+    "warning": "orange", "success": "green", "desktop": "black",
 }
 
 MODEL_NAMES = (
@@ -114,6 +114,25 @@ def model_display(model_id):
     words = [p.capitalize() for p in parts if p.isalpha()]
     nums = [p for p in parts if not p.isalpha()]
     return " ".join(words + ([".".join(nums)] if nums else [])) or model_id
+
+
+# Words `.title()` mangles. Deliberately a two-entry set rather than a general
+# scheme: `subscriptionType` is a short closed vocabulary ("pro", "max") and
+# `rateLimitTier` is the constant `default_claude_ai` today, so "ai" -> "Ai" is
+# the only mangling that has ever reached the tooltip. Add to it when a value
+# actually appears that needs it, not in anticipation.
+ACRONYMS = {"ai", "api"}
+
+
+def title_case(s):
+    """`default_claude_ai` -> `Default Claude AI`; `pro` -> `Pro`.
+
+    str.title() alone gives "Default Claude Ai", which reads as a typo in a
+    header. Splitting on whitespace after the underscores also collapses any
+    doubled separator, so `a__b` cannot produce an empty word.
+    """
+    return " ".join(w.upper() if w.lower() in ACRONYMS else w.capitalize()
+                    for w in str(s).replace("_", " ").split())
 
 
 def load_theme(path):
@@ -481,11 +500,21 @@ def render(st, theme, now):
         cls = "critical" if worst >= 90 else "warning" if worst >= 70 else "normal"
 
     meta = st.get("creds_meta") or {}
-    tier = (meta.get("rateLimitTier") or meta.get("subscriptionType") or "")
-    tier = pango_escape(tier.replace("_", " ").title())
-    mut, sect = theme["muted"], theme["accent"]
+    # subscriptionType first, per the design doc's `<subscriptionType/
+    # rateLimitTier>`; the code had the two the wrong way round. It matters
+    # because `rateLimitTier` is currently `default_claude_ai` for everyone —
+    # a constant, and so no information — while `subscriptionType` is `pro`,
+    # which is the thing a header subtitle is for. The tier stays as the
+    # fallback for an account that somehow reports no subscription.
+    tier = (meta.get("subscriptionType") or meta.get("rateLimitTier") or "")
+    tier = pango_escape(title_case(tier))
+    # `dim`, not `muted`: this is secondary *text* on the GTK tooltip's own
+    # background, which the theme paints darker than the bar. `muted` measures
+    # 1.87:1 there under nord — below the 3:1 large-text floor, which is what
+    # made these lines unreadable rather than merely quiet (§3.1, §9.28).
+    dim, sect = theme["dim"], theme["accent"]
     lines = [f'<b>{ICON} Claude Code</b>'
-             + (f' <span color="{mut}">· {tier}</span>' if tier else "")]
+             + (f' <span color="{dim}">· {tier}</span>' if tier else "")]
 
     if err:
         fetched = st.get("limits_fetched_at")
@@ -514,17 +543,17 @@ def render(st, theme, now):
             bar = (f'<span color="{fill}">'
                    f'{cells(pct, mark, theme["fg_bright"], fill)}</span>')
             reset = countdown(l.get("resets_at"), now)
-            reset = (f'  <span color="{mut}">{ICON_RESET} {reset}</span>'
+            reset = (f'  <span color="{dim}">{ICON_RESET} {reset}</span>'
                      if reset else "")
             lines.append(f"{label}{pad}  {bar}  <b>{disp:>3}%</b>{reset}")
         if marked:
             # One muted line, and only when a marker was actually drawn: this
             # is a key the user needs once, on a tooltip that is already dense.
             lines.append(f'<span color="{theme["fg_bright"]}">{PACE_MARK}</span>'
-                         f'<span color="{mut}"> = now · fill past it'
+                         f'<span color="{dim}"> = now · fill past it'
                          f' = ahead of pace</span>')
     elif not err:
-        lines += ["", f'<span color="{mut}">no limit data yet</span>']
+        lines += ["", f'<span color="{dim}">no limit data yet</span>']
 
     days = st.get("days") or {}
     if days:
@@ -537,7 +566,7 @@ def render(st, theme, now):
             name = "Today" if d == today else d.strftime("%a")
             pad = " " * (5 - len(name))  # pad on the raw name: tags have no width
             label = (f"<b>{name}</b>" if d == today
-                     else f'<span color="{mut}">{name}</span>')
+                     else f'<span color="{dim}">{name}</span>')
             n = totals[d]
             bar = "█" * round(n / peak * BAR_CELLS) or "▏"  # hairline for ~zero days
             # (prefix, value) tuple: the value is pushed flush with the
@@ -551,7 +580,7 @@ def render(st, theme, now):
                 by_model[model] = by_model.get(model, 0) + n
         if by_model:
             lines += ["", f'<span color="{sect}"><b>TOKENS BY MODEL</b></span>'
-                          f' <span color="{mut}">(7d)</span>']
+                          f' <span color="{dim}">(7d)</span>']
             mpeak = max(by_model.values()) or 1
             mwidth = max(len(model_display(m)) for m in by_model)
             for model, n in sorted(by_model.items(), key=lambda kv: -kv[1]):
@@ -565,7 +594,7 @@ def render(st, theme, now):
     stamp = st.get("limits_fetched_at")
     when = (datetime.fromtimestamp(stamp).astimezone().strftime("%H:%M")
             if stamp else "–")
-    lines += ["", f'<span color="{mut}">updated {when} · click {ICON}'
+    lines += ["", f'<span color="{dim}">updated {when} · click {ICON}'
                   f' to refresh</span>']
 
     # Chart rows are (prefix, value) tuples; every value ends flush with the

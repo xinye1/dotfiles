@@ -39,6 +39,11 @@ triggers, not the full story: read the named section before working in its area.
   or the included file, never both (§9.12). foot's colours use `[colors-dark]` and foot has no
   config-reload signal at all; kitty reloads on SIGUSR1, sent only via kitty's own reloader,
   never `pkill` (§9.11).
+- **`muted` is chrome, `dim` is text.** `muted` may be almost invisible (borders, rules); anything
+  meant to be *read* quietly takes `dim`, which carries a 4.5:1 floor in **both** palettes. `muted`
+  measured 1.87:1 on the GTK tooltip under nord and 3.64:1 under gruvbox — legible in the palette it
+  was written under, unreadable in the other. Tooltips sit on the **GTK theme's** background, not
+  `bg`, so measure against that (§3.1, §9.28).
 - **A waybar state class is a bare GTK class** — `warning` collides with GtkInfoBar's stock one,
   which Nordic styles unscoped, so any module in that state paints an orange block. `style.css`
   declares `background`/`border`/`box-shadow` on every module for this reason; never delete that
