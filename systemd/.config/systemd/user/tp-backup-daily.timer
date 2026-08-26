@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily tp-backup vault snapshot
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# Essential on a laptop: a run missed while suspended fires on resume rather
+# than being silently skipped.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

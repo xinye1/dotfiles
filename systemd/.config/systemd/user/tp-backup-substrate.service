@@ -1,0 +1,9 @@
+[Unit]
+Description=tp-backup: research substrate snapshot
+OnFailure=tp-backup-failed@substrate.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tp-backup substrate
+Nice=15
+IOSchedulingClass=idle

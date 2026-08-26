@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly tp-backup restore rehearsal
+
+[Timer]
+OnCalendar=Wed *-*-* 05:00:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

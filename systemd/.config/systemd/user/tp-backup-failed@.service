@@ -1,0 +1,10 @@
+[Unit]
+Description=Alert that tp-backup %i failed
+
+[Service]
+Type=oneshot
+# Sources the machine-local config; deliberately does NOT read any repo .env.
+# No `|| true`: a failed alert must itself be visible in the journal.
+ExecStart=/bin/bash -c 'set -euo pipefail; source "$HOME/.config/tp-backup/config"; \
+  curl -fsS -m 20 -H "Title: tp-backup %i FAILED" -H "Priority: urgent" \
+  -d "$(journalctl --user -u tp-backup-%i.service -n 50 --no-pager 2>&1 | tail -c 3500)" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'

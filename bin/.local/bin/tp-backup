@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+#
+# tp-backup — restic backup regime for the trading-platform-v2 box.
+#
+#   tp-backup daily        git capture + vault snapshot   (Tier 2 + Tier 3)
+#   tp-backup substrate    research substrate snapshot    (Tier 4)
+#   tp-backup check        repository integrity  (--read-data for the full read)
+#   tp-backup rehearsal    restore-into-scratch proof: restores the latest vault
+#                          snapshot and verifies the memory manifest against live
+#   tp-backup status       staleness of every tier
+#
+# Design notes that are NOT incidental:
+#   * The repository is reached with an APPEND-ONLY key. This process cannot
+#     delete backup data (proved 2026-08-25: server returns 403 on Remove).
+#     Pruning requires the maintenance key and is deliberately not automated.
+#   * Nothing here uses `|| true`. A masked failure is how the 2026-08-25
+#     outage stayed invisible for a day.
+#   * "Nothing to capture" is success. "Capture failed" is an alert. They are
+#     never conflated (finding F11).
+#
+set -euo pipefail
+
+CONF="${TPB_CONF:-$HOME/.config/tp-backup/config}"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/tp-backup"
+LOCKDIR="$STATE/locks"
+
+[[ -r "$CONF" ]] || { echo "tp-backup: no readable config at $CONF" >&2; exit 1; }
+# shellcheck disable=SC1090
+source "$CONF"
+mkdir -p "$STATE" "$LOCKDIR" "$STATE/git-capture"
+
+# ── alerting ────────────────────────────────────────────────────────────────
+# Self-contained by design: no repo checkout, no repo .env (finding F10).
+notify() {
+    local title="$1" msg="$2" prio="${3:-default}"
+    [[ -n "${NTFY_TOPIC:-}" ]] || { echo "tp-backup: NTFY_TOPIC unset — alert NOT delivered: $title" >&2; return 1; }
+    curl -fsS -m 20 \
+        -H "Title: ${title//$'\n'/ }" -H "Priority: $prio" \
+        -d "${msg//$'\n'/ }" "${NTFY_SERVER:-https://ntfy.sh}/$NTFY_TOPIC" >/dev/null
+}
+# Any scratch dir holding restored (decrypted) material registers itself here so
+# that BOTH the normal path and die() destroy it. A RETURN trap does not fire on
+# exit, which would have left .ssh/.env material lying in the clear after a failure.
+TPB_SCRATCH=""
+_scrub() { [[ -n "$TPB_SCRATCH" && -d "$TPB_SCRATCH" ]] || return 0
+           find "$TPB_SCRATCH" -type f -exec shred -u {} + 2>/dev/null || true
+           rm -rf "$TPB_SCRATCH"; TPB_SCRATCH=""; }
+trap _scrub EXIT
+die() { _scrub; echo "tp-backup: FAILED: $*" >&2; notify "Backup FAILED" "$*" urgent || true; exit 1; }
+trap 'die "unexpected error at line $LINENO"' ERR
+
+# ── restic plumbing ─────────────────────────────────────────────────────────
+SSH_BASE="ssh -p ${TPB_SSH_PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=30"
+
+restic_ro() {   # append-only key: backup, check, list. Cannot delete.
+    env -u SSH_AUTH_SOCK "$TPB_RESTIC" \
+        -o rclone.program="$SSH_BASE -i $TPB_KEY_BACKUP $TPB_HOST" \
+        -o rclone.args="forced-by-authorized-keys" \
+        -r rclone: --password-file "$TPB_PASSWORD_FILE" "$@"
+}
+restic_rw() {   # maintenance key: prune/forget. Needs the agent (passphrase).
+    "$TPB_RESTIC" \
+        -o rclone.program="$SSH_BASE -i $TPB_KEY_MAINT $TPB_HOST" \
+        -o rclone.args="rclone serve restic --stdio $TPB_REPO_PATH" \
+        -r rclone: --password-file "$TPB_PASSWORD_FILE" "$@"
+}
+
+stamp() { date +%s > "$STATE/last-success-$1"; }
+
+# ── Tier 2: work in flight, per WORKING TREE not per repo (finding R8) ──────
+git_capture() {
+    local out="$STATE/git-capture" repo tree name n_unpushed dirty
+    rm -rf "${out:?}/current"; mkdir -p "$out/current"
+
+    for repo in "$HOME"/repos/*/; do
+        [[ -d "$repo/.git" || -f "$repo/.git" ]] || continue
+        # Every working tree, including .claude/worktrees/* which are gitignored
+        # and therefore invisible to an untracked-file sweep.
+        while read -r tree; do
+            [[ -n "$tree" ]] || continue
+            # Name must identify the REPO as well as the tree: two repos can hold
+            # same-named worktrees (both use .claude/worktrees/), and a bare tree
+            # name would let one silently overwrite the other.
+            if [[ "$tree" == "${repo%/}" ]]; then
+                name="$(basename "${repo%/}")"
+            else
+                name="$(basename "${repo%/}")__$(basename "$tree")"
+            fi
+            local d="$out/current/$name"; mkdir -p "$d"
+
+            git -C "$tree" status --porcelain=v1 > "$d/status.txt"
+            git -C "$tree" rev-parse --abbrev-ref HEAD > "$d/branch.txt" 2>/dev/null || echo "DETACHED" > "$d/branch.txt"
+
+            # A tree with no initial commit has no HEAD: `git log` and `git diff HEAD`
+            # both exit non-zero, and `set -e` would abort the entire daily run before
+            # the vault snapshot. Handle it as a state, not an error.
+            if ! git -C "$tree" rev-parse --verify -q HEAD >/dev/null; then
+                echo "NO_COMMITS" > "$d/log.txt"
+                git -C "$tree" diff --cached > "$d/staged.patch" || true
+                : > "$d/uncommitted.none"; : > "$d/unpushed.none"
+                continue
+            fi
+            git -C "$tree" log --oneline -5 > "$d/log.txt"
+
+            # --all covers detached HEAD and every worktree branch; --branches does not.
+            # `|| echo 0` would report a broken repo as "nothing to capture" -- the exact
+            # conflation this capture exists to avoid. Fail loudly instead.
+            n_unpushed=$(git -C "$tree" rev-list --count --all --not --remotes 2>/dev/null) \
+                || die "git rev-list failed in $tree — cannot tell unpushed work from none"
+            if [[ "$n_unpushed" -gt 0 ]]; then
+                git -C "$tree" bundle create "$d/unpushed.bundle" --all --not --remotes >/dev/null 2>&1 \
+                    || die "git bundle failed in $tree ($n_unpushed unpushed commits)"
+            else
+                echo "clean: no commits absent from remotes" > "$d/unpushed.none"
+            fi
+
+            git -C "$tree" diff HEAD > "$d/uncommitted.patch"
+            [[ -s "$d/uncommitted.patch" ]] || { rm -f "$d/uncommitted.patch"; echo none > "$d/uncommitted.none"; }
+
+            # Do NOT pipe through `head`: it closes the pipe early, git takes SIGPIPE,
+            # and `pipefail` then aborts the whole daily run. Count bytes instead.
+            if (( $(git -C "$tree" ls-files --others --exclude-standard -z | wc -c) > 0 )); then
+                (cd "$tree" && git ls-files --others --exclude-standard -z \
+                    | tar --null -T - -czf "$d/untracked.tar.gz" 2>/dev/null) \
+                    || die "untracked capture failed in $tree"
+            else
+                echo none > "$d/untracked.none"
+            fi
+        done < <(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+    done
+    echo "$(date -Is)" > "$out/current/CAPTURED_AT"
+    stamp git-capture
+}
+
+# ── Tier 3: the vault ───────────────────────────────────────────────────────
+cmd_daily() {
+    git_capture
+    # Glob into an array: unquoted command substitution word-splits on spaces and
+    # leaves a literal unmatched glob when no .env exists.
+    local -a _envs=()
+    local _e; for _e in "$HOME"/repos/*/.env; do [[ -e "$_e" ]] && _envs+=("$_e"); done
+    restic_ro backup --tag vault --tag daily \
+        --exclude "$HOME/.claude/plugins" \
+        --exclude "$HOME/.claude/jobs" \
+        --exclude "$HOME/.claude/file-history" \
+        --exclude "$HOME/.claude/shell-snapshots" \
+        --exclude "$HOME/.claude/paste-cache" \
+        --exclude "$HOME/.claude/image-cache" \
+        --exclude "$HOME/.claude/cache" \
+        --exclude "$HOME/.local/state/tp2-watchdogs/logs" \
+        "$HOME/.claude" "$HOME/.claude.json" \
+        "$HOME/.ssh" "$HOME/.gnupg" "$HOME/.config/gh" "$HOME/.config/rclone" \
+        "$HOME/.config/systemd/user" "$HOME/.config/tp-backup" \
+        "$HOME/.local/opt/tp2-watchdogs" "$HOME/.local/state/tp2-watchdogs" \
+        "$STATE/git-capture" \
+        "$HOME/archives" "$HOME/db-backups" \
+        "${_envs[@]}"
+    stamp vault
+}
+
+# ── Tier 4: substrate, guarded against torn capture (finding R13) ───────────
+# The writer takes the lock; absence of the lock is EVIDENCE, not an assumption.
+cmd_substrate() {
+    # HOLD the lock for the whole backup. Merely testing for it is a TOCTOU race:
+    # a sweep starting one second later would write into the tree mid-snapshot.
+    local lock="$LOCKDIR/substrate-writer.lock" lockfd
+    exec {lockfd}>"$lock" || die "cannot open substrate lock $lock"
+    if ! flock -n "$lockfd"; then
+        echo "tp-backup: substrate writer holds the lock — SKIPPED, not failed" >&2
+        date +%s > "$STATE/last-skip-substrate"
+        exec {lockfd}>&-
+        return 0
+    fi
+    local V="$HOME/repos/trading-platform-v2/research"
+    local S="$HOME/repos/tp2-signal-home/research"
+    restic_ro backup --tag substrate --tag weekly \
+        "$V/midsmall_edge_search/.cache_snapshots" \
+        "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f" \
+        "$V/midsmall_edge_search/.cache" \
+        "$V/holistic_ml_trading/results" \
+        "$S/midsmall_edge_search/.cache_midsmall" \
+        "$S/midsmall_edge_search/.cache" \
+        "$S/midsmall_edge_search/bronze" \
+        "$S/holistic_ml_trading/results" \
+        "$S/holistic_ml_trading/.cache_holistic"
+    stamp substrate
+    exec {lockfd}>&-
+}
+
+# ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
+# Deliberately does NOT compare against live. Memories change constantly, so a
+# snapshot-vs-live diff mismatches every day and trains you to ignore the alert.
+# What matters is the round trip: the snapshot restores, the file count matches
+# what the snapshot itself claims, and the bytes match what restic holds.
+cmd_rehearsal() {
+    local scratch snap n_snap n_rest probe live_sha rest_sha
+    scratch=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" tp-rehearsal-XXXXXX)   # 0700
+    TPB_SCRATCH="$scratch"   # destroyed by _scrub on EXIT *and* by die()
+
+    snap=$(restic_ro snapshots --tag vault --json 2>/dev/null \
+           | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["short_id"])')
+    [[ -n "$snap" ]] || die "rehearsal: no vault snapshot found"
+
+    # What the snapshot says it holds.
+    n_snap=$(restic_ro ls "$snap" 2>/dev/null | grep -c '/memory/.*\.md$') || true
+    (( n_snap > 0 )) || die "rehearsal: snapshot $snap contains no memory files — wrong snapshot or broken index"
+
+    restic_ro restore "$snap" --target "$scratch" \
+        --include "$HOME/.claude/projects" >/dev/null \
+        || die "rehearsal: restore failed for snapshot $snap"
+
+    n_rest=$(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f 2>/dev/null | wc -l)
+    (( n_rest == n_snap )) \
+        || die "rehearsal: $snap claims $n_snap memory files, restore produced $n_rest"
+
+    # Byte-level round trip on one file, straight from the repository.
+    # `| head -1` would close the pipe, SIGPIPE the upstream, and pipefail would
+    # abort with 141 -- the same trap the untracked-file capture hit. Read the list.
+    local -a _files=()
+    mapfile -t _files < <(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f | sort)
+    probe="${_files[0]:-}"
+    [[ -n "$probe" ]] || die "rehearsal: no probe file after restore"
+    rest_sha=$(sha256sum "$probe" | cut -d" " -f1)
+    live_sha=$(restic_ro dump "$snap" "${probe#"$scratch"}" 2>/dev/null | sha256sum | cut -d" " -f1)
+    [[ -n "$live_sha" && "$rest_sha" == "$live_sha" ]] \
+        || die "rehearsal: byte mismatch on ${probe#"$scratch"} (restored=${rest_sha:0:16} repo=${live_sha:0:16})"
+
+    echo "tp-backup: rehearsal OK — $snap restored $n_rest/$n_snap memory files; probe sha ${rest_sha:0:16} matches the repository"
+    stamp rehearsal
+    _scrub
+}
+
+cmd_check()  { if [[ "${1:-}" == "--read-data" ]]; then restic_ro check --read-data; else restic_ro check; fi; stamp check; }
+
+cmd_status() {
+    local now name last age
+    now=$(date +%s)
+    printf '%-14s %-10s %s\n' TIER AGE LAST-SUCCESS
+    for name in vault git-capture substrate check rehearsal; do
+        if [[ -r "$STATE/last-success-$name" ]]; then
+            last=$(<"$STATE/last-success-$name"); age=$(( (now - last) / 3600 ))
+            printf '%-14s %-10s %s\n' "$name" "${age}h" "$(date -d "@$last" '+%Y-%m-%d %H:%M')"
+        else
+            printf '%-14s %-10s %s\n' "$name" never -
+        fi
+    done
+}
+
+# ── staleness watchdog: alerts on ABSENCE, not on error ─────────────────────
+# A failure alert cannot fire for a run that never happened — an expired
+# credential, a disabled timer, a laptop shut for a fortnight. This can.
+cmd_watchdog() {
+    local now name last age_h thr stale=() ; now=$(date +%s)
+    # tier:threshold_hours
+    for spec in vault:36 git-capture:36 substrate:240 check:240 rehearsal:240; do
+        name="${spec%%:*}"; thr="${spec##*:}"
+        if [[ -r "$STATE/last-success-$name" ]]; then
+            last=$(<"$STATE/last-success-$name"); age_h=$(( (now - last) / 3600 ))
+            (( age_h > thr )) && stale+=("$name ${age_h}h (limit ${thr}h)")
+        else
+            stale+=("$name NEVER RUN")
+        fi
+    done
+    if (( ${#stale[@]} )); then
+        printf 'tp-backup: STALE: %s\n' "${stale[*]}" >&2
+        notify "Backup STALE" "${stale[*]}" high
+        return 1
+    fi
+    echo "tp-backup: all tiers within threshold"
+}
+
+case "${1:-}" in
+    daily)     cmd_daily ;;
+    # A stale result is an intentional non-zero exit, NOT an unexpected error:
+    # leaving the ERR trap armed made die() fire a second, misleading alert.
+    watchdog)  trap - ERR; cmd_watchdog ;;
+    substrate) cmd_substrate ;;
+    check)     shift; cmd_check "${1:-}" ;;
+    rehearsal) cmd_rehearsal ;;
+    status)    cmd_status ;;
+    prune)     shift; restic_rw "$@" ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \?//' ;;
+    *)         echo "usage: tp-backup {daily|substrate|check [--read-data]|rehearsal|status|watchdog|prune ...}" >&2; exit 2 ;;
+esac

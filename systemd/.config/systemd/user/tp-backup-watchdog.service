@@ -1,0 +1,6 @@
+[Unit]
+Description=tp-backup: staleness watchdog (alerts on absence)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tp-backup watchdog
