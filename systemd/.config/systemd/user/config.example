@@ -1,0 +1,15 @@
+# Copy to ~/.config/tp-backup/config and chmod 600. NEVER commit the filled-in version:
+# this repository is public and NTFY_TOPIC is a read/write capability on your alert channel.
+
+TPB_HOST="uNNNNNN@uNNNNNN.your-storagebox.de"
+TPB_REPO_PATH="backups/tp2"
+TPB_SSH_PORT="23"
+TPB_KEY_BACKUP="$HOME/.ssh/hetzner-storagebox-backup"   # append-only, no passphrase (unattended)
+TPB_KEY_MAINT="$HOME/.ssh/hetzner-storagebox-maint"     # can delete; passphrase in Bitwarden
+TPB_PASSWORD_FILE="$HOME/.config/tp-backup/restic-password"
+
+# Pin the version directory, never a 'latest' symlink — a silent tool bump breaks the regime.
+TPB_RESTIC="$HOME/.local/share/mise/installs/restic/0.19.1/restic_0.19.1_linux_amd64"
+
+NTFY_TOPIC="<your-topic>"
+NTFY_SERVER="https://ntfy.sh"

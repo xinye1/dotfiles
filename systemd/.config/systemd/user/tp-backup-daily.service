@@ -1,0 +1,9 @@
+[Unit]
+Description=tp-backup: git capture + vault snapshot
+OnFailure=tp-backup-failed@daily.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tp-backup daily
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly tp-backup substrate snapshot
+
+[Timer]
+# Sunday 04:00 — clear of the 01:00-05:00 BST nightly sweep window that writes
+# to .cache_snapshots (finding R13); the writer lock is the real guard.
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target

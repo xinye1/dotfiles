@@ -1,0 +1,9 @@
+[Unit]
+Description=tp-backup: repository integrity check
+OnFailure=tp-backup-failed@check.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tp-backup check
+Nice=15
+IOSchedulingClass=idle
