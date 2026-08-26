@@ -5,7 +5,8 @@
 #   tp-backup daily        git capture + vault snapshot   (Tier 2 + Tier 3)
 #   tp-backup substrate    research substrate snapshot    (Tier 4)
 #   tp-backup check        repository integrity  (--read-data for the full read)
-#   tp-backup rehearsal    restore-into-scratch proof, incl. the escrowed password
+#   tp-backup rehearsal    restore-into-scratch proof: restores the latest vault
+#                          snapshot and verifies the memory manifest against live
 #   tp-backup status       staleness of every tier
 #
 # Design notes that are NOT incidental:
@@ -80,8 +81,18 @@ git_capture() {
             local d="$out/current/$name"; mkdir -p "$d"
 
             git -C "$tree" status --porcelain=v1 > "$d/status.txt"
-            git -C "$tree" log --oneline -5 > "$d/log.txt"
             git -C "$tree" rev-parse --abbrev-ref HEAD > "$d/branch.txt" 2>/dev/null || echo "DETACHED" > "$d/branch.txt"
+
+            # A tree with no initial commit has no HEAD: `git log` and `git diff HEAD`
+            # both exit non-zero, and `set -e` would abort the entire daily run before
+            # the vault snapshot. Handle it as a state, not an error.
+            if ! git -C "$tree" rev-parse --verify -q HEAD >/dev/null; then
+                echo "NO_COMMITS" > "$d/log.txt"
+                git -C "$tree" diff --cached > "$d/staged.patch" || true
+                : > "$d/uncommitted.none"; : > "$d/unpushed.none"
+                continue
+            fi
+            git -C "$tree" log --oneline -5 > "$d/log.txt"
 
             # --all covers detached HEAD and every worktree branch; --branches does not.
             n_unpushed=$(git -C "$tree" rev-list --count --all --not --remotes 2>/dev/null || echo 0)
@@ -95,8 +106,9 @@ git_capture() {
             git -C "$tree" diff HEAD > "$d/uncommitted.patch"
             [[ -s "$d/uncommitted.patch" ]] || { rm -f "$d/uncommitted.patch"; echo none > "$d/uncommitted.none"; }
 
-            dirty=$(git -C "$tree" ls-files --others --exclude-standard | head -500)
-            if [[ -n "$dirty" ]]; then
+            # Do NOT pipe through `head`: it closes the pipe early, git takes SIGPIPE,
+            # and `pipefail` then aborts the whole daily run. Count bytes instead.
+            if (( $(git -C "$tree" ls-files --others --exclude-standard -z | wc -c) > 0 )); then
                 (cd "$tree" && git ls-files --others --exclude-standard -z \
                     | tar --null -T - -czf "$d/untracked.tar.gz" 2>/dev/null) \
                     || die "untracked capture failed in $tree"
@@ -155,6 +167,49 @@ cmd_substrate() {
     stamp substrate
 }
 
+# ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
+# Deliberately does NOT compare against live. Memories change constantly, so a
+# snapshot-vs-live diff mismatches every day and trains you to ignore the alert.
+# What matters is the round trip: the snapshot restores, the file count matches
+# what the snapshot itself claims, and the bytes match what restic holds.
+cmd_rehearsal() {
+    local scratch snap n_snap n_rest probe live_sha rest_sha
+    scratch=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" tp-rehearsal-XXXXXX)   # 0700
+    # shellcheck disable=SC2064
+    trap "find '$scratch' -type f -exec shred -u {} + 2>/dev/null; rm -rf '$scratch'" RETURN
+
+    snap=$(restic_ro snapshots --tag vault --json 2>/dev/null \
+           | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["short_id"])')
+    [[ -n "$snap" ]] || die "rehearsal: no vault snapshot found"
+
+    # What the snapshot says it holds.
+    n_snap=$(restic_ro ls "$snap" 2>/dev/null | grep -c '/memory/.*\.md$') || true
+    (( n_snap > 0 )) || die "rehearsal: snapshot $snap contains no memory files — wrong snapshot or broken index"
+
+    restic_ro restore "$snap" --target "$scratch" \
+        --include "$HOME/.claude/projects" >/dev/null \
+        || die "rehearsal: restore failed for snapshot $snap"
+
+    n_rest=$(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f 2>/dev/null | wc -l)
+    (( n_rest == n_snap )) \
+        || die "rehearsal: $snap claims $n_snap memory files, restore produced $n_rest"
+
+    # Byte-level round trip on one file, straight from the repository.
+    # `| head -1` would close the pipe, SIGPIPE the upstream, and pipefail would
+    # abort with 141 -- the same trap the untracked-file capture hit. Read the list.
+    local -a _files=()
+    mapfile -t _files < <(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f | sort)
+    probe="${_files[0]:-}"
+    [[ -n "$probe" ]] || die "rehearsal: no probe file after restore"
+    rest_sha=$(sha256sum "$probe" | cut -d" " -f1)
+    live_sha=$(restic_ro dump "$snap" "${probe#"$scratch"}" 2>/dev/null | sha256sum | cut -d" " -f1)
+    [[ -n "$live_sha" && "$rest_sha" == "$live_sha" ]] \
+        || die "rehearsal: byte mismatch on ${probe#"$scratch"} (restored=${rest_sha:0:16} repo=${live_sha:0:16})"
+
+    echo "tp-backup: rehearsal OK — $snap restored $n_rest/$n_snap memory files; probe sha ${rest_sha:0:16} matches the repository"
+    stamp rehearsal
+}
+
 cmd_check()  { if [[ "${1:-}" == "--read-data" ]]; then restic_ro check --read-data; else restic_ro check; fi; stamp check; }
 
 cmd_status() {
@@ -201,8 +256,9 @@ case "${1:-}" in
     watchdog)  trap - ERR; cmd_watchdog ;;
     substrate) cmd_substrate ;;
     check)     shift; cmd_check "${1:-}" ;;
+    rehearsal) cmd_rehearsal ;;
     status)    cmd_status ;;
     prune)     shift; restic_rw "$@" ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \?//' ;;
-    *)         echo "usage: tp-backup {daily|substrate|check [--read-data]|status|watchdog|prune ...}" >&2; exit 2 ;;
+    *)         echo "usage: tp-backup {daily|substrate|check [--read-data]|rehearsal|status|watchdog|prune ...}" >&2; exit 2 ;;
 esac

@@ -1,0 +1,9 @@
+[Unit]
+Description=tp-backup: weekly restore rehearsal (proof a snapshot is restorable)
+OnFailure=tp-backup-failed@rehearsal.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tp-backup rehearsal
+Nice=15
+IOSchedulingClass=idle

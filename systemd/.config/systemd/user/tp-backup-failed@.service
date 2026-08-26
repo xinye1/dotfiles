@@ -7,4 +7,4 @@ Type=oneshot
 # No `|| true`: a failed alert must itself be visible in the journal.
 ExecStart=/bin/bash -c 'set -euo pipefail; source "$HOME/.config/tp-backup/config"; \
   curl -fsS -m 20 -H "Title: tp-backup %i FAILED" -H "Priority: urgent" \
-  -d "journalctl --user -u tp-backup-%i -n 50" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'
+  -d "$(journalctl --user -u tp-backup-%i.service -n 50 --no-pager 2>&1 | tail -c 3500)" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'
