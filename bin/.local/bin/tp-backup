@@ -38,7 +38,15 @@ notify() {
         -H "Title: ${title//$'\n'/ }" -H "Priority: $prio" \
         -d "${msg//$'\n'/ }" "${NTFY_SERVER:-https://ntfy.sh}/$NTFY_TOPIC" >/dev/null
 }
-die() { echo "tp-backup: FAILED: $*" >&2; notify "Backup FAILED" "$*" urgent || true; exit 1; }
+# Any scratch dir holding restored (decrypted) material registers itself here so
+# that BOTH the normal path and die() destroy it. A RETURN trap does not fire on
+# exit, which would have left .ssh/.env material lying in the clear after a failure.
+TPB_SCRATCH=""
+_scrub() { [[ -n "$TPB_SCRATCH" && -d "$TPB_SCRATCH" ]] || return 0
+           find "$TPB_SCRATCH" -type f -exec shred -u {} + 2>/dev/null || true
+           rm -rf "$TPB_SCRATCH"; TPB_SCRATCH=""; }
+trap _scrub EXIT
+die() { _scrub; echo "tp-backup: FAILED: $*" >&2; notify "Backup FAILED" "$*" urgent || true; exit 1; }
 trap 'die "unexpected error at line $LINENO"' ERR
 
 # ── restic plumbing ─────────────────────────────────────────────────────────
@@ -95,7 +103,10 @@ git_capture() {
             git -C "$tree" log --oneline -5 > "$d/log.txt"
 
             # --all covers detached HEAD and every worktree branch; --branches does not.
-            n_unpushed=$(git -C "$tree" rev-list --count --all --not --remotes 2>/dev/null || echo 0)
+            # `|| echo 0` would report a broken repo as "nothing to capture" -- the exact
+            # conflation this capture exists to avoid. Fail loudly instead.
+            n_unpushed=$(git -C "$tree" rev-list --count --all --not --remotes 2>/dev/null) \
+                || die "git rev-list failed in $tree — cannot tell unpushed work from none"
             if [[ "$n_unpushed" -gt 0 ]]; then
                 git -C "$tree" bundle create "$d/unpushed.bundle" --all --not --remotes >/dev/null 2>&1 \
                     || die "git bundle failed in $tree ($n_unpushed unpushed commits)"
@@ -124,6 +135,10 @@ git_capture() {
 # ── Tier 3: the vault ───────────────────────────────────────────────────────
 cmd_daily() {
     git_capture
+    # Glob into an array: unquoted command substitution word-splits on spaces and
+    # leaves a literal unmatched glob when no .env exists.
+    local -a _envs=()
+    local _e; for _e in "$HOME"/repos/*/.env; do [[ -e "$_e" ]] && _envs+=("$_e"); done
     restic_ro backup --tag vault --tag daily \
         --exclude "$HOME/.claude/plugins" \
         --exclude "$HOME/.claude/jobs" \
@@ -139,17 +154,21 @@ cmd_daily() {
         "$HOME/.local/opt/tp2-watchdogs" "$HOME/.local/state/tp2-watchdogs" \
         "$STATE/git-capture" \
         "$HOME/archives" "$HOME/db-backups" \
-        $(printf '%s\n' "$HOME"/repos/*/.env 2>/dev/null)
+        "${_envs[@]}"
     stamp vault
 }
 
 # ── Tier 4: substrate, guarded against torn capture (finding R13) ───────────
 # The writer takes the lock; absence of the lock is EVIDENCE, not an assumption.
 cmd_substrate() {
-    local lock="$LOCKDIR/substrate-writer.lock"
-    if [[ -e "$lock" ]]; then
-        echo "tp-backup: sweep in progress ($(cat "$lock" 2>/dev/null)) — SKIPPED, not failed" >&2
+    # HOLD the lock for the whole backup. Merely testing for it is a TOCTOU race:
+    # a sweep starting one second later would write into the tree mid-snapshot.
+    local lock="$LOCKDIR/substrate-writer.lock" lockfd
+    exec {lockfd}>"$lock" || die "cannot open substrate lock $lock"
+    if ! flock -n "$lockfd"; then
+        echo "tp-backup: substrate writer holds the lock — SKIPPED, not failed" >&2
         date +%s > "$STATE/last-skip-substrate"
+        exec {lockfd}>&-
         return 0
     fi
     local V="$HOME/repos/trading-platform-v2/research"
@@ -165,6 +184,7 @@ cmd_substrate() {
         "$S/holistic_ml_trading/results" \
         "$S/holistic_ml_trading/.cache_holistic"
     stamp substrate
+    exec {lockfd}>&-
 }
 
 # ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
@@ -175,8 +195,7 @@ cmd_substrate() {
 cmd_rehearsal() {
     local scratch snap n_snap n_rest probe live_sha rest_sha
     scratch=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" tp-rehearsal-XXXXXX)   # 0700
-    # shellcheck disable=SC2064
-    trap "find '$scratch' -type f -exec shred -u {} + 2>/dev/null; rm -rf '$scratch'" RETURN
+    TPB_SCRATCH="$scratch"   # destroyed by _scrub on EXIT *and* by die()
 
     snap=$(restic_ro snapshots --tag vault --json 2>/dev/null \
            | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["short_id"])')
@@ -208,6 +227,7 @@ cmd_rehearsal() {
 
     echo "tp-backup: rehearsal OK — $snap restored $n_rest/$n_snap memory files; probe sha ${rest_sha:0:16} matches the repository"
     stamp rehearsal
+    _scrub
 }
 
 cmd_check()  { if [[ "${1:-}" == "--read-data" ]]; then restic_ro check --read-data; else restic_ro check; fi; stamp check; }
@@ -232,7 +252,7 @@ cmd_status() {
 cmd_watchdog() {
     local now name last age_h thr stale=() ; now=$(date +%s)
     # tier:threshold_hours
-    for spec in vault:36 git-capture:36 substrate:240 check:240; do
+    for spec in vault:36 git-capture:36 substrate:240 check:240 rehearsal:240; do
         name="${spec%%:*}"; thr="${spec##*:}"
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age_h=$(( (now - last) / 3600 ))
