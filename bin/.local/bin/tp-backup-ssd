@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# tp-backup-ssd — mirror the Hetzner restic repository onto the external SSD.
+#
+# Run with sudo. This is deliberate, not an oversight:
+#   * /mnt/ext is root-owned exfat. Making it user-writable (uid=1000 in fstab)
+#     would hand ~263 GB of existing root-owned backups — including the only
+#     off-box copy of the pinned ecc5481f slot — into reach of a user-level
+#     `rm -rf`, which is the exact incident this whole regime exists for.
+#   * The SSD leg is an operator-invoked refresh by design, never automatic.
+#     Plug-in verifies; it does not write.
+#
+# Usage:  sudo tp-backup-ssd [init|sync|verify]     (default: sync)
+#
+set -euo pipefail
+[[ $EUID -eq 0 ]] || { echo "tp-backup-ssd: must run as root (the SSD is root-owned exfat)" >&2; exit 1; }
+
+DEST="/mnt/ext/backups/tp2-restic"
+CONF="/etc/tp-backup/config"
+[[ -r "$CONF" ]] || { echo "tp-backup-ssd: no config at $CONF" >&2; exit 1; }
+# shellcheck disable=SC1090
+source "$CONF"
+PW="/etc/tp-backup/restic-password"
+KEY="/home/xinye/.ssh/hetzner-storagebox-backup"
+KNOWN="/home/xinye/.ssh/known_hosts"   # root has no trust store of its own
+RESTIC="/home/xinye/.local/share/mise/installs/restic/0.19.1/restic_0.19.1_linux_amd64"
+
+mountpoint -q /mnt/ext || { echo "tp-backup-ssd: /mnt/ext is not mounted — plug the disk in" >&2; exit 1; }
+[[ -r "$KNOWN" ]] || { echo "tp-backup-ssd: $KNOWN unreadable — ssh would fail host-key verification as root" >&2; exit 1; }
+
+SSH_CMD="ssh -p 23 -o BatchMode=yes -o IdentitiesOnly=yes -o UserKnownHostsFile=$KNOWN -i $KEY $TPB_HOST"
+SRC_OPTS=( -o rclone.program="$SSH_CMD" -o rclone.args=forced )
+ssd()    { "$RESTIC" -r "$DEST" --password-file "$PW" "$@"; }
+remote() { "$RESTIC" "${SRC_OPTS[@]}" -r rclone: --password-file "$PW" "$@"; }
+
+case "${1:-sync}" in
+  init)
+    mkdir -p "$DEST"
+    ssd cat config >/dev/null 2>&1 && { echo "already initialised"; exit 0; }
+    ssd init
+    ;;
+  sync)
+    ssd cat config >/dev/null 2>&1 || { echo "tp-backup-ssd: run 'init' first" >&2; exit 1; }
+    before=$(ssd snapshots --json 2>/dev/null | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')
+    # copy is additive: it never deletes from the destination.
+    # -o rclone.* configures the SOURCE only, because the destination (-r) is a
+    # local path and does not use the rclone backend.
+    "$RESTIC" -r "$DEST" --password-file "$PW" \
+        -o rclone.program="$SSH_CMD" -o rclone.args=forced \
+        copy --from-repo rclone: --from-password-file "$PW"
+    after=$(ssd snapshots --json 2>/dev/null | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')
+    echo "tp-backup-ssd: snapshots on SSD $before -> $after"
+    ;;
+  verify)
+    ssd check --read-data
+    ;;
+  *) echo "usage: sudo tp-backup-ssd {init|sync|verify}" >&2; exit 2 ;;
+esac
