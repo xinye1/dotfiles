@@ -107,5 +107,55 @@ if [ -f "$FAKE_HOME/.local/state/tp-backup/last-success-git-capture" ]
 then ok "git-capture tier stamped"
 else bad "git-capture tier stamped"; fi
 
+# ── the vault must survive a capture failure ────────────────────────────────
+# The outage's real damage came from ordering, not from the defect: Tier 2 ran
+# first under `set -e`, so a fault in an unrelated repo meant no snapshot at all.
+# Here the capture is made to fail for a reason the MISSING_WORKTREE guard does
+# NOT cover -- an unreadable tree -- and the assertion is that restic still ran
+# and the run still reported failure afterwards.
+if [ "$(id -u)" = "0" ]; then
+    printf '\n  skip  vault-survives-capture-failure (running as root bypasses the mode bits)\n'
+else
+    H2="$SANDBOX/home2"; mkdir -p "$H2/repos"
+    $G init -q "$H2/repos/gamma"
+    $G -C "$H2/repos/gamma" commit -q --allow-empty -m "gamma init"
+    cp -r "$FAKE_HOME/.config" "$H2/.config"
+    # A real restic would need the network; /bin/true stands in for a snapshot
+    # that succeeds, which is exactly what this case needs to observe.
+    sed -i 's#^TPB_RESTIC=.*#TPB_RESTIC=/bin/true#' "$H2/.config/tp-backup/config"
+
+    # Fail inside a WORKTREE, not the repo directory. `for repo in ~/repos/*/`
+    # cannot even expand an unreadable repo, so mode 000 there is skipped in
+    # silence and reaches no git command at all. A worktree still satisfies the
+    # `-d` test (that needs the parent's execute bit, not the directory's own),
+    # so the capture enters it and `git -C` fails with the same 128 the outage
+    # produced -- by a route the MISSING_WORKTREE guard deliberately does not cover.
+    $G -C "$H2/repos/gamma" worktree add -q "$H2/wt-locked" -b locked
+    chmod 000 "$H2/wt-locked"
+
+    env HOME="$H2" XDG_STATE_HOME="$H2/.local/state" \
+        TPB_CONF="$H2/.config/tp-backup/config" \
+        "$TPB_BIN" daily >"$SANDBOX/daily.out" 2>&1
+    drc=$?
+    chmod 755 "$H2/wt-locked"            # so the sandbox can be removed
+
+    if [ "$drc" -ne 0 ]; then ok "capture failure still fails the run"
+    else bad "capture failure still fails the run (exit $drc)"; fi
+
+    if [ -f "$H2/.local/state/tp-backup/last-success-vault" ]
+    then ok "vault snapshot taken despite the capture failure"
+    else bad "vault snapshot taken despite the capture failure (no vault stamp)"; fi
+
+    if [ ! -f "$H2/.local/state/tp-backup/last-success-git-capture" ]
+    then ok "failed capture does not stamp its own tier"
+    else bad "failed capture does not stamp its own tier (stamped anyway)"; fi
+
+    # The message must say the snapshot happened, so a red unit is never read as
+    # "no backup" -- the misreading this ordering change exists to prevent.
+    if grep -q 'vault snapshot WAS still taken' "$SANDBOX/daily.out"
+    then ok "failure message states the snapshot was still taken"
+    else bad "failure message states the snapshot was still taken"; fi
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
