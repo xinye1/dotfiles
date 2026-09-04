@@ -90,11 +90,12 @@ Re-runnable; with no argument it re-applies the remembered palette. **Never run 
 argument on the live machine** unless switching is intended — `./setup.sh nord` switches the
 desktop exactly like `theme nord`.
 
-One test suite, for the one thing here with real logic:
+Two things here have real logic, and each has a suite:
 
 ```sh
 sh tests/theme_test.sh        # sandboxed; never touches the live desktop
 sh tests/check_consumers.sh   # starts the real apps against the LIVE config
+sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
@@ -106,6 +107,15 @@ offscreen-renders every waybar module under **both** palettes' GTK themes (§9.2
 can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.
 `tests/` is a repo-root directory like `docs/`, **not** a stow package — never name it in a
 `stow` command.
+
+**Run `tp_backup_test.sh` after any edit to `bin/.local/bin/tp-backup`.** It builds throwaway repos
+under a fake `$HOME` and exercises only `__capture`, so restic, ssh and the network are never
+touched and the real backup repository cannot be reached. It exists because the backup regime went
+eight days taking no snapshot (2026-08-28..09-03) on a case nobody had run: a worktree registered in
+`.git/worktrees` whose directory no longer exists, which `git -C` answers with exit 128. Point
+`TPB_BIN` at another copy to check the assertions can still fail — a green suite that cannot go red
+is the `gate-fixtures` trap, and this one was built by proving 5 of its 7 checks fail against a copy
+with the guard removed.
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload). A reload proves
