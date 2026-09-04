@@ -18,7 +18,17 @@
 #   * "Nothing to capture" is success. "Capture failed" is an alert. They are
 #     never conflated (finding F11).
 #
-set -euo pipefail
+# `-E` is load-bearing, not decoration. Without it bash does NOT inherit the ERR
+# trap into shell functions ("The ERR trap is normally not inherited in such
+# cases" -- bash(1)), so die() never ran for an unguarded failure inside
+# git_capture(): the script exited with the raw status of the failing command,
+# silently, sending no alert of its own. Measured 2026-08-28..09-03 -- eight
+# consecutive daily runs exited 128 with no `tp-backup: FAILED:` line anywhere.
+set -Eeuo pipefail
+
+# Absolute path to this script, resolved once: cmd_daily re-invokes it as a child
+# process (see __capture) and must not depend on $0 or on the caller's PATH.
+TPB_SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 
 CONF="${TPB_CONF:-$HOME/.config/tp-backup/config}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/tp-backup"
@@ -28,6 +38,13 @@ LOCKDIR="$STATE/locks"
 # shellcheck disable=SC1090
 source "$CONF"
 mkdir -p "$STATE" "$LOCKDIR" "$STATE/git-capture"
+
+# ── the SSD cold-storage leg ────────────────────────────────────────────────
+# Read AFTER the config so either may be overridden there. 30 days: this leg is
+# deliberately cold — normally detached, refreshed by hand — so it trades a wider
+# loss window for not nagging. The two online legs carry the daily risk.
+SSD_REPO="${TPB_SSD_REPO:-/mnt/ext/backups/tp2-restic}"
+SSD_MAX_H="${TPB_SSD_MAX_H:-720}"
 
 # ── alerting ────────────────────────────────────────────────────────────────
 # Self-contained by design: no repo checkout, no repo .env (finding F10).
@@ -88,6 +105,22 @@ git_capture() {
             fi
             local d="$out/current/$name"; mkdir -p "$d"
 
+            # A worktree that is REGISTERED but absent from disk is a state, not an
+            # error -- the same call the "no initial commit" branch below makes.
+            # Agent sessions create worktrees under their scratchpad in /tmp, which
+            # is tmpfs: the next reboot empties it while the registration survives
+            # in <repo>/.git/worktrees/<name>. `git -C <gone> status` then exits 128
+            # and took the ENTIRE daily run down with it -- before the vault
+            # snapshot -- for eight days (2026-08-28..09-03, dotfiles/df-ssd).
+            # Curing it needs `git worktree prune`, which is a mutation of the
+            # user's repo and deliberately NOT something a backup process does.
+            if [[ ! -d "$tree" ]]; then
+                printf 'registered in %s but absent from disk.\nStale registration -- cure with: git -C %s worktree prune\n' \
+                    "${repo%/}/.git/worktrees" "${repo%/}" > "$d/MISSING_WORKTREE"
+                echo "tp-backup: stale worktree registration in ${repo%/}: $tree (nothing to capture; run 'git worktree prune')" >&2
+                continue
+            fi
+
             git -C "$tree" status --porcelain=v1 > "$d/status.txt"
             git -C "$tree" rev-parse --abbrev-ref HEAD > "$d/branch.txt" 2>/dev/null || echo "DETACHED" > "$d/branch.txt"
 
@@ -134,7 +167,23 @@ git_capture() {
 
 # ── Tier 3: the vault ───────────────────────────────────────────────────────
 cmd_daily() {
-    git_capture
+    # The vault snapshot is the tier that actually protects this machine; the git
+    # capture is a convenience layered on top of it. Letting a capture failure
+    # abort the run cost eight days of backups (2026-08-28..09-03): one dead
+    # worktree registration in an UNRELATED repo exited 128 under `set -e` before
+    # restic was ever reached, and the vault silently stopped.
+    #
+    # The capture runs as a CHILD PROCESS rather than `git_capture || rc=$?`.
+    # Calling it in a tested context switches errexit off for its whole body
+    # (bash(1): in "a context where -e is being ignored ... none of the commands
+    # executed within the ... function body will be affected by the -e setting"),
+    # which would turn every unguarded failure in there into a silent skip --
+    # exactly the masked failure this script refuses to have. A child re-enters
+    # with `set -Eeuo pipefail` armed, keeps its own die()/ERR trap, and hands
+    # back a plain exit status.
+    local capture_rc=0
+    "$TPB_SELF" __capture </dev/null || capture_rc=$?
+
     # Glob into an array: unquoted command substitution word-splits on spaces and
     # leaves a literal unmatched glob when no .env exists.
     local -a _envs=()
@@ -156,6 +205,21 @@ cmd_daily() {
         "$HOME/archives" "$HOME/db-backups" \
         "${_envs[@]}"
     stamp vault
+
+    # Fail AFTER the snapshot, never instead of it. The unit still goes red and
+    # the alert still fires -- but the machine is backed up either way. The
+    # message says so explicitly, so a red unit is never read as "no backup".
+    #
+    # Deliberately NOT die(): the child has already sent its own notification
+    # naming the actual error, and systemd's OnFailure= sends the urgent one, so
+    # die() here would make three alerts for one fault. Alert fatigue is a real
+    # failure mode for this regime -- eight days of nightly alerts that said
+    # nothing is how the outage survived -- and a channel worth reading is one
+    # that does not repeat itself. The journal line below is the durable record.
+    if (( capture_rc != 0 )); then
+        echo "tp-backup: FAILED: git capture failed (rc=$capture_rc) -- the vault snapshot WAS still taken" >&2
+        exit 1
+    fi
 }
 
 # ── Tier 4: substrate, guarded against torn capture (finding R13) ───────────
@@ -185,6 +249,51 @@ cmd_substrate() {
         "$S/holistic_ml_trading/.cache_holistic"
     stamp substrate
     exec {lockfd}>&-
+}
+
+# ── SSD cold-storage freshness ──────────────────────────────────────────────
+# Records how far behind the cold leg is, so the reminder survives the disk being
+# absent. The design doc claimed the box "cannot watch this leg at all"; that was
+# too strong and is corrected here. What it cannot do is verify the CONTENTS of a
+# disk that is not present. The AGE of the last sync is a fact it can hold on its
+# own, and that is the fact the operator needs.
+#
+# When the disk is attached, the newest snapshot ON THE DISK is the truth and is
+# recorded. When it is absent, the last recorded value stands and simply ages.
+# Reading needs no root: the repo is world-readable and `--no-lock` avoids the
+# write that a lock would require.
+ssd_stamp_refresh() {
+    [[ -r "$SSD_REPO/config" ]] || return 0          # not attached, or no repo there
+    local newest
+    newest=$("$TPB_RESTIC" -r "$SSD_REPO" --password-file "$TPB_PASSWORD_FILE" --no-lock \
+                 snapshots --json 2>/dev/null \
+             | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(max(s["time"] for s in d) if d else "")' 2>/dev/null) || return 0
+    [[ -n "$newest" ]] || return 0
+    date -d "$newest" +%s > "$STATE/last-success-ssd" 2>/dev/null || true
+}
+
+# A reminder, NOT a failure. A detached cold disk is the design working, so this
+# never fails the unit and never raises priority -- the whole point of a cold leg
+# is that its absence is normal. Making it red daily would train the operator to
+# ignore the channel, which is exactly how the 08-28 outage stayed unread.
+ssd_reminder() {
+    local now age_h last mounted msg
+    now=$(date +%s)
+    ssd_stamp_refresh
+    if [[ -r "$SSD_REPO/config" ]]; then mounted="The disk is attached now — just run the sync."
+    else                                 mounted="Attach the disk first, then run the sync."; fi
+
+    if [[ -r "$STATE/last-success-ssd" ]]; then
+        last=$(<"$STATE/last-success-ssd"); age_h=$(( (now - last) / 3600 ))
+        (( age_h > SSD_MAX_H )) || return 0
+        msg="SSD cold-storage leg is $(( age_h / 24 ))d old (reminder threshold $(( SSD_MAX_H / 24 ))d). $mounted"
+    else
+        msg="SSD cold-storage leg has never been recorded. $mounted"
+    fi
+    echo "tp-backup: $msg" >&2
+    notify "Backup: check the SSD" "$msg  ->  sudo ~/.local/bin/tp-backup-ssd sync" default || true
 }
 
 # ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
@@ -235,8 +344,9 @@ cmd_check()  { if [[ "${1:-}" == "--read-data" ]]; then restic_ro check --read-d
 cmd_status() {
     local now name last age
     now=$(date +%s)
+    ssd_stamp_refresh            # so `status` reflects the disk if it is attached
     printf '%-14s %-10s %s\n' TIER AGE LAST-SUCCESS
-    for name in vault git-capture substrate check rehearsal; do
+    for name in vault git-capture substrate check rehearsal ssd; do
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age=$(( (now - last) / 3600 ))
             printf '%-14s %-10s %s\n' "$name" "${age}h" "$(date -d "@$last" '+%Y-%m-%d %H:%M')"
@@ -244,6 +354,10 @@ cmd_status() {
             printf '%-14s %-10s %s\n' "$name" never -
         fi
     done
+    # The cold leg's row is the age of the copy, not of a run, so say whether the
+    # disk is here: an unattached disk explains an old row and is not a fault.
+    if [[ -r "$SSD_REPO/config" ]]; then echo "  (ssd: disk attached; cold-storage reminder at $(( SSD_MAX_H / 24 ))d)"
+    else                                 echo "  (ssd: disk NOT attached — normal; cold-storage reminder at $(( SSD_MAX_H / 24 ))d)"; fi
 }
 
 # ── staleness watchdog: alerts on ABSENCE, not on error ─────────────────────
@@ -261,6 +375,13 @@ cmd_watchdog() {
             stale+=("$name NEVER RUN")
         fi
     done
+    # The cold leg is checked SEPARATELY and on its own terms: it is a reminder at
+    # default priority that never fails the unit, because a detached disk is the
+    # design working rather than a fault. Folding it into `stale` would make the
+    # watchdog red for weeks at a time and teach the operator to ignore the one
+    # alert that still works when everything else has gone quiet.
+    ssd_reminder
+
     if (( ${#stale[@]} )); then
         printf 'tp-backup: STALE: %s\n' "${stale[*]}" >&2
         notify "Backup STALE" "${stale[*]}" high
@@ -271,6 +392,9 @@ cmd_watchdog() {
 
 case "${1:-}" in
     daily)     cmd_daily ;;
+    # Internal, not in the usage line: cmd_daily re-invokes the script this way so
+    # the capture runs with errexit genuinely armed. Safe to run by hand.
+    __capture) git_capture ;;
     # A stale result is an intentional non-zero exit, NOT an unexpected error:
     # leaving the ERR trap armed made die() fire a second, misleading alert.
     watchdog)  trap - ERR; cmd_watchdog ;;

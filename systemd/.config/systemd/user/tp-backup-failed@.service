@@ -5,6 +5,23 @@ Description=Alert that tp-backup %i failed
 Type=oneshot
 # Sources the machine-local config; deliberately does NOT read any repo .env.
 # No `|| true`: a failed alert must itself be visible in the journal.
+#
+# TWO queries, not one. `journalctl -u` matches on unit attribution, and a process
+# that dies immediately never gets any: journald resolves a message's cgroup by
+# reading /proc/<pid>, and on a fast failure the pid is already gone, so the line
+# lands with _SYSTEMD_USER_UNIT unset and `-u` drops it. Measured 2026-09-03: the
+# ONLY informative line of the whole failure --
+#   tp-backup[4132442]: fatal: cannot change to '/tmp/.../df-ssd': No such ...
+# was invisible to `-u tp-backup-daily.service` while every systemd status line
+# showed. Eight days of urgent alerts arrived carrying nothing but "status=128".
+# The identifier query recovers those orphaned lines; the unit query keeps
+# systemd's own narrative (which a bare SYSLOG_IDENTIFIER match would lose,
+# because those come from init.scope). Script output goes LAST so that when
+# `tail -c` truncates, the diagnosis is what survives.
 ExecStart=/bin/bash -c 'set -euo pipefail; source "$HOME/.config/tp-backup/config"; \
+  body="$( { journalctl --user -u tp-backup-%i.service -n 30 --no-pager; \
+             echo "--- tp-backup output (unattributed on a fast failure) ---"; \
+             journalctl --user SYSLOG_IDENTIFIER=tp-backup --since -30min -n 25 --no-pager; \
+           } 2>&1 | tail -c 3500 )"; \
   curl -fsS -m 20 -H "Title: tp-backup %i FAILED" -H "Priority: urgent" \
-  -d "$(journalctl --user -u tp-backup-%i.service -n 50 --no-pager 2>&1 | tail -c 3500)" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'
+  -d "$body" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'
