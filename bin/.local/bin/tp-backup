@@ -39,6 +39,13 @@ LOCKDIR="$STATE/locks"
 source "$CONF"
 mkdir -p "$STATE" "$LOCKDIR" "$STATE/git-capture"
 
+# ── the SSD cold-storage leg ────────────────────────────────────────────────
+# Read AFTER the config so either may be overridden there. 30 days: this leg is
+# deliberately cold — normally detached, refreshed by hand — so it trades a wider
+# loss window for not nagging. The two online legs carry the daily risk.
+SSD_REPO="${TPB_SSD_REPO:-/mnt/ext/backups/tp2-restic}"
+SSD_MAX_H="${TPB_SSD_MAX_H:-720}"
+
 # ── alerting ────────────────────────────────────────────────────────────────
 # Self-contained by design: no repo checkout, no repo .env (finding F10).
 notify() {
@@ -244,6 +251,51 @@ cmd_substrate() {
     exec {lockfd}>&-
 }
 
+# ── SSD cold-storage freshness ──────────────────────────────────────────────
+# Records how far behind the cold leg is, so the reminder survives the disk being
+# absent. The design doc claimed the box "cannot watch this leg at all"; that was
+# too strong and is corrected here. What it cannot do is verify the CONTENTS of a
+# disk that is not present. The AGE of the last sync is a fact it can hold on its
+# own, and that is the fact the operator needs.
+#
+# When the disk is attached, the newest snapshot ON THE DISK is the truth and is
+# recorded. When it is absent, the last recorded value stands and simply ages.
+# Reading needs no root: the repo is world-readable and `--no-lock` avoids the
+# write that a lock would require.
+ssd_stamp_refresh() {
+    [[ -r "$SSD_REPO/config" ]] || return 0          # not attached, or no repo there
+    local newest
+    newest=$("$TPB_RESTIC" -r "$SSD_REPO" --password-file "$TPB_PASSWORD_FILE" --no-lock \
+                 snapshots --json 2>/dev/null \
+             | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(max(s["time"] for s in d) if d else "")' 2>/dev/null) || return 0
+    [[ -n "$newest" ]] || return 0
+    date -d "$newest" +%s > "$STATE/last-success-ssd" 2>/dev/null || true
+}
+
+# A reminder, NOT a failure. A detached cold disk is the design working, so this
+# never fails the unit and never raises priority -- the whole point of a cold leg
+# is that its absence is normal. Making it red daily would train the operator to
+# ignore the channel, which is exactly how the 08-28 outage stayed unread.
+ssd_reminder() {
+    local now age_h last mounted msg
+    now=$(date +%s)
+    ssd_stamp_refresh
+    if [[ -r "$SSD_REPO/config" ]]; then mounted="The disk is attached now — just run the sync."
+    else                                 mounted="Attach the disk first, then run the sync."; fi
+
+    if [[ -r "$STATE/last-success-ssd" ]]; then
+        last=$(<"$STATE/last-success-ssd"); age_h=$(( (now - last) / 3600 ))
+        (( age_h > SSD_MAX_H )) || return 0
+        msg="SSD cold-storage leg is $(( age_h / 24 ))d old (reminder threshold $(( SSD_MAX_H / 24 ))d). $mounted"
+    else
+        msg="SSD cold-storage leg has never been recorded. $mounted"
+    fi
+    echo "tp-backup: $msg" >&2
+    notify "Backup: check the SSD" "$msg  ->  sudo ~/.local/bin/tp-backup-ssd sync" default || true
+}
+
 # ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
 # Deliberately does NOT compare against live. Memories change constantly, so a
 # snapshot-vs-live diff mismatches every day and trains you to ignore the alert.
@@ -292,8 +344,9 @@ cmd_check()  { if [[ "${1:-}" == "--read-data" ]]; then restic_ro check --read-d
 cmd_status() {
     local now name last age
     now=$(date +%s)
+    ssd_stamp_refresh            # so `status` reflects the disk if it is attached
     printf '%-14s %-10s %s\n' TIER AGE LAST-SUCCESS
-    for name in vault git-capture substrate check rehearsal; do
+    for name in vault git-capture substrate check rehearsal ssd; do
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age=$(( (now - last) / 3600 ))
             printf '%-14s %-10s %s\n' "$name" "${age}h" "$(date -d "@$last" '+%Y-%m-%d %H:%M')"
@@ -301,6 +354,10 @@ cmd_status() {
             printf '%-14s %-10s %s\n' "$name" never -
         fi
     done
+    # The cold leg's row is the age of the copy, not of a run, so say whether the
+    # disk is here: an unattached disk explains an old row and is not a fault.
+    if [[ -r "$SSD_REPO/config" ]]; then echo "  (ssd: disk attached; cold-storage reminder at $(( SSD_MAX_H / 24 ))d)"
+    else                                 echo "  (ssd: disk NOT attached — normal; cold-storage reminder at $(( SSD_MAX_H / 24 ))d)"; fi
 }
 
 # ── staleness watchdog: alerts on ABSENCE, not on error ─────────────────────
@@ -318,6 +375,13 @@ cmd_watchdog() {
             stale+=("$name NEVER RUN")
         fi
     done
+    # The cold leg is checked SEPARATELY and on its own terms: it is a reminder at
+    # default priority that never fails the unit, because a detached disk is the
+    # design working rather than a fault. Folding it into `stale` would make the
+    # watchdog red for weeks at a time and teach the operator to ignore the one
+    # alert that still works when everything else has gone quiet.
+    ssd_reminder
+
     if (( ${#stale[@]} )); then
         printf 'tp-backup: STALE: %s\n' "${stale[*]}" >&2
         notify "Backup STALE" "${stale[*]}" high
