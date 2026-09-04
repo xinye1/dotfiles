@@ -18,7 +18,17 @@
 #   * "Nothing to capture" is success. "Capture failed" is an alert. They are
 #     never conflated (finding F11).
 #
-set -euo pipefail
+# `-E` is load-bearing, not decoration. Without it bash does NOT inherit the ERR
+# trap into shell functions ("The ERR trap is normally not inherited in such
+# cases" -- bash(1)), so die() never ran for an unguarded failure inside
+# git_capture(): the script exited with the raw status of the failing command,
+# silently, sending no alert of its own. Measured 2026-08-28..09-03 -- eight
+# consecutive daily runs exited 128 with no `tp-backup: FAILED:` line anywhere.
+set -Eeuo pipefail
+
+# Absolute path to this script, resolved once: cmd_daily re-invokes it as a child
+# process (see __capture) and must not depend on $0 or on the caller's PATH.
+TPB_SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 
 CONF="${TPB_CONF:-$HOME/.config/tp-backup/config}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/tp-backup"
@@ -88,6 +98,22 @@ git_capture() {
             fi
             local d="$out/current/$name"; mkdir -p "$d"
 
+            # A worktree that is REGISTERED but absent from disk is a state, not an
+            # error -- the same call the "no initial commit" branch below makes.
+            # Agent sessions create worktrees under their scratchpad in /tmp, which
+            # is tmpfs: the next reboot empties it while the registration survives
+            # in <repo>/.git/worktrees/<name>. `git -C <gone> status` then exits 128
+            # and took the ENTIRE daily run down with it -- before the vault
+            # snapshot -- for eight days (2026-08-28..09-03, dotfiles/df-ssd).
+            # Curing it needs `git worktree prune`, which is a mutation of the
+            # user's repo and deliberately NOT something a backup process does.
+            if [[ ! -d "$tree" ]]; then
+                printf 'registered in %s but absent from disk.\nStale registration -- cure with: git -C %s worktree prune\n' \
+                    "${repo%/}/.git/worktrees" "${repo%/}" > "$d/MISSING_WORKTREE"
+                echo "tp-backup: stale worktree registration in ${repo%/}: $tree (nothing to capture; run 'git worktree prune')" >&2
+                continue
+            fi
+
             git -C "$tree" status --porcelain=v1 > "$d/status.txt"
             git -C "$tree" rev-parse --abbrev-ref HEAD > "$d/branch.txt" 2>/dev/null || echo "DETACHED" > "$d/branch.txt"
 
@@ -134,7 +160,23 @@ git_capture() {
 
 # ── Tier 3: the vault ───────────────────────────────────────────────────────
 cmd_daily() {
-    git_capture
+    # The vault snapshot is the tier that actually protects this machine; the git
+    # capture is a convenience layered on top of it. Letting a capture failure
+    # abort the run cost eight days of backups (2026-08-28..09-03): one dead
+    # worktree registration in an UNRELATED repo exited 128 under `set -e` before
+    # restic was ever reached, and the vault silently stopped.
+    #
+    # The capture runs as a CHILD PROCESS rather than `git_capture || rc=$?`.
+    # Calling it in a tested context switches errexit off for its whole body
+    # (bash(1): in "a context where -e is being ignored ... none of the commands
+    # executed within the ... function body will be affected by the -e setting"),
+    # which would turn every unguarded failure in there into a silent skip --
+    # exactly the masked failure this script refuses to have. A child re-enters
+    # with `set -Eeuo pipefail` armed, keeps its own die()/ERR trap, and hands
+    # back a plain exit status.
+    local capture_rc=0
+    "$TPB_SELF" __capture </dev/null || capture_rc=$?
+
     # Glob into an array: unquoted command substitution word-splits on spaces and
     # leaves a literal unmatched glob when no .env exists.
     local -a _envs=()
@@ -156,6 +198,12 @@ cmd_daily() {
         "$HOME/archives" "$HOME/db-backups" \
         "${_envs[@]}"
     stamp vault
+
+    # Fail AFTER the snapshot, never instead of it. The unit still goes red and
+    # the alert still fires -- but the machine is backed up either way. The
+    # message says so explicitly, so a red unit is never read as "no backup".
+    (( capture_rc == 0 )) \
+        || die "git capture failed (rc=$capture_rc) -- the vault snapshot WAS still taken"
 }
 
 # ── Tier 4: substrate, guarded against torn capture (finding R13) ───────────
@@ -271,6 +319,9 @@ cmd_watchdog() {
 
 case "${1:-}" in
     daily)     cmd_daily ;;
+    # Internal, not in the usage line: cmd_daily re-invokes the script this way so
+    # the capture runs with errexit genuinely armed. Safe to run by hand.
+    __capture) git_capture ;;
     # A stale result is an intentional non-zero exit, NOT an unexpected error:
     # leaving the ERR trap armed made die() fire a second, misleading alert.
     watchdog)  trap - ERR; cmd_watchdog ;;
