@@ -329,11 +329,24 @@ restic_ssd() {
 cmd_rehearsal() {
     local scratch snap n_snap n_rest probe live_sha rest_sha
     local repo=restic_ro label=Hetzner tier=rehearsal
-    if [[ "${1:-}" == "--ssd" ]]; then
-        repo=restic_ssd; label=SSD; tier=rehearsal-ssd
-        [[ -r "$SSD_REPO/config" ]] \
-            || die "rehearsal --ssd: no repository at $SSD_REPO — attach the disk first"
-    fi
+
+    # An unrecognised argument must NOT fall through to the Hetzner drill.
+    # `rehearsal --sdd` used to print "rehearsal(Hetzner) OK" and exit 0, so a
+    # mistyped flag reported a green cold-leg drill against a repository it had
+    # never opened -- and you mistype it exactly when doing the rare, unfamiliar
+    # operation. That is this regime's signature failure (a success signal
+    # detached from what was actually verified), so the parse is exhaustive.
+    case $# in
+        0) ;;
+        1) [[ "$1" == "--ssd" ]] || {
+               echo "tp-backup: rehearsal: unknown argument '$1' (expected '--ssd' or nothing)" >&2
+               exit 2; }
+           repo=restic_ssd; label=SSD; tier=rehearsal-ssd
+           [[ -r "$SSD_REPO/config" ]] \
+               || die "rehearsal --ssd: no repository at $SSD_REPO — attach the disk first" ;;
+        *) echo "tp-backup: rehearsal: too many arguments (expected '--ssd' or nothing)" >&2
+           exit 2 ;;
+    esac
 
     scratch=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" tp-rehearsal-XXXXXX)   # 0700
     TPB_SCRATCH="$scratch"   # destroyed by _scrub on EXIT *and* by die()
@@ -432,7 +445,9 @@ case "${1:-}" in
     watchdog)  trap - ERR; cmd_watchdog ;;
     substrate) cmd_substrate ;;
     check)     shift; cmd_check "${1:-}" ;;
-    rehearsal) shift; cmd_rehearsal "${1:-}" ;;
+    # Pass every argument through, so cmd_rehearsal sees a true $# and can
+    # reject what it does not recognise rather than defaulting to Hetzner.
+    rehearsal) shift; cmd_rehearsal "$@" ;;
     status)    cmd_status ;;
     prune)     shift; restic_rw "$@" ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \?//' ;;
