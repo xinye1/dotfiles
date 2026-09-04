@@ -202,8 +202,17 @@ cmd_daily() {
     # Fail AFTER the snapshot, never instead of it. The unit still goes red and
     # the alert still fires -- but the machine is backed up either way. The
     # message says so explicitly, so a red unit is never read as "no backup".
-    (( capture_rc == 0 )) \
-        || die "git capture failed (rc=$capture_rc) -- the vault snapshot WAS still taken"
+    #
+    # Deliberately NOT die(): the child has already sent its own notification
+    # naming the actual error, and systemd's OnFailure= sends the urgent one, so
+    # die() here would make three alerts for one fault. Alert fatigue is a real
+    # failure mode for this regime -- eight days of nightly alerts that said
+    # nothing is how the outage survived -- and a channel worth reading is one
+    # that does not repeat itself. The journal line below is the durable record.
+    if (( capture_rc != 0 )); then
+        echo "tp-backup: FAILED: git capture failed (rc=$capture_rc) -- the vault snapshot WAS still taken" >&2
+        exit 1
+    fi
 }
 
 # ── Tier 4: substrate, guarded against torn capture (finding R13) ───────────
