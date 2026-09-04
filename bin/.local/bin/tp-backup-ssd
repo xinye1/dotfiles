@@ -10,7 +10,12 @@
 #   * The SSD leg is an operator-invoked refresh by design, never automatic.
 #     Plug-in verifies; it does not write.
 #
-# Usage:  sudo tp-backup-ssd [init|sync|verify]     (default: sync)
+# Usage:  sudo ~/.local/bin/tp-backup-ssd [init|sync|verify]   (default: sync)
+#
+#   The absolute path is REQUIRED, not stylistic. sudo replaces PATH with
+#   secure_path, which excludes ~/.local/bin, so a bare `sudo tp-backup-ssd`
+#   dies with "command not found" while the same command works without sudo.
+#   Measured 2026-09-04 when the runbook shipped the bare form and it failed.
 #
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "tp-backup-ssd: must run as root (the SSD is root-owned exfat)" >&2; exit 1; }
@@ -54,5 +59,7 @@ case "${1:-sync}" in
   verify)
     ssd check --read-data
     ;;
-  *) echo "usage: sudo tp-backup-ssd {init|sync|verify}" >&2; exit 2 ;;
+  *) echo "usage: sudo ~/.local/bin/tp-backup-ssd {init|sync|verify}" >&2
+     echo "       (absolute path required: sudo's secure_path excludes ~/.local/bin)" >&2
+     exit 2 ;;
 esac

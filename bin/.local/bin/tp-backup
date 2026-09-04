@@ -6,7 +6,12 @@
 #   tp-backup substrate    research substrate snapshot    (Tier 4)
 #   tp-backup check        repository integrity  (--read-data for the full read)
 #   tp-backup rehearsal    restore-into-scratch proof: restores the latest vault
-#                          snapshot and verifies the memory manifest against live
+#                          snapshot into a private temp dir and checks it against
+#                          the REPOSITORY -- never against live, which changes
+#                          hourly and would mismatch every run. Nothing under
+#                          $HOME is touched, so it is safe to run at any time and
+#                          cannot overwrite work newer than the snapshot.
+#          …  --ssd        the same drill against the cold SSD leg (disk attached)
 #   tp-backup status       staleness of every tier
 #
 # Design notes that are NOT incidental:
@@ -296,31 +301,58 @@ ssd_reminder() {
     notify "Backup: check the SSD" "$msg  ->  sudo ~/.local/bin/tp-backup-ssd sync" default || true
 }
 
+# Read-only view of the cold leg. No root: the repo is world-readable and
+# `--no-lock` avoids the write a lock would need, so the drill can run while the
+# disk is merely attached rather than being administered.
+restic_ssd() {
+    "$TPB_RESTIC" -r "$SSD_REPO" --password-file "$TPB_PASSWORD_FILE" --no-lock "$@"
+}
+
 # ── weekly restore rehearsal: proof that a snapshot is RESTORABLE ───────────
 # Deliberately does NOT compare against live. Memories change constantly, so a
 # snapshot-vs-live diff mismatches every day and trains you to ignore the alert.
 # What matters is the round trip: the snapshot restores, the file count matches
 # what the snapshot itself claims, and the bytes match what restic holds.
+#
+# `--ssd` runs the identical drill against the cold leg. Same code, different
+# repository, on purpose: a restore path proven only against Hetzner says nothing
+# about the disk, and the disk is the copy you reach for when Hetzner is the
+# thing you have lost.
+#
+# NOTHING LIVE IS EVER TOUCHED. The restore target is a fresh mktemp under
+# XDG_RUNTIME_DIR at mode 0700, shredded on the way out by _scrub -- so this can
+# be run at any time, and it cannot overwrite work newer than the snapshot,
+# because it never writes anywhere near $HOME. Correctness is judged against the
+# REPOSITORY (the snapshot's own file count, and a byte-for-byte `dump` of one
+# file), never against live state, which changes hourly and would mismatch every
+# single run until the operator learned to ignore it.
 cmd_rehearsal() {
     local scratch snap n_snap n_rest probe live_sha rest_sha
+    local repo=restic_ro label=Hetzner tier=rehearsal
+    if [[ "${1:-}" == "--ssd" ]]; then
+        repo=restic_ssd; label=SSD; tier=rehearsal-ssd
+        [[ -r "$SSD_REPO/config" ]] \
+            || die "rehearsal --ssd: no repository at $SSD_REPO — attach the disk first"
+    fi
+
     scratch=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" tp-rehearsal-XXXXXX)   # 0700
     TPB_SCRATCH="$scratch"   # destroyed by _scrub on EXIT *and* by die()
 
-    snap=$(restic_ro snapshots --tag vault --json 2>/dev/null \
+    snap=$("$repo" snapshots --tag vault --json 2>/dev/null \
            | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["short_id"])')
-    [[ -n "$snap" ]] || die "rehearsal: no vault snapshot found"
+    [[ -n "$snap" ]] || die "rehearsal($label): no vault snapshot found"
 
     # What the snapshot says it holds.
-    n_snap=$(restic_ro ls "$snap" 2>/dev/null | grep -c '/memory/.*\.md$') || true
-    (( n_snap > 0 )) || die "rehearsal: snapshot $snap contains no memory files — wrong snapshot or broken index"
+    n_snap=$("$repo" ls "$snap" 2>/dev/null | grep -c '/memory/.*\.md$') || true
+    (( n_snap > 0 )) || die "rehearsal($label): snapshot $snap contains no memory files — wrong snapshot or broken index"
 
-    restic_ro restore "$snap" --target "$scratch" \
+    "$repo" restore "$snap" --target "$scratch" \
         --include "$HOME/.claude/projects" >/dev/null \
-        || die "rehearsal: restore failed for snapshot $snap"
+        || die "rehearsal($label): restore failed for snapshot $snap"
 
     n_rest=$(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f 2>/dev/null | wc -l)
     (( n_rest == n_snap )) \
-        || die "rehearsal: $snap claims $n_snap memory files, restore produced $n_rest"
+        || die "rehearsal($label): $snap claims $n_snap memory files, restore produced $n_rest"
 
     # Byte-level round trip on one file, straight from the repository.
     # `| head -1` would close the pipe, SIGPIPE the upstream, and pipefail would
@@ -328,14 +360,14 @@ cmd_rehearsal() {
     local -a _files=()
     mapfile -t _files < <(find "$scratch$HOME/.claude/projects" -path '*/memory/*.md' -type f | sort)
     probe="${_files[0]:-}"
-    [[ -n "$probe" ]] || die "rehearsal: no probe file after restore"
+    [[ -n "$probe" ]] || die "rehearsal($label): no probe file after restore"
     rest_sha=$(sha256sum "$probe" | cut -d" " -f1)
-    live_sha=$(restic_ro dump "$snap" "${probe#"$scratch"}" 2>/dev/null | sha256sum | cut -d" " -f1)
+    live_sha=$("$repo" dump "$snap" "${probe#"$scratch"}" 2>/dev/null | sha256sum | cut -d" " -f1)
     [[ -n "$live_sha" && "$rest_sha" == "$live_sha" ]] \
-        || die "rehearsal: byte mismatch on ${probe#"$scratch"} (restored=${rest_sha:0:16} repo=${live_sha:0:16})"
+        || die "rehearsal($label): byte mismatch on ${probe#"$scratch"} (restored=${rest_sha:0:16} repo=${live_sha:0:16})"
 
-    echo "tp-backup: rehearsal OK — $snap restored $n_rest/$n_snap memory files; probe sha ${rest_sha:0:16} matches the repository"
-    stamp rehearsal
+    echo "tp-backup: rehearsal($label) OK — $snap restored $n_rest/$n_snap memory files; probe sha ${rest_sha:0:16} matches the repository"
+    stamp "$tier"
     _scrub
 }
 
@@ -346,7 +378,7 @@ cmd_status() {
     now=$(date +%s)
     ssd_stamp_refresh            # so `status` reflects the disk if it is attached
     printf '%-14s %-10s %s\n' TIER AGE LAST-SUCCESS
-    for name in vault git-capture substrate check rehearsal ssd; do
+    for name in vault git-capture substrate check rehearsal ssd rehearsal-ssd; do
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age=$(( (now - last) / 3600 ))
             printf '%-14s %-10s %s\n' "$name" "${age}h" "$(date -d "@$last" '+%Y-%m-%d %H:%M')"
@@ -400,9 +432,9 @@ case "${1:-}" in
     watchdog)  trap - ERR; cmd_watchdog ;;
     substrate) cmd_substrate ;;
     check)     shift; cmd_check "${1:-}" ;;
-    rehearsal) cmd_rehearsal ;;
+    rehearsal) shift; cmd_rehearsal "${1:-}" ;;
     status)    cmd_status ;;
     prune)     shift; restic_rw "$@" ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \?//' ;;
-    *)         echo "usage: tp-backup {daily|substrate|check [--read-data]|rehearsal|status|watchdog|prune ...}" >&2; exit 2 ;;
+    *)         echo "usage: tp-backup {daily|substrate|check [--read-data]|rehearsal [--ssd]|status|watchdog|prune ...}" >&2; exit 2 ;;
 esac
