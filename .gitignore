@@ -1,6 +1,12 @@
 # Claude Code local state (machine-specific permissions, absolute paths)
 .claude/settings.local.json
 
+# Agent worktrees. They belong HERE rather than in a session scratchpad under
+# /tmp: /tmp is tmpfs, so a reboot empties it and leaves a live registration in
+# .git/worktrees pointing at nothing. That orphan broke every tp-backup daily
+# run for eight days (2026-08-28..09-03) -- see bin/.local/bin/tp-backup.
+.claude/worktrees/
+
 # htop writes htoprc via mkstemp+rename inside the folded package dir; a killed
 # htop can leave the temp file behind
 htop/.config/htop/htoprc.tmp.*
