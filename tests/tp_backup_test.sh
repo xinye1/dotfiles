@@ -215,5 +215,46 @@ check "a real stale tier still fails the unit" "$rc" "1"
 if grep -q 'STALE: vault' "$SANDBOX/wd.out"; then ok "real staleness still reported as STALE"
 else bad "real staleness still reported as STALE"; fi
 
+# ── SSD restore-drill precondition ──────────────────────────────────────────
+# The full drill needs a real restic repository, so it is exercised against the
+# live disk rather than here. What IS testable hermetically is the precondition,
+# and it is the one that matters: asking for the cold-leg drill with no disk
+# attached must fail loudly and name the cure. Falling through to the Hetzner
+# repository would return a cheerful PASS that proves the wrong leg -- a drill
+# reporting success for a copy it never opened is worse than no drill.
+env HOME="$H3" XDG_STATE_HOME="$H3/.local/state" \
+    TPB_CONF="$H3/.config/tp-backup/config" TPB_SSD_REPO="$ABSENT_SSD" \
+    "$TPB_BIN" rehearsal --ssd >"$SANDBOX/reh.out" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then ok "rehearsal --ssd fails when the disk is absent"
+else bad "rehearsal --ssd fails when the disk is absent (exit $rc)"; fi
+if grep -q 'attach the disk' "$SANDBOX/reh.out"; then ok "absent-disk drill names the cure"
+else bad "absent-disk drill names the cure"; fi
+if grep -q 'rehearsal --ssd' "$SANDBOX/reh.out"; then ok "failure is attributed to the cold leg, not Hetzner"
+else bad "failure is attributed to the cold leg, not Hetzner"; fi
+
+# A mistyped flag must NOT silently run the other leg. `rehearsal --sdd` used to
+# print "rehearsal(Hetzner) OK" and exit 0 -- a green cold-leg drill against a
+# repository it never opened. Caught in review, reproduced against the live disk.
+for badarg in --sdd --SSD -ssd ssd; do
+    env HOME="$H3" XDG_STATE_HOME="$H3/.local/state" \
+        TPB_CONF="$H3/.config/tp-backup/config" TPB_SSD_REPO="$ABSENT_SSD" \
+        "$TPB_BIN" rehearsal "$badarg" >"$SANDBOX/bad.out" 2>&1
+    rc=$?
+    if [ "$rc" -eq 2 ] && grep -q 'unknown argument' "$SANDBOX/bad.out"
+    then ok "rehearsal rejects '$badarg' instead of running Hetzner"
+    else bad "rehearsal rejects '$badarg' (exit $rc)"; fi
+    if grep -q 'rehearsal(Hetzner) OK' "$SANDBOX/bad.out"
+    then bad "'$badarg' must not report a Hetzner pass"; fi
+done
+
+env HOME="$H3" XDG_STATE_HOME="$H3/.local/state" \
+    TPB_CONF="$H3/.config/tp-backup/config" TPB_SSD_REPO="$ABSENT_SSD" \
+    "$TPB_BIN" rehearsal --ssd extra >"$SANDBOX/bad.out" 2>&1
+rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'too many arguments' "$SANDBOX/bad.out"
+then ok "rehearsal rejects surplus arguments"
+else bad "rehearsal rejects surplus arguments (exit $rc)"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
