@@ -157,5 +157,63 @@ else
     else bad "failure message states the snapshot was still taken"; fi
 fi
 
+# ── SSD cold-storage reminder ───────────────────────────────────────────────
+# The cold leg is a REMINDER, never a failure: a detached disk is the design
+# working. So every case asserts the watchdog still exits 0. Folding this into
+# the staleness list would make the unit red for weeks at a stretch and teach the
+# operator to ignore the one alert that still speaks when the rest have gone
+# quiet -- which is how the 2026-08-28 outage survived eight days.
+#
+# No restic needed: with the binary stubbed the freshness probe fails and falls
+# back to the recorded stamp, which is the path that matters when the disk is
+# absent. Presence is faked with a readable `config` file, which is precisely
+# what the attached / not-attached branch keys on.
+H3="$SANDBOX/home3"; S3="$H3/.local/state/tp-backup"
+mkdir -p "$H3/repos" "$S3"
+cp -r "$FAKE_HOME/.config" "$H3/.config"
+NOW=$(date +%s)
+for t in vault git-capture substrate check rehearsal; do echo "$NOW" > "$S3/last-success-$t"; done
+FAKE_SSD="$SANDBOX/fake-ssd"; mkdir -p "$FAKE_SSD"; : > "$FAKE_SSD/config"
+ABSENT_SSD="$SANDBOX/no-such-disk"
+
+run_wd() {   # $1 = path to treat as the SSD repo
+    env HOME="$H3" XDG_STATE_HOME="$H3/.local/state" \
+        TPB_CONF="$H3/.config/tp-backup/config" \
+        TPB_SSD_REPO="$1" TPB_SSD_MAX_H=720 \
+        "$TPB_BIN" watchdog >"$SANDBOX/wd.out" 2>&1
+}
+
+echo "$NOW" > "$S3/last-success-ssd"
+run_wd "$ABSENT_SSD"; rc=$?
+check "fresh cold leg does not fire the reminder" "$rc" "0"
+if grep -q 'cold-storage' "$SANDBOX/wd.out"; then bad "fresh cold leg stays silent (it fired anyway)"
+else ok "fresh cold leg stays silent"; fi
+
+echo "$(( NOW - 800 * 3600 ))" > "$S3/last-success-ssd"
+run_wd "$ABSENT_SSD"; rc=$?
+check "stale cold leg still exits 0 (reminder, not failure)" "$rc" "0"
+if grep -q 'cold-storage leg is 33d old' "$SANDBOX/wd.out"; then ok "reminder reports the age in days"
+else bad "reminder reports the age in days"; fi
+if grep -q 'Attach the disk first' "$SANDBOX/wd.out"; then ok "absent disk tells the operator to attach it"
+else bad "absent disk tells the operator to attach it"; fi
+
+run_wd "$FAKE_SSD"; rc=$?
+check "attached-but-stale still exits 0" "$rc" "0"
+if grep -q 'disk is attached now' "$SANDBOX/wd.out"; then ok "attached disk says to just run the sync"
+else bad "attached disk says to just run the sync"; fi
+
+rm -f "$S3/last-success-ssd"
+run_wd "$ABSENT_SSD"; rc=$?
+check "never-recorded cold leg still exits 0" "$rc" "0"
+if grep -q 'never been recorded' "$SANDBOX/wd.out"; then ok "never-recorded cold leg is reported, not skipped"
+else bad "never-recorded cold leg is reported, not skipped"; fi
+
+# A genuinely stale REAL tier must still fail, with the cold leg alongside it.
+echo "$(( NOW - 100 * 3600 ))" > "$S3/last-success-vault"
+run_wd "$ABSENT_SSD"; rc=$?
+check "a real stale tier still fails the unit" "$rc" "1"
+if grep -q 'STALE: vault' "$SANDBOX/wd.out"; then ok "real staleness still reported as STALE"
+else bad "real staleness still reported as STALE"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
