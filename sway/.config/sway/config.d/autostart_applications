@@ -60,6 +60,12 @@ exec_always sh -c 'pkill -x idle.sh; pkill -x swayidle; exec ~/.config/sway/scri
 # either (§9.2).
 exec_always sh -c 'pkill -x kanshi; exec kanshi'
 
+# Status bar. See scripts/waybar_run.sh for why this replaced a
+# `bar { swaybar_command waybar }` block and its own idempotent-restart loop
+# instead of leaving that to sway. Same pkill-then-exec shape as idle.sh and
+# kanshi above, and the same mandatory `sh -c` wrapper.
+exec_always sh -c 'pkill -x waybar_run.sh; pkill -x waybar; exec ~/.config/sway/scripts/waybar_run.sh'
+
 # Desktop notifications
 exec mako
 

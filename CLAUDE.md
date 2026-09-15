@@ -27,6 +27,13 @@ triggers, not the full story: read the named section before working in its area.
   AC/battery-dependent and owned by `scripts/idle.sh`, not a static list in `config.d/*` — it
   polls power state and restarts swayidle on change; edit timeouts there, not by hand-writing a
   new `exec_always swayidle …` line (§9.26).
+- **waybar is a supervised daemon, not a `bar {}` block** — `scripts/waybar_run.sh` restarts it when
+  it aborts. An **orphaned** bar (supervisor dead, `PPid: 1`) is pixel-identical to a healthy one,
+  so the desktop looks right while crash recovery is silently gone — that cost a 13-hour outage.
+  `setpriv --pdeathsig` ties the two lifetimes so even SIGKILL cannot orphan it, and
+  `check_consumers.sh` asserts one supervisor with every bar its child. **Never `pkill -x waybar`
+  or `pkill -x waybar_run.sh` from a test** — `-x` matches by name across the whole session and
+  kills the live bar (§9.29).
 - **`vim.pack` writes `nvim-pack-lock.json` into the folded `~/.config/nvim`** — i.e. the repo —
   and it is tracked **on purpose**: a pinned revision is configuration, unlike the active palette.
   Commit the lockfile diff; never gitignore it (§5.2, §8).
@@ -90,12 +97,13 @@ Re-runnable; with no argument it re-applies the remembered palette. **Never run 
 argument on the live machine** unless switching is intended — `./setup.sh nord` switches the
 desktop exactly like `theme nord`.
 
-Two things here have real logic, and each has a suite:
+Three things here have real logic, and each has a suite:
 
 ```sh
 sh tests/theme_test.sh        # sandboxed; never touches the live desktop
 sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
+sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
@@ -108,6 +116,14 @@ can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally lin
 `tests/` is a repo-root directory like `docs/`, **not** a stow package — never name it in a
 `stow` command.
 
+**Run `waybar_run_test.sh` after any edit to `sway/.config/sway/scripts/waybar_run.sh`.** It runs the
+script against a fake `waybar` on `PATH` under a throwaway `$HOME` and kills only PIDs it captured
+itself — it must never `pkill` by name, which reaches the live desktop. It exists because the bar
+spent two days running orphaned (supervisor dead, `PPid: 1`, crash recovery gone) while looking
+perfectly healthy, and then stayed down 13 hours. Point `WBR_BIN` at another copy to check the
+assertions can still fail; it was built by proving 4 of its 6 checks fail against the pre-fix
+script (§9.29).
+
 **Run `tp_backup_test.sh` after any edit to `bin/.local/bin/tp-backup`.** It builds throwaway repos
 under a fake `$HOME` and exercises only `__capture`, so restic, ssh and the network are never
 touched and the real backup repository cannot be reached. It exists because the backup regime went
@@ -118,7 +134,9 @@ is the `gate-fixtures` trap, and this one was built by proving 5 of its 7 checks
 with the guard removed.
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
-`pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload). A reload proves
+`pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload) and
+`pgrep -xc waybar_run.sh` (same, and every `waybar`'s `PPid` must be that supervisor — never 1,
+which means orphaned; §9.29). A reload proves
 nothing about **login** — it takes a different code path — so `tests/theme_test.sh` carries the
 startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you touch (§9.2).
 

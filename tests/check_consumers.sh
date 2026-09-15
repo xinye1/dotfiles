@@ -74,6 +74,42 @@ if have kitty; then
     fi
 fi
 
+# --- waybar supervision ---
+# Whether the bar is *supervised*, which is not the same question as whether a
+# bar is on screen and cannot be answered by looking at the screen. waybar is
+# started by scripts/waybar_run.sh, which restarts it when it crashes; if that
+# supervisor dies on its own, the waybar it started keeps running, reparented
+# to init, and the desktop looks exactly right while the crash recovery is
+# gone. That state went unnoticed for two days and cost a 13-hour outage on
+# 2026-09-15 -- the coredump of the bar that finally died recorded `PPid: 1`.
+# So: exactly one supervisor, and every live bar is its child. `swaymsg
+# reload` is the repair (§9.29).
+#
+# Placed ahead of the config check below, which starts a second waybar of its
+# own for a second or so.
+if have waybar && pgrep -x waybar >/dev/null 2>&1; then
+    sups=$(pgrep -x waybar_run.sh 2>/dev/null | wc -l | tr -d ' ')
+    stray=''
+    for p in $(pgrep -x waybar); do
+        pp=$(awk '/^PPid:/{print $2}' "/proc/$p/status" 2>/dev/null)
+        if [ -z "$pp" ] || [ "$(cat "/proc/$pp/comm" 2>/dev/null)" != waybar_run.sh ]; then
+            stray="$stray $p(ppid ${pp:-?})"
+        fi
+    done
+    if [ "$sups" != 1 ]; then
+        no "waybar has exactly one live supervisor" \
+           "pgrep -xc waybar_run.sh = $sups, expected 1; swaymsg reload repairs it"
+    elif [ -n "$stray" ]; then
+        no "every running waybar is a child of its supervisor" \
+           "unsupervised:$stray -- a crash will not restart these; swaymsg reload repairs it"
+    else
+        ok "waybar is supervised (one waybar_run.sh, every bar its child)"
+    fi
+else
+    sk "waybar is supervised" \
+       "no waybar running -- this check only means anything inside the live session"
+fi
+
 # --- waybar ---
 # No --check-config exists, so it has to be started. The signal is survival:
 # a config or style error makes waybar exit at once, a good one keeps it up.

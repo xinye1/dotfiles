@@ -1288,6 +1288,102 @@ it also stops mangling `max_20x` into `Max 20X`, since Anthropic writes that mul
 
 ---
 
+### 9.29 waybar is supervised by a script, and an orphaned bar looks identical to a live one
+
+waybar is not started by a `bar { swaybar_command waybar }` block. `config.d/theme` has no `bar {}`
+block at all — that is what stops sway running its own bundled `swaybar` — and
+`config.d/autostart_applications` starts **`scripts/waybar_run.sh`** with the same
+`sh -c 'pkill -x …; pkill -x …; exec …'` shape every `exec_always` daemon here needs (§9.2).
+
+**Why not the bar block.** waybar aborts intermittently — `coredumpctl` showed five SIGABRTs across
+2026-09-01..13, none correlated with output hotplug, suspend/resume or lock, so it reads as an
+internal waybar race and not as anything this repo feeds it. Sway does not respawn a bar command
+that exits on its own, so every crash left the desktop with no bar until someone pressed
+`$mod+Shift+c`. Patching that from inside the bar block turned out to be a dead end: with the bar
+already dead, `swaymsg reload` reliably re-ran every *other* `exec_always` (idle.sh and kanshi both
+got fresh PIDs) and never relaunched the bar's process — tried with a plain `waybar`, an inline
+`sh -c` loop, and the script, all three zero after 5s of polling. `swaymsg exec waybar` started it
+instantly every time. So the bar became a daemon like the others, and the block went away.
+
+**The failure that mattered is not the crash — it is the supervisor dying quietly.** On 2026-09-15
+the bar vanished at 08:07:54 and was still gone 13 hours later. The supervisor had been in place
+for two days and had demonstrably worked (it restarted a bar that was deliberately `kill -ABRT`ed
+on 09-13). What the coredump of the bar that finally died actually recorded was:
+
+```
+PID: 1311355 (waybar)   Signal: 6 (ABRT) si_code: SI_TKILL   PPid: 1
+```
+
+`PPid: 1`. That waybar was an **orphan** — its supervisor had died days earlier, the bar kept
+running reparented to init, and so the one thing the supervisor existed to do was already gone
+before the crash it was supposed to cover. Note also `Command Line: waybar`, with no `-b bar-0`:
+the pre-2026-09-13 cores all read `waybar -b bar-0`, which is how a bar started by sway's bar block
+is spelled, so the cmdline alone dates a core either side of this change.
+
+**Nothing could see it, and that is the real defect.** An unsupervised bar is pixel-identical to a
+supervised one. The desktop looked perfect for two days. `check_consumers.sh` asked waybar whether
+it accepted its config and got a happy yes. The only evidence anywhere on the machine was a field
+in coredump metadata, which is not somewhere anyone looks until after the outage.
+
+**The signature is reproducible in one line: `kill -HUP` the supervisor.** The first version
+trapped `TERM INT` only, so a HUP killed the shell outright and the `waybar &` it had started
+survived with `PPid: 1` — the exact state above. A trap is a necessary fix and not a sufficient
+one: SIGKILL runs no handler at all, so no amount of trapping can guarantee the child goes with
+the parent.
+
+**`setpriv --pdeathsig TERM waybar` is what actually closes it**, and it is load-bearing rather
+than tidy. `PR_SET_PDEATHSIG` is the kernel's own bookkeeping: it fires when the parent dies
+*however* it died, SIGKILL included. Verified by SIGKILLing a supervisor and watching the child go
+with it. `setpriv` execs waybar in place, so `comm` stays `waybar` and the `pkill -x waybar` in
+`autostart_applications` still matches it; util-linux is not an added dependency. The invariant it
+buys is the one worth stating: **waybar is alive if and only if its supervisor is alive.**
+
+Four smaller holes went with it:
+
+- `pid` is initialised before the loop. Under `set -u` an unset `$pid` makes the cleanup trap abort
+  on an unbound variable at exactly the moment cleanup is wanted — a signal arriving before the
+  first assignment.
+- The kill hangs off an `EXIT` trap, so *every* exit path — signal, error, falling out of the loop
+  — runs the same cleanup, instead of only the two signals someone thought of.
+- A bar that cannot start at all (broken config, missing module binary) exits instantly, and a flat
+  `sleep 1` retried it ten times in ten seconds, forever, with nothing on screen and nothing said.
+  It now backs off 1, 2, 4, 8, 16, 30s and raises one `notify-send` after five fast exits in a row
+  — a notification being the only channel left when the bar itself is the thing that is missing.
+- Restarts are appended to `${XDG_STATE_HOME:-~/.local/state}/waybar/run.log` (trimmed at 500
+  lines). waybar's stderr goes to sway's tty, which nothing records, which is why diagnosing this
+  needed coredump archaeology in the first place.
+
+**Detection, because prevention is not provable.** `check_consumers.sh` now asserts the invariant
+against the live session: exactly one `waybar_run.sh`, and every running `waybar` a child of it. It
+is placed ahead of that file's existing waybar check, which starts a second bar of its own for a
+second. The repair for any failure it reports is `swaymsg reload` — the `pkill -x waybar` on the
+`exec_always` line reaps a foreign or orphaned bar before the new supervisor starts its own.
+
+**`pkill -x` matches by name across the whole session — a "sandbox" test cannot use these names.**
+`pkill -x waybar_run.sh` from a test running out of `/tmp` kills the real supervisor, and
+`pkill -x waybar` kills the real bar. This is not hypothetical: it is how the live bar was taken
+down *during this investigation*, by a throwaway script that copied `waybar_run.sh` under its own
+name and cleaned up after itself with `pkill`. `tests/waybar_run_test.sh` therefore kills only PIDs
+it captured itself, and says so at the top.
+
+**The suite.** `sh tests/waybar_run_test.sh` — sandboxed, a fake `waybar` on `PATH` and a throwaway
+`$HOME`, never touches the live desktop. Six checks: crash restarts; TERM, HUP and KILL each take
+the bar down with the supervisor; an instantly-exiting bar is backed off rather than respawned at
+1Hz; restarts reach the log. Point `WBR_BIN` at another copy to confirm the assertions can still
+fail — a green suite that cannot go red is the `gate-fixtures` trap (§9.25's sibling rule, applied
+in `tp_backup_test.sh`). This one was built by proving **4 of its 6 checks fail** against the
+pre-fix script, two of them with the literal `PPid: 1` signature from the outage.
+
+By hand, in the live session:
+
+```sh
+pgrep -xc waybar_run.sh                      # exactly 1, and still 1 after a second reload
+pgrep -x waybar | while read -r p; do        # every bar's parent is the supervisor, never 1
+    printf '%s ppid=%s\n' "$p" "$(awk '/^PPid:/{print $2}' /proc/$p/status)"
+done
+tail "${XDG_STATE_HOME:-$HOME/.local/state}/waybar/run.log"
+```
+
 ## 10. Troubleshooting
 
 | Symptom | Likely cause | Check / fix |
@@ -1295,6 +1391,8 @@ it also stops mangling `max_20x` into `Max 20X`, since Anthropic writes that mul
 | Config change had no effect | Package unfolded, new file not linked | `[ -L ~/.config/<pkg> ] && echo folded \|\| echo unfolded` (§5.2 — `ls -la \| grep` silently passes when it shouldn't); `stow -R <pkg>` |
 | Config change had no effect | Symlink points outside the repo | `readlink -f ~/.config/<pkg>` |
 | Change needs a full logout to apply | Used `exec` instead of `exec_always` | §9.2 |
+| Bar vanished and never came back | waybar was orphaned — its supervisor died earlier, so nothing restarted it | `pgrep -xc waybar_run.sh` (must be 1) and every `waybar`'s `PPid` must be that pid, never 1; `swaymsg reload` repairs it; §9.29 |
+| Bar flickers on and off forever | waybar cannot start at all; the supervisor is backing off and retrying | `tail "${XDG_STATE_HOME:-$HOME/.local/state}/waybar/run.log"`; §9.29 |
 | Screen never locks | swayidle not running, or many are | `pgrep -xc idle.sh` and `pgrep -xc swayidle` — both must be exactly `1` |
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
 | Machine suspends when plugged in, or never suspends on battery | `idle.sh` hasn't noticed a power-source change yet (15s poll), or `AC/online` is unreadable | Wait 15s; `cat /sys/class/power_supply/AC/online`; §9.26 |
