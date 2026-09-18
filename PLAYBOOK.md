@@ -1336,7 +1336,17 @@ than tidy. `PR_SET_PDEATHSIG` is the kernel's own bookkeeping: it fires when the
 *however* it died, SIGKILL included. Verified by SIGKILLing a supervisor and watching the child go
 with it. `setpriv` execs waybar in place, so `comm` stays `waybar` and the `pkill -x waybar` in
 `autostart_applications` still matches it; util-linux is not an added dependency. The invariant it
-buys is the one worth stating: **waybar is alive if and only if its supervisor is alive.**
+buys is one-directional, and it is the direction that matters: **no waybar outlives its
+supervisor.** Do not read the converse into it — during a backoff the supervisor is deliberately
+alive with no bar on screen, which is exactly when the run log is the thing to look at.
+
+`setpriv` comes from `util-linux`, which pacman reports as `Required By: base`, so it is not a new
+dependency and does not belong in `packages.txt` (§4 lists explicit installs, not what `base`
+drags in). The script still resolves it with `command -v`, once at startup rather than per
+restart, and if it is ever missing it says so through `notify-send` as well as the log and starts
+waybar anyway: a bar with degraded recovery is the pre-2026-09-15 status quo and beats no bar,
+and the supervision check below catches the orphan if one then appears. What it must not do is
+take that path in silence — that would hand back the exact bug this section is about.
 
 Four smaller holes went with it:
 

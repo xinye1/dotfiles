@@ -84,6 +84,24 @@ say "supervisor started (pid $$)"
 # nothing on screen and nothing said. Back off instead, and once it is clear
 # this is not a one-off crash, say so through the only channel a missing bar
 # leaves: a notification.
+# Resolved once, not per restart, so the warning below cannot repeat on a
+# crash loop. setpriv ships in util-linux, which pacman lists as `Required By:
+# base` -- this branch should be unreachable on any working Arch system, which
+# is exactly why it must be loud if it ever fires rather than quietly handing
+# back the orphan bug this script exists to remove. It still starts waybar:
+# a bar with degraded recovery is the pre-2026-09-15 status quo and beats no
+# bar at all, and check_consumers.sh's supervision check catches the orphan if
+# one ever appears.
+if command -v setpriv >/dev/null 2>&1; then
+    have_setpriv=1
+else
+    have_setpriv=0
+    say "setpriv MISSING - waybar runs without pdeathsig; a killed supervisor can orphan it"
+    command -v notify-send >/dev/null 2>&1 && notify-send -u critical \
+        "waybar supervision degraded" \
+        "setpriv (util-linux) is missing, so a killed supervisor can leave the bar orphaned. PLAYBOOK §9.29." 2>/dev/null
+fi
+
 fails=0
 while :; do
     started=$(date +%s)
@@ -92,10 +110,9 @@ while :; do
     # so that both branches are a plain background command: `$!` must be
     # waybar's own pid, not a wrapper shell's, or cleanup and pdeathsig would
     # both be aimed one process too high.
-    if command -v setpriv >/dev/null 2>&1; then
+    if [ "$have_setpriv" = 1 ]; then
         setpriv --pdeathsig TERM waybar &
     else
-        say "setpriv missing - running waybar unsupervised-on-death"
         waybar &
     fi
     pid=$!

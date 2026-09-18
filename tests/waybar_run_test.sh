@@ -24,7 +24,14 @@ ok() { pass=$((pass+1)); printf '  ok    %s\n' "$1"; }
 no() { fail=$((fail+1)); printf '  FAIL  %s\n' "$1"; [ $# -lt 2 ] || printf '        %s\n' "$2"; }
 
 sandbox=$(mktemp -d)
-trap 'kill_all; rm -rf "$sandbox"' EXIT INT TERM
+# Cleanup hangs off EXIT alone; the signal traps do nothing but exit into it.
+# A signal trap that cleaned up and *returned* would drop the script back into
+# the next check with $PATH still pointing at the deleted sandbox -- where
+# `waybar` resolves to the real one, so an interrupted run would start the
+# live bar and supervise it. Same shape as the script under test.
+trap 'kill_all; rm -rf "$sandbox"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 tracked=''
 kill_all() {
@@ -109,7 +116,7 @@ if start_supervisor; then
     kill -TERM "$sup" 2>/dev/null
     sleep 1
     if alive "$c"; then
-        no "SIGTERM to the supervisor takes waybar down" "child $c survived (ppid $(awk '/^PPid:/{print $2}' /proc/$c/status 2>/dev/null))"
+        no "SIGTERM to the supervisor takes waybar down" "child $c survived (ppid $(awk '/^PPid:/{print $2}' /proc/"$c"/status 2>/dev/null))"
     else
         ok "SIGTERM to the supervisor takes waybar down"
     fi
