@@ -120,7 +120,9 @@ client.background       $bg
 #
 # Status Bar:
 #
-# Read `man 5 sway-bar` for more information about this section.
-bar {
-    swaybar_command waybar
-}
+# No `bar {}` block here on purpose. That's what tells sway to run its own
+# bundled `swaybar` -- omitting it entirely means sway starts no bar of its
+# own, leaving waybar (launched from config.d/autostart_applications, see
+# scripts/waybar_run.sh) as the only one. A `bar { swaybar_command waybar }`
+# block used to sit here; see waybar_run.sh for why it was replaced rather
+# than patched.
