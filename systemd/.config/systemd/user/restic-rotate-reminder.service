@@ -1,0 +1,17 @@
+[Unit]
+Description=One-shot reminder: rotate the restic repository password
+
+[Service]
+Type=oneshot
+# Self-disabling: fires once, tells you, then takes itself out of the schedule
+# so it cannot become a recurring nag you learn to ignore.
+#   --retry: this fires exactly once (see the .timer), so a transient DNS
+#   hiccup or a momentarily-unreachable ntfy.sh must not cost the only
+#   delivery attempt — ExecStartPost only disables the timer once ExecStart
+#   itself has succeeded.
+ExecStart=/bin/bash -c 'source %h/.config/tp-backup/config; \
+  curl -fsS -m 20 --retry 3 --retry-delay 5 \
+  -H "Title: Rotate the restic password" -H "Priority: default" \
+  -d "The restic repo password was exposed in a Claude session transcript on 2026-09-14. Rotate it with the MAINTENANCE key (passphrase in Bitwarden) — the append-only backup key cannot remove the old key. See ~/.config/tp-backup/config." \
+  "${NTFY_SERVER:-https://ntfy.sh}/$NTFY_TOPIC"'
+ExecStartPost=/usr/bin/systemctl --user disable restic-rotate-reminder.timer

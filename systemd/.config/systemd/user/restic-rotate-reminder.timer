@@ -1,0 +1,14 @@
+[Unit]
+Description=Remind me to rotate the restic password
+
+[Timer]
+# Relative to activation, not a fixed calendar date: a OnCalendar= timestamp
+# that is already past by the time this is deployed has no future occurrence
+# and systemd silently never fires it — Persistent= only replays occurrences
+# missed since this unit's own last recorded trigger, which a never-before-
+# enabled timer doesn't have. OnActiveSec= sidesteps the whole class of bug:
+# it always means "N minutes after whenever this actually gets enabled".
+OnActiveSec=2min
+
+[Install]
+WantedBy=timers.target
