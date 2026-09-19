@@ -1,0 +1,13 @@
+[Unit]
+Description=Weekly tp-backup media snapshot
+
+[Timer]
+# Saturday 03:00 — clear of every other tier (vault 02:30 daily, substrate
+# Sun 04:00, check Mon 05:30, rehearsal Wed 05:00) so a long upload never
+# contends with them for the drive or the uplink.
+OnCalendar=Sat *-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target

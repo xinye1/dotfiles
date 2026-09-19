@@ -172,7 +172,7 @@ H3="$SANDBOX/home3"; S3="$H3/.local/state/tp-backup"
 mkdir -p "$H3/repos" "$S3"
 cp -r "$FAKE_HOME/.config" "$H3/.config"
 NOW=$(date +%s)
-for t in vault git-capture substrate check rehearsal; do echo "$NOW" > "$S3/last-success-$t"; done
+for t in vault git-capture jellyfin substrate media check rehearsal; do echo "$NOW" > "$S3/last-success-$t"; done
 FAKE_SSD="$SANDBOX/fake-ssd"; mkdir -p "$FAKE_SSD"; : > "$FAKE_SSD/config"
 ABSENT_SSD="$SANDBOX/no-such-disk"
 

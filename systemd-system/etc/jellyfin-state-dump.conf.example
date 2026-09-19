@@ -1,0 +1,11 @@
+# Copy to /etc/jellyfin-state-dump.conf, chown root:root, chmod 600. NEVER commit the
+# filled-in version: this repository is public and NTFY_TOPIC is a read/write capability
+# on your alert channel.
+#
+# Deliberately separate from ~/.config/tp-backup/config: jellyfin-state-dump.service runs
+# as root and `source`s this file before dropping to the jellyfin user for the SQLite copy,
+# so it must live somewhere the login user cannot write — see the script's own header and
+# PLAYBOOK §5.2.
+
+NTFY_TOPIC="<your-topic>"
+NTFY_SERVER="https://ntfy.sh"

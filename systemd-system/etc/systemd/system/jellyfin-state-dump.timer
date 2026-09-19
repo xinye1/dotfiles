@@ -1,0 +1,16 @@
+[Unit]
+Description=Nightly Jellyfin state dump
+
+[Timer]
+# 02:00, i.e. ahead of tp-backup-daily at 02:30, so each night's vault snapshot
+# contains that night's dump.
+OnCalendar=*-*-* 02:00:00
+# Essential on a laptop: a run missed while suspended fires on resume rather
+# than being silently skipped. Note that on a resume BOTH this and the vault
+# timer catch up with no guaranteed ordering between them, so a resumed day's
+# snapshot may carry the previous dump; the following night reconciles it.
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

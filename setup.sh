@@ -81,11 +81,15 @@ done
 python3 bin/.local/bin/theme ${PALETTE:+"$PALETTE"}
 
 # --- stow everything --------------------------------------------------------
-# Every top-level directory is a package except docs/ and tests/ — derived
-# here rather than listed, so a new package cannot be forgotten.
+# Every top-level directory is a package except docs/, tests/ and
+# systemd-system/ — derived here rather than listed, so a new package cannot
+# be forgotten. systemd-system/ mirrors /etc/systemd/system, not $HOME: with
+# --target=~ (.stowrc) stow would happily link it to ~/etc/systemd/system and
+# exit 0, having installed nothing systemd will ever read (PLAYBOOK §5.2,
+# §6.4). It is deployed by hand; see README.
 pkgs=''
 for d in */; do
-    case ${d%/} in docs|tests) ;; *) pkgs="$pkgs ${d%/}" ;; esac
+    case ${d%/} in docs|tests|systemd-system) ;; *) pkgs="$pkgs ${d%/}" ;; esac
 done
 
 # ~/.bashrc exists from /etc/skel on any fresh Arch, and stow refuses to
