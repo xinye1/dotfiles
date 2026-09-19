@@ -1,0 +1,11 @@
+[Unit]
+Description=Remind me to rotate the restic password
+
+[Timer]
+OnCalendar=2026-09-18 10:00:00
+# Laptop: if it is asleep at 10:00 the reminder fires on the next resume
+# rather than being silently skipped.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
