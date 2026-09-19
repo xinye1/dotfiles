@@ -1,11 +1,11 @@
 [Unit]
 Description=Jellyfin state dump into ~/db-backups (carried offsite by tp-backup)
-Documentation=file:///home/xinye/.local/bin/jellyfin-state-dump
+Documentation=file:///usr/local/bin/jellyfin-state-dump
 After=jellyfin.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/xinye/.local/bin/jellyfin-state-dump
+ExecStart=/usr/local/bin/jellyfin-state-dump
 Nice=10
 IOSchedulingClass=idle
 

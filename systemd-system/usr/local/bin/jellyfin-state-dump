@@ -13,8 +13,8 @@
 #
 # Scheduled 02:00, ahead of the 02:30 vault run.
 #
-# Two findings from the 2026-09-14 failures are encoded below; neither is
-# incidental, and both were invisible until the real machine was inspected:
+# Three findings from the 2026-09-14 failures are encoded below; none is
+# incidental, and all were invisible until the real machine was inspected:
 #
 #  1. The database copy runs AS THE JELLYFIN USER, not as root. SQLite may need
 #     to write the -wal/-shm sidecars to open a live database (WAL recovery when
@@ -27,6 +27,14 @@
 #     /etc/jellyfin (JELLYFIN_CONFIG_DIR). The old script assumed otherwise and
 #     died on a path that has never existed here, AFTER the database copy had
 #     already succeeded.
+#
+#  3. This script and CONF below live in root-owned, non-user-writable paths —
+#     deliberately NOT under ~/.local/bin or ~/.config, even though everything
+#     else this repo installs there is stow-managed. CONF is `source`d below
+#     while still running as root, before the SQLite copy drops to $SVC_USER;
+#     a user-writable script or config sourced by a root service is a straight
+#     line to root for anything that can write as the login user. Deployed by
+#     hand alongside the unit files — see systemd-system/ in PLAYBOOK §5.2.
 set -Eeuo pipefail
 
 OWNER="xinye"
@@ -36,13 +44,9 @@ SRC_ETC="/etc/jellyfin"
 DEST="/home/$OWNER/db-backups/jellyfin"
 STAGE="$DEST.staging"
 STATE="/home/$OWNER/.local/state/tp-backup"
-CONF="/home/$OWNER/.config/tp-backup/config"
+CONF="/etc/jellyfin-state-dump.conf"
 
 [[ -r "$CONF" ]] || { echo "jellyfin-state-dump: cannot read $CONF" >&2; exit 1; }
-# The config expands $HOME. systemd sets no HOME for a root service and `sudo`
-# resets it to /root — either way `set -u` aborts at the source line, and /root
-# would silently be the wrong answer. Pin it to the owning user's home.
-export HOME="/home/$OWNER"
 # shellcheck disable=SC1090
 source "$CONF"
 
