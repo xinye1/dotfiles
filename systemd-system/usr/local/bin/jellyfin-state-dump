@@ -64,9 +64,10 @@ trap 'die "unexpected error at line $LINENO"' ERR
 
 [[ $EUID -eq 0 ]] || die "must run as root (needs to read $SRC_LIB and drop to $SVC_USER)"
 [[ -d "$SRC_LIB" ]] || die "$SRC_LIB missing — is jellyfin installed?"
-[[ -n "${NTFY_TOPIC:-}" ]] || die "NTFY_TOPIC missing from $CONF — failures would be silent"
+[[ -n "${NTFY_TOPIC:-}" && "$NTFY_TOPIC" != "<your-topic>" ]] \
+    || die "NTFY_TOPIC missing or still the example placeholder in $CONF — failures would be silent"
 id -u "$SVC_USER" >/dev/null 2>&1 || die "service user $SVC_USER does not exist"
-for t in sqlite3 setpriv tar; do command -v "$t" >/dev/null || die "$t not installed"; done
+for t in sqlite3 setpriv tar curl; do command -v "$t" >/dev/null || die "$t not installed"; done
 
 rm -rf "$STAGE"; mkdir -p "$STAGE/data" "$STAGE/lib" "$STAGE/etc"
 
