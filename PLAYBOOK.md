@@ -1029,6 +1029,21 @@ the same as anywhere else. All widget state — fetched limits, JSONL scan offse
 timestamps — lives in `~/.cache/claude-usage/`; deleting it forces a full rebuild on the next run
 (fresh JSONL scan, fresh fetch, TTL ignored).
 
+**One wall-clock read, and `main(now=…)` is the seam.** Every function in the widget already takes
+`now` as an argument — `render(st, theme, now)`, `scan_jsonl(…, now_epoch)`, `refresh_limits(…,
+now_epoch)`. `main` was the only one calling `datetime.now()`, and it now takes an optional `now`
+so the end-to-end tests can freeze it to the same instant the other 80 tests use. That is not
+tidiness. With a real clock, the end-to-end fixture (stamped 2026-08-22) aged past `WINDOW_DAYS =
+8`, `scan_jsonl` pruned it on arrival, and `tests/claude_usage_test.py` — and `theme_test.sh`,
+which runs it — went red from roughly 2026-08-30 **on the calendar rather than on a defect**, and
+stayed red until 09-19, camouflaging anything real that might have joined it. A test with a dated
+fixture either freezes the clock the code reads or it rots; freezing is the option that keeps this
+test in step with the other 81 instead of making it the only one whose inputs change per run. The
+`now` is still resolved *inside* the flock, not at function entry, so a run that queued on the
+lock stamps itself when it got the lock. Proven both directions: booby-trap `datetime.now()` to
+raise and the end-to-end test still passes (the clock really is out of the path), and break day
+bucketing and it still goes red (the assertion still bites).
+
 ### 9.24 A CodeRabbit "Review failed" banner is the app failing, not a finding
 
 PR #5 opens with `> [!CAUTION] Review failed — The pull request is closed.` and carries **zero

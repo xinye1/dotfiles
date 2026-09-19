@@ -608,7 +608,7 @@ def render(st, theme, now):
     return {"text": text, "tooltip": tooltip, "class": cls}
 
 
-def main(argv=None):
+def main(argv=None, now=None):
     force = "--refresh" in (argv if argv is not None else sys.argv[1:])
     home = Path(os.environ.get("HOME", str(Path.home())))
     cache_dir = Path(os.environ.get("XDG_CACHE_HOME",
@@ -629,7 +629,17 @@ def main(argv=None):
             st = {}  # first run or corrupt: silent rebuild
         if not isinstance(st, dict):
             st = {}  # valid JSON but not an object: rebuild too
-        now = datetime.now(timezone.utc)
+        # The only wall-clock read in the module -- every other function here
+        # takes `now` as an argument already. `main(now=...)` exists so the
+        # end-to-end test can freeze it too: with a real clock, that test's
+        # fixture day ages past WINDOW_DAYS and the assertion starts failing
+        # on a date rather than on a defect. It did exactly that from
+        # ~2026-08-30, eight days after the fixture's 2026-08-22, and the red
+        # sat in `theme_test.sh` until 09-19 camouflaging anything real.
+        # Resolved here rather than at function entry, deliberately: a run
+        # that waited on the flock above should stamp itself with when it got
+        # the lock, not when the process started.
+        now = now if now is not None else datetime.now(timezone.utc)
         refresh_limits(st, home / ".claude" / ".credentials.json",
                        force, now.timestamp())
         scan_jsonl(home / ".claude" / "projects", st, now.timestamp())
