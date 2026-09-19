@@ -1094,7 +1094,13 @@ class MainTest(unittest.TestCase):
                  mock.patch.object(cu.urllib.request, "urlopen",
                                    fake_urlopen({"limits": LIMITS})), \
                  contextlib.redirect_stdout(buf):
-                cu.main([])
+                # `now=NOW`, not the wall clock. The fixture above is stamped
+                # NOW, and scan_jsonl prunes anything older than WINDOW_DAYS,
+                # so a real clock silently drops it eight days after NOW and
+                # then fails the assertion below on the calendar rather than
+                # on a defect -- which is exactly what happened from
+                # ~2026-08-30 until 09-19.
+                cu.main([], now=NOW)
             out = jsonlib.loads(buf.getvalue())
             self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
             state = jsonlib.loads(
@@ -1119,7 +1125,10 @@ class MainTest(unittest.TestCase):
                  mock.patch.object(cu.urllib.request, "urlopen",
                                    fake_urlopen({"limits": LIMITS})), \
                  contextlib.redirect_stdout(buf):
-                cu.main([])
+                # Frozen clock here too, for the same reason as the
+                # end-to-end test above: no main() call in this suite should
+                # depend on what day it is run.
+                cu.main([], now=NOW)
             out = jsonlib.loads(buf.getvalue())
             self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
 
