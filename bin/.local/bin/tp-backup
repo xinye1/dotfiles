@@ -4,6 +4,7 @@
 #
 #   tp-backup daily        git capture + vault snapshot   (Tier 2 + Tier 3)
 #   tp-backup substrate    research substrate snapshot    (Tier 4)
+#   tp-backup media        irreplaceable media snapshot   (Tier 5)
 #   tp-backup check        repository integrity  (--read-data for the full read)
 #   tp-backup rehearsal    restore-into-scratch proof: restores the latest vault
 #                          snapshot into a private temp dir and checks it against
@@ -204,7 +205,7 @@ cmd_daily() {
         --exclude "$HOME/.local/state/tp2-watchdogs/logs" \
         "$HOME/.claude" "$HOME/.claude.json" \
         "$HOME/.ssh" "$HOME/.gnupg" "$HOME/.config/gh" "$HOME/.config/rclone" \
-        "$HOME/.config/systemd/user" "$HOME/.config/tp-backup" \
+        "$HOME/.config/systemd/user" "$HOME/.config/tp-backup" "$HOME/.config/jellyfin-roles" \
         "$HOME/.local/opt/tp2-watchdogs" "$HOME/.local/state/tp2-watchdogs" \
         "$STATE/git-capture" \
         "$HOME/archives" "$HOME/db-backups" \
@@ -254,6 +255,40 @@ cmd_substrate() {
         "$S/holistic_ml_trading/.cache_holistic"
     stamp substrate
     exec {lockfd}>&-
+}
+
+# ── Tier 5: irreplaceable media ─────────────────────────────────────────────
+# /mnt/ext holds ~450 GB, almost all of it re-downloadable films and TV that is
+# deliberately NOT backed up. recordings/ is the exception: camera originals
+# that exist nowhere else, on a single exFAT drive with no redundancy and no
+# checksums.
+cmd_media() {
+    # Overridable only so the guards below can be exercised against a scratch
+    # directory; unset, they are the real paths.
+    local SRC="${TPB_MEDIA_SRC:-/mnt/ext/films/general/recordings}"
+    local MNT="${TPB_MEDIA_MOUNT:-/mnt/ext}"
+
+    # An unmounted drive must SKIP, never snapshot. /mnt/ext is an ordinary
+    # directory when the disk is detached, so restic would happily record a
+    # snapshot in which every file had been deleted -- the tier would report
+    # green while protecting nothing, and the stamp would suppress the watchdog
+    # that is supposed to catch exactly this. A skip leaves the stamp alone, so
+    # the tier ages and the watchdog speaks up.
+    if ! mountpoint -q "$MNT"; then
+        echo "tp-backup: $MNT not mounted — media SKIPPED, not failed" >&2
+        date +%s > "$STATE/last-skip-media"
+        return 0
+    fi
+    [[ -d "$SRC" ]] || die "media source $SRC missing while $MNT IS mounted"
+
+    # Mounted but empty is not a normal state; it is either the wrong disk or a
+    # deletion. Refuse rather than record it.
+    local n
+    n=$(find "$SRC" -type f -printf . 2>/dev/null | wc -c)
+    (( n > 0 )) || die "media source $SRC is mounted but empty — refusing to snapshot a vacuous state"
+
+    restic_ro backup --tag media --tag weekly "$SRC"
+    stamp media
 }
 
 # ── SSD cold-storage freshness ──────────────────────────────────────────────
@@ -391,7 +426,7 @@ cmd_status() {
     now=$(date +%s)
     ssd_stamp_refresh            # so `status` reflects the disk if it is attached
     printf '%-14s %-10s %s\n' TIER AGE LAST-SUCCESS
-    for name in vault git-capture substrate check rehearsal ssd rehearsal-ssd; do
+    for name in vault git-capture jellyfin substrate media check rehearsal ssd rehearsal-ssd; do
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age=$(( (now - last) / 3600 ))
             printf '%-14s %-10s %s\n' "$name" "${age}h" "$(date -d "@$last" '+%Y-%m-%d %H:%M')"
@@ -411,7 +446,7 @@ cmd_status() {
 cmd_watchdog() {
     local now name last age_h thr stale=() ; now=$(date +%s)
     # tier:threshold_hours
-    for spec in vault:36 git-capture:36 substrate:240 check:240 rehearsal:240; do
+    for spec in vault:36 git-capture:36 jellyfin:36 substrate:240 media:240 check:240 rehearsal:240; do
         name="${spec%%:*}"; thr="${spec##*:}"
         if [[ -r "$STATE/last-success-$name" ]]; then
             last=$(<"$STATE/last-success-$name"); age_h=$(( (now - last) / 3600 ))
@@ -444,6 +479,7 @@ case "${1:-}" in
     # leaving the ERR trap armed made die() fire a second, misleading alert.
     watchdog)  trap - ERR; cmd_watchdog ;;
     substrate) cmd_substrate ;;
+    media)     cmd_media ;;
     check)     shift; cmd_check "${1:-}" ;;
     # Pass every argument through, so cmd_rehearsal sees a true $# and can
     # reject what it does not recognise rather than defaulting to Hetzner.

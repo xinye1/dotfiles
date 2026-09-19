@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+#
+# jellyfin-state-dump — make Jellyfin's server state readable by the tp-backup
+# vault snapshot.
+#
+# Jellyfin's state lives under /var/lib/jellyfin and /etc/jellyfin, both owned
+# by the jellyfin service account. tp-backup runs as the login user and cannot
+# see any of it. Rather than give root a second copy of the restic credentials,
+# this dump lands a user-readable copy in ~/db-backups/jellyfin and lets the
+# EXISTING daily vault snapshot carry it offsite — so the new data inherits the
+# integrity check, restore rehearsal and staleness watchdog already covering
+# that path instead of becoming a second unmonitored regime.
+#
+# Scheduled 02:00, ahead of the 02:30 vault run.
+#
+# Two findings from the 2026-09-14 failures are encoded below; neither is
+# incidental, and both were invisible until the real machine was inspected:
+#
+#  1. The database copy runs AS THE JELLYFIN USER, not as root. SQLite may need
+#     to write the -wal/-shm sidecars to open a live database (WAL recovery when
+#     the log is non-empty). Done as root, any sidecar it creates would be
+#     root-owned, and the jellyfin service would then be unable to write its own
+#     database — a backup job that breaks the thing it backs up. Done as the
+#     owning user, ownership stays correct.
+#
+#  2. There is no /var/lib/jellyfin/config on Arch. Configuration lives in
+#     /etc/jellyfin (JELLYFIN_CONFIG_DIR). The old script assumed otherwise and
+#     died on a path that has never existed here, AFTER the database copy had
+#     already succeeded.
+set -Eeuo pipefail
+
+OWNER="xinye"
+SVC_USER="jellyfin"
+SRC_LIB="/var/lib/jellyfin"
+SRC_ETC="/etc/jellyfin"
+DEST="/home/$OWNER/db-backups/jellyfin"
+STAGE="$DEST.staging"
+STATE="/home/$OWNER/.local/state/tp-backup"
+CONF="/home/$OWNER/.config/tp-backup/config"
+
+[[ -r "$CONF" ]] || { echo "jellyfin-state-dump: cannot read $CONF" >&2; exit 1; }
+# The config expands $HOME. systemd sets no HOME for a root service and `sudo`
+# resets it to /root — either way `set -u` aborts at the source line, and /root
+# would silently be the wrong answer. Pin it to the owning user's home.
+export HOME="/home/$OWNER"
+# shellcheck disable=SC1090
+source "$CONF"
+
+notify() {
+    local title="$1" msg="$2" prio="${3:-default}"
+    [[ -n "${NTFY_TOPIC:-}" ]] || { echo "jellyfin-state-dump: NTFY_TOPIC unset — alert NOT delivered: $title" >&2; return 1; }
+    curl -fsS -m 20 \
+        -H "Title: ${title//$'\n'/ }" -H "Priority: $prio" \
+        -d "${msg//$'\n'/ }" "${NTFY_SERVER:-https://ntfy.sh}/$NTFY_TOPIC" >/dev/null
+}
+cleanup() { [[ -d "$STAGE" ]] && rm -rf "$STAGE"; return 0; }
+trap cleanup EXIT
+die() { echo "jellyfin-state-dump: FAILED: $*" >&2; notify "Jellyfin backup FAILED" "$*" urgent || true; exit 1; }
+trap 'die "unexpected error at line $LINENO"' ERR
+
+[[ $EUID -eq 0 ]] || die "must run as root (needs to read $SRC_LIB and drop to $SVC_USER)"
+[[ -d "$SRC_LIB" ]] || die "$SRC_LIB missing — is jellyfin installed?"
+[[ -n "${NTFY_TOPIC:-}" ]] || die "NTFY_TOPIC missing from $CONF — failures would be silent"
+id -u "$SVC_USER" >/dev/null 2>&1 || die "service user $SVC_USER does not exist"
+for t in sqlite3 setpriv tar; do command -v "$t" >/dev/null || die "$t not installed"; done
+
+rm -rf "$STAGE"; mkdir -p "$STAGE/data" "$STAGE/lib" "$STAGE/etc"
+
+# ── 1. Databases, copied as the jellyfin user ───────────────────────────────
+# `.backup` is SQLite's own online-backup API: a consistent copy of a database
+# that is open and being written to, including anything sitting in the WAL. That
+# is why Jellyfin is never stopped — copying the .db with cp while the server is
+# live captures a torn page set that restores to a corrupt database and only
+# reveals itself months later.
+shopt -s nullglob
+dbs=("$SRC_LIB"/data/*.db)
+(( ${#dbs[@]} )) || die "no *.db found under $SRC_LIB/data"
+
+# The destination must be writable by the jellyfin user for the duration; it is
+# chowned back to $OWNER with everything else before publishing.
+chown "$SVC_USER:$SVC_USER" "$STAGE/data"
+
+as_service_user() { setpriv --reuid="$SVC_USER" --regid="$SVC_USER" --clear-groups "$@"; }
+
+for db in "${dbs[@]}"; do
+    name=$(basename "$db")
+    # Read-only first; fall back to a normal open, which is what lets SQLite
+    # replay a non-empty WAL. Neither path alters the source data — .backup only
+    # reads it — but the fallback is why the unit must grant write access to the
+    # data directory.
+    if as_service_user sqlite3 "file:$db?mode=ro" ".backup '$STAGE/data/$name'" 2>/dev/null; then
+        mode=ro
+    elif as_service_user sqlite3 "$db" ".backup '$STAGE/data/$name'"; then
+        mode=rw
+    else
+        die "sqlite3 .backup failed for $name (both read-only and normal open)"
+    fi
+    # Verify the COPY, not the original. A dump that cannot be read back is not
+    # a backup, and finding that out at restore time is finding out too late.
+    res=$(sqlite3 "$STAGE/data/$name" 'PRAGMA integrity_check;' 2>&1) \
+        || die "integrity_check could not run on $name"
+    [[ "$res" == "ok" ]] || die "$name failed integrity_check: $res"
+    echo "jellyfin-state-dump: $name copied and verified (open mode: $mode)"
+done
+
+# ── 2. Everything else under /var/lib/jellyfin ─────────────────────────────
+# Copied wholesale minus the regenerable bulk, rather than by naming individual
+# directories — naming them is what produced the /var/lib/jellyfin/config bug,
+# and it silently misses anything a future Jellyfin version adds. This keeps
+# collections, playlists, root/ (the library definitions), ScheduledTasks,
+# device.txt and .aspnet/ (the data-protection keys).
+#
+# metadata/ is artwork, attachments/ and subtitles/ are extracted or re-fetched
+# from the media, SQLiteBackups/ is Jellyfin's own copy of the database we have
+# already taken properly. All regenerable; all excluded.
+tar -C "$SRC_LIB" -cf - \
+    --exclude='./metadata' \
+    --exclude='./data/*.db' \
+    --exclude='./data/*.db-*' \
+    --exclude='./data/attachments' \
+    --exclude='./data/subtitles' \
+    --exclude='./data/SQLiteBackups' \
+    --exclude='./transcodes' \
+    --exclude='./log' \
+    . 2>/dev/null | tar -C "$STAGE/lib" -xf - \
+    || die "copying $SRC_LIB failed"
+
+# Configuration. On Arch this is the real config directory; /var/lib/jellyfin/config
+# does not exist. Copied separately because it lives outside the tree above.
+[[ -d "$SRC_ETC" ]] || die "$SRC_ETC missing — cannot capture configuration"
+cp -a "$SRC_ETC/." "$STAGE/etc/" || die "cannot copy $SRC_ETC"
+
+# ── 3. Manifest ─────────────────────────────────────────────────────────────
+# Restores are verified against this, so a silently-truncated dump cannot pass
+# as a good one.
+{
+    echo "# jellyfin-state-dump manifest"
+    echo "# generated: $(date -Is)"
+    echo "# jellyfin:  $(pacman -Q jellyfin-server 2>/dev/null || echo unknown)"
+    echo "# host:      $(hostname)"
+    echo
+    (cd "$STAGE" && find . -type f ! -name MANIFEST -print0 | sort -z | xargs -0 sha256sum)
+} > "$STAGE/MANIFEST" || die "manifest generation failed"
+
+# ── 4. Publish atomically ───────────────────────────────────────────────────
+# The vault snapshot may fire at any moment; swapping a finished directory into
+# place means it can never snapshot a half-written dump.
+chown -R "$OWNER:$OWNER" "$STAGE"
+chmod -R go-rwx "$STAGE"
+if [[ -d "$DEST" ]]; then
+    rm -rf "$DEST.prev"
+    mv "$DEST" "$DEST.prev"
+fi
+mv "$STAGE" "$DEST"
+rm -rf "$DEST.prev"
+
+# ── 5. Stamp, so the watchdog can alert on this tier going quiet ────────────
+mkdir -p "$STATE"
+date +%s > "$STATE/last-success-jellyfin"
+chown "$OWNER:$OWNER" "$STATE/last-success-jellyfin"
+
+printf 'jellyfin-state-dump: OK — %d database(s), %s total\n' \
+    "${#dbs[@]}" "$(du -sh "$DEST" | cut -f1)"

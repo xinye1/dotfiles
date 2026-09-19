@@ -400,6 +400,18 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `bash` | **Neither — no directory to fold** | Owns two loose files, `~/.bashrc` and `~/.config/dircolors`, and no directory of its own. `$HOME` and `~/.config` always exist, so stow has nothing to fold and always links file by file. Consequence: **a new file added to this package is silently absent until `stow -R bash`**, the same as an unfolded package, and it can never become folded by accident. |
 | `starship` | **Neither — no directory to fold** | Owns one loose file, `~/.config/starship.toml`. Same as `bash`: no directory, nothing to fold, `stow -R starship` needed for any file added later. |
 
+**`systemd-system/` is not in this table because it is not stow-managed at all.** It mirrors
+`/etc/systemd/system`, not `$HOME`, and `.stowrc` pins `--target=~` for every package in this repo
+— stowing it would exit 0 while linking to `~/etc/systemd/system`, satisfying no one (same failure
+mode as §6.4's `/etc/greetd/config.toml`, one directory instead of one file). `setup.sh` excludes it
+from the automatic package loop by name. Deploy by hand and re-run after every edit:
+
+```sh
+sudo cp systemd-system/etc/systemd/system/*.service systemd-system/etc/systemd/system/*.timer \
+    /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
 **Rendered palette files are the standing exception.** Every folded themed package now contains
 ignored `*.gen.*` artefacts, which is untracked content inside a folded directory — the thing the
 rule below forbids. It is tolerable here for one reason only: those files are caught by a glob that

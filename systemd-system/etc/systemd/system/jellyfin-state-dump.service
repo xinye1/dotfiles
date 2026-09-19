@@ -1,0 +1,34 @@
+[Unit]
+Description=Jellyfin state dump into ~/db-backups (carried offsite by tp-backup)
+Documentation=file:///home/xinye/.local/bin/jellyfin-state-dump
+After=jellyfin.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/xinye/.local/bin/jellyfin-state-dump
+Nice=10
+IOSchedulingClass=idle
+
+# Starts as root because /var/lib/jellyfin and /etc/jellyfin belong to the
+# jellyfin service account; the database copy itself drops to that account so
+# any WAL sidecar SQLite creates keeps the right owner.
+ProtectSystem=strict
+ProtectHome=no
+# /var/lib/jellyfin/data must be WRITABLE, not read-only: opening a live SQLite
+# database whose write-ahead log is non-empty requires replaying that log, which
+# is a write. Read-only here worked whenever the WAL happened to be empty and
+# failed with "unable to open database file" when it was not — an intermittent
+# failure that looked like a permissions bug.
+ReadWritePaths=/var/lib/jellyfin/data
+ReadWritePaths=/home/xinye/db-backups
+ReadWritePaths=/home/xinye/.local/state/tp-backup
+PrivateTmp=yes
+# Left off deliberately: this unit changes UID (root -> jellyfin) for the
+# database copy. Dropping privileges does not require new ones, so enabling
+# this should be safe — but it is untested on this box, and a third failed run
+# costs more than the margin it buys. ProtectSystem=strict plus three narrow
+# ReadWritePaths is where the real confinement is. Tighten once proven.
+NoNewPrivileges=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes

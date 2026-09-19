@@ -1,0 +1,13 @@
+[Unit]
+Description=tp-backup: irreplaceable media snapshot
+OnFailure=tp-backup-failed@media.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/xinye/.local/bin/tp-backup media
+Nice=15
+IOSchedulingClass=idle
+# The first run uploads ~32 GB over home broadband and will take hours. Later
+# runs are near-instant because the source changes rarely, but the first must
+# not be killed by a start timeout.
+TimeoutStartSec=infinity
