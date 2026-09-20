@@ -2,10 +2,19 @@
 Description=Jellyfin state dump into ~/db-backups (carried offsite by tp-backup)
 Documentation=file:///usr/local/bin/jellyfin-state-dump
 After=jellyfin.service
+# Every tp-backup-*.service has one of these; this root-scope unit had none —
+# its only net was tp-backup's own watchdog, which runs in the user session
+# roughly once a day and would stay silent for up to ~24h after a fast crash.
+OnFailure=jellyfin-state-dump-failed.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/jellyfin-state-dump
+# Fixed rather than defaulted: the failed-alert unit greps the journal by this
+# identifier to catch a failure fast enough that the process never got
+# attributed to its cgroup (see jellyfin-state-dump-failed.service's comment —
+# the same lesson tp-backup-failed@.service already paid for once).
+SyslogIdentifier=jellyfin-state-dump
 Nice=10
 IOSchedulingClass=idle
 
