@@ -1,0 +1,28 @@
+[Unit]
+Description=Alert that jellyfin-state-dump failed
+
+[Service]
+Type=oneshot
+# Root-scope sibling of ~/.config/systemd/user/tp-backup-failed@.service —
+# same reasoning, adapted for the system manager and this unit's own config.
+#
+# TWO queries, not one. `journalctl -u` matches on unit attribution, and a
+# process that dies immediately never gets any: journald resolves a message's
+# cgroup by reading /proc/<pid>, and on a fast failure the pid is already
+# gone, so the line lands with _SYSTEMD_UNIT unset and `-u` drops it. See
+# tp-backup-failed@.service's own comment for the incident this was measured
+# against. The SyslogIdentifier= query recovers those orphaned lines; the
+# unit query keeps systemd's own narrative. Script output goes LAST so that
+# when `tail -c` truncates, the diagnosis survives.
+#
+# Sources /etc/jellyfin-state-dump.conf, not ~/.config/tp-backup/config: this
+# unit runs as root, same as the service it alerts for, so it must not trust
+# a file the login user can write (see jellyfin-state-dump's own header and
+# deploy.sh's NTFY_TOPIC extraction, which apply the same rule to themselves).
+ExecStart=/bin/bash -c 'set -euo pipefail; source /etc/jellyfin-state-dump.conf; \
+  body="$( { journalctl -u jellyfin-state-dump.service -n 30 --no-pager; \
+             echo "--- jellyfin-state-dump output (unattributed on a fast failure) ---"; \
+             journalctl SYSLOG_IDENTIFIER=jellyfin-state-dump --since -30min -n 25 --no-pager; \
+           } 2>&1 | tail -c 3500 )"; \
+  curl -fsS -m 20 -H "Title: jellyfin-state-dump FAILED" -H "Priority: urgent" \
+  -d "$body" "$NTFY_SERVER/$NTFY_TOPIC" >/dev/null'

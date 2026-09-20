@@ -410,26 +410,26 @@ as root and both `ExecStart`s and `source`s files, so none of what it executes o
 configuration can live anywhere the login user can write — which is why the script itself lives
 here rather than in the stow-managed, user-writable `bin` package: a root service trusting a
 user-writable script or config is a straight line from "anything running as the login user" to
-root. Deploy by hand and re-run after every edit:
+root.
+
+**`systemd-system/deploy.sh` is the one procedure for deploying this tree** — run it, don't
+hand-copy the individual files. It installs the script and config *before* the units (so an abort
+partway through never leaves the previous, working state half-overwritten), extracts the ntfy
+topic from `~/.config/tp-backup/config` by parsing text rather than sourcing it (root must not
+execute a file the login user can write, applied to the deploy step itself, not just the runtime
+service), and ends by actually running the service once and checking its result — not just
+checking file ownership and finding out at 02:00 whether the deploy worked:
 
 ```sh
-sudo cp systemd-system/etc/systemd/system/*.service systemd-system/etc/systemd/system/*.timer \
-    /etc/systemd/system/
-sudo install -m 755 -o root -g root \
-    systemd-system/usr/local/bin/jellyfin-state-dump /usr/local/bin/jellyfin-state-dump
-sudo systemctl daemon-reload
-sudo systemctl enable --now jellyfin-state-dump.timer
+sudo systemd-system/deploy.sh
 ```
 
-One-time, on top of the above: `/etc/jellyfin-state-dump.conf` holds the **ntfy topic** — an alert
-credential — so it is never committed, the same reasoning as `~/.config/tp-backup/config` (§4,
-`systemd/.config/systemd/user/README.md`). Create it from the example, root-owned:
-
-```sh
-sudo install -m 600 -o root -g root \
-    systemd-system/etc/jellyfin-state-dump.conf.example /etc/jellyfin-state-dump.conf
-sudoedit /etc/jellyfin-state-dump.conf   # fill in NTFY_TOPIC
-```
+Re-running after a `git pull` is the update procedure — it refreshes the units and the script, and
+warns (without overwriting) if `/etc/jellyfin-state-dump.conf` has drifted from the current
+`~/.config/tp-backup/config` value or still holds the example placeholder. It never touches that
+config's *content* on a fresh install beyond seeding it once: `/etc/jellyfin-state-dump.conf` holds
+the **ntfy topic** — an alert credential — so it is never committed, the same reasoning as
+`~/.config/tp-backup/config` (§4, `systemd/.config/systemd/user/README.md`).
 
 **Rendered palette files are the standing exception.** Every folded themed package now contains
 ignored `*.gen.*` artefacts, which is untracked content inside a folded directory — the thing the
