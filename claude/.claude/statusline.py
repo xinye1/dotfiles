@@ -242,7 +242,10 @@ def main():
     # scrolls away), so the status line carries it. The session JSON has no
     # field for it; Claude Code sets this variable in its own environment while
     # the bridge is up and deletes it on disconnect, and every render is a fresh
-    # child, so it tracks the live state.
+    # child, so it tracks the live state. It is documented only for Bash-tool
+    # and hook subprocesses — that status-line renders inherit it too was
+    # verified by logging it from a live render on 2.1.280. If `/rc` stops
+    # appearing after an update, check that first.
     if os.environ.get("CLAUDE_CODE_BRIDGE_SESSION_ID"):
         rest.append(paint(REMOTE, "/rc"))
 
