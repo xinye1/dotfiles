@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code status line.
 
-dir | model |  NN% | $N.NN |  NN% (Nh) |  NN% (Nd) |  branch(+dirty) |  level
+dir | model |  NN% | $N.NN |  NN% (Nh) |  NN% (Nd) |  branch(+dirty) |  level | /rc
 
 Styled after starship: normal-weight coloured values, prefixed by a dimmed Nerd
 Font icon wherever the value does not already name itself. Colours are the
@@ -47,6 +47,7 @@ MODEL = "33"       # model name     (starship toolchain)
 VALUE = "37"       # cost value
 BRANCH = "35"      # git branch     (starship git_branch)
 DIRTY = "31"       # dirty count    (starship git_status)
+REMOTE = "1;34"    # /rc — bold, the one segment meant to be noticed
 
 # usage percentages, coloured by how much headroom is left
 GREEN = "32"
@@ -236,6 +237,14 @@ def main():
         rest.append(git)
     if level:
         rest.append(segment(ICON_EFFORT, paint(EFFORT_COLORS.get(level, LABEL), level)))
+    # Remote Control. Claude Code's own `/rc` pill leaves the footer under
+    # `"tui": "fullscreen"` (from 2.1.280 — it moves to the header, which
+    # scrolls away), so the status line carries it. The session JSON has no
+    # field for it; Claude Code sets this variable in its own environment while
+    # the bridge is up and deletes it on disconnect, and every render is a fresh
+    # child, so it tracks the live state.
+    if os.environ.get("CLAUDE_CODE_BRIDGE_SESSION_ID"):
+        rest.append(paint(REMOTE, "/rc"))
 
     columns = shutil.get_terminal_size((FALLBACK_COLUMNS, 24)).columns
     # Each of `rest` is preceded by a " | ", so it costs its width plus 3.
