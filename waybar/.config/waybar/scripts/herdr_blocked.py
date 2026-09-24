@@ -1,16 +1,39 @@
 #!/usr/bin/env python3
-"""custom/herdr: herdr's agents at a glance, loud only when one is blocked.
+"""custom/herdr: herdr's agents at a glance, loudest when one needs you.
 
-Prints waybar JSON:
-- herdr not running  -> empty text, which hides the module;
-- nothing blocked    -> the number of agents *working*, class `quiet` (dim) —
-                        always there, so a glance shows the module is alive;
-- anything blocked   -> the number *blocked*, class `blocked` (critical).
-herdr's `attention` plugin sends signal 9 on every agent state change, so the
-count is live; the interval in the config is only a fallback. PLAYBOOK §9.30.
+Prints waybar JSON: one number under the robot icon, picked by priority
+(high to low):
+- any agent *blocked*  -> that count, class `blocked` (critical, red) — this
+                          also covers multiple-choice question dialogs, which
+                          herdr already reports as `blocked`;
+- else any agent *done* -> that count, class `waiting` (`@warning`) — `done`
+                          means an agent finished its turn while you were NOT
+                          looking at that tab. It clears to `idle` (and drops
+                          out of this count) the instant you *view* the tab —
+                          whether or not you've actually answered — or goes
+                          straight to `idle` if you were already watching
+                          when it finished. So `done` is a lower bound on
+                          "there's an answer waiting", not an exact count;
+- else                  -> the count of agents *working*, class `quiet`
+                          (`@dim`) — always shown while herdr runs, so a
+                          glance proves the module is alive;
+- herdr not running     -> empty text, which hides the module.
 
-`--focus` (the on-click): focus the first blocked agent in herdr, then raise
-the terminal window running the herdr client.
+Tooltip: one section per non-empty status among blocked / done / idle /
+working, each headed by its count and one line per agent (`describe`). idle
+is headed "seen, not answered yet" — herdr can't tell "viewed and answered"
+from "viewed and still ignored", so every idle agent is listed rather than
+guessed at.
+
+herdr's `attention` plugin pokes the bar (signal 9) on every
+`pane.agent_status_changed` event, so blocked/working/done transitions are
+live. Viewing a pane — which is what clears `done` to `idle` — is *not* such
+an event (herdr's client marks the tab seen locally, no event fires), so
+nothing pokes the bar for it: the interval in the config (5s) is what
+actually clears a stale "waiting". PLAYBOOK §9.30.
+
+`--focus` (the on-click): focus the first blocked agent; if none, the first
+done agent; then raise the terminal window running the herdr client.
 
 Read-only against herdr: it lists, and on click focuses — never starts,
 prompts or closes anything.
@@ -57,11 +80,20 @@ def agents():
     return result.get("agents", [])
 
 
-def blocked_agents():
-    listed = agents()
-    if listed is None:
-        return None
-    return [a for a in listed if a.get("agent_status") == "blocked"]
+def by_status(listed, status):
+    return [a for a in listed if a.get("agent_status") == status]
+
+
+def focus_target(listed):
+    """The agent `--focus` should jump to: the first blocked one (a decision
+    is needed), else the first done one (an answer is waiting), else None."""
+    blocked = by_status(listed, "blocked")
+    if blocked:
+        return blocked[0]
+    done = by_status(listed, "done")
+    if done:
+        return done[0]
+    return None
 
 
 def workspace_labels():
@@ -81,30 +113,64 @@ def plural(n, word):
     return f"{n} {word}{'s' if n != 1 else ''}"
 
 
+def section(agents_of_status, header, labels):
+    return [header] + [describe(a, labels) for a in agents_of_status]
+
+
 def render():
     listed = agents()
     if listed is None:
         return {"text": ""}
-    blocked = [a for a in listed if a.get("agent_status") == "blocked"]
-    working = [a for a in listed if a.get("agent_status") == "working"]
-    labels = workspace_labels() if (blocked or working) else {}
+    blocked = by_status(listed, "blocked")
+    done = by_status(listed, "done")
+    idle = by_status(listed, "idle")
+    working = by_status(listed, "working")
+    # Only fetch labels when something will actually be described.
+    labels = workspace_labels() if (blocked or done or idle or working) else {}
+
+    sections = []
     if blocked:
-        lines = [plural(len(blocked), "agent") + " waiting for you"]
-        lines += [describe(a, labels) for a in blocked]
-        lines += ["", "Click: go to the first"]
-        return {"text": f"{ICON}\n{len(blocked)}", "class": "blocked",
-                "tooltip": "\n".join(lines)}
-    lines = [f"herdr: {plural(len(listed), 'agent')}, {len(working)} working, none blocked"]
-    lines += [describe(a, labels) for a in working]
-    return {"text": f"{ICON}\n{len(working)}", "class": "quiet",
-            "tooltip": "\n".join(lines)}
+        sections.append(section(
+            blocked, plural(len(blocked), "agent") + " blocked — needs a decision", labels))
+    if done:
+        sections.append(section(
+            done, plural(len(done), "session") + " waiting for your answer", labels))
+    if idle:
+        sections.append(section(
+            idle, plural(len(idle), "agent") + " seen, not answered yet", labels))
+    if working:
+        sections.append(section(
+            working, plural(len(working), "agent") + " working", labels))
+
+    if not sections:
+        lines = [f"herdr: {plural(len(listed), 'agent')}"]
+    else:
+        lines = []
+        for s in sections:
+            if lines:
+                lines.append("")
+            lines.extend(s)
+        if blocked:
+            lines += ["", "Click: go to the first blocked"]
+        elif done:
+            lines += ["", "Click: go to the first waiting"]
+    tooltip = "\n".join(lines)
+
+    if blocked:
+        return {"text": f"{ICON}\n{len(blocked)}", "class": "blocked", "tooltip": tooltip}
+    if done:
+        return {"text": f"{ICON}\n{len(done)}", "class": "waiting", "tooltip": tooltip}
+    return {"text": f"{ICON}\n{len(working)}", "class": "quiet", "tooltip": tooltip}
 
 
 def focus_first():
-    blocked = blocked_agents()
-    if not blocked:
+    listed = agents()
+    if listed is None:
         return
-    herdr("agent", "focus", blocked[0]["pane_id"])
+    target = focus_target(listed)
+    if target is None:
+        return
+    herdr("agent", "focus", target["pane_id"])
     # Raise the window hosting a herdr client: walk each sway window's pid
     # down to a `herdr` descendant.
     clients = set()

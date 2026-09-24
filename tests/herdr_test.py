@@ -213,14 +213,56 @@ class ModuleTest(unittest.TestCase):
 
     def test_nothing_blocked_shows_a_quiet_working_count(self):
         # Always visible while herdr runs, so a glance proves the module is
-        # alive — but dim, and counting only the agents actually working.
-        self.agents("idle", "working", "done", "working")
+        # alive — but dim, and counting only the agents actually working. No
+        # `blocked`/`done` here: either now outranks `quiet` (see the
+        # dedicated tests below), so this fixture is deliberately just
+        # `working`.
+        self.agents("working", "working")
         out = json.loads(self.run_module())
         self.assertEqual(out["text"].split("\n")[1], "2")
         self.assertEqual(out["class"], "quiet")
-        self.assertIn("4 agents, 2 working, none blocked", out["tooltip"])
+        self.assertIn("2 agents working", out["tooltip"])
+        self.assertIn("TP Core · claude — task 1", out["tooltip"])
         self.assertIn("TP Core · claude — task 2", out["tooltip"])
-        self.assertNotIn("task 1", out["tooltip"])
+
+    def test_idle_agents_are_listed_but_do_not_change_number_or_class(self):
+        # idle sessions show up in the tooltip as "seen, not answered yet"
+        # but never move the count or the state class away from `quiet`.
+        self.agents("idle", "working")
+        out = json.loads(self.run_module())
+        self.assertEqual(out["text"].split("\n")[1], "1")
+        self.assertEqual(out["class"], "quiet")
+        self.assertIn("1 agent seen, not answered yet", out["tooltip"])
+        self.assertIn("TP Core · claude — task 1", out["tooltip"])
+
+    def test_done_only_is_amber_waiting(self):
+        # done = finished while you weren't looking at that tab: an answer is
+        # waiting for you, distinct from a plain working count.
+        self.agents("working", "done", "done")
+        out = json.loads(self.run_module())
+        self.assertEqual(out["text"].split("\n")[1], "2")
+        self.assertEqual(out["class"], "waiting")
+        self.assertIn("2 sessions waiting for your answer", out["tooltip"])
+        self.assertIn("TP Core · claude — task 2", out["tooltip"])
+        self.assertIn("TP Core · claude — task 3", out["tooltip"])
+        self.assertIn("Click: go to the first waiting", out["tooltip"])
+
+    def test_blocked_and_done_blocked_wins(self):
+        # A decision needed outranks an answer merely waiting.
+        self.agents("done", "blocked", "working")
+        out = json.loads(self.run_module())
+        self.assertEqual(out["text"].split("\n")[1], "1")
+        self.assertEqual(out["class"], "blocked")
+        self.assertIn("1 session", out["tooltip"])  # the done section still lists
+        self.assertIn("waiting for your answer", out["tooltip"])
+        self.assertIn("Click: go to the first blocked", out["tooltip"])
+
+    def test_done_and_working_is_waiting(self):
+        self.agents("done", "working", "working")
+        out = json.loads(self.run_module())
+        self.assertEqual(out["text"].split("\n")[1], "1")
+        self.assertEqual(out["class"], "waiting")
+        self.assertIn("2 agents working", out["tooltip"])
 
     def test_no_agents_at_all_still_shows_zero(self):
         self.agents()
@@ -233,10 +275,10 @@ class ModuleTest(unittest.TestCase):
         # The blocked count, not the working one (1) and not the total (3).
         self.assertEqual(out["text"].split("\n")[1], "2")
         self.assertEqual(out["class"], "blocked")
-        self.assertIn("2 agents waiting for you", out["tooltip"])
+        self.assertIn("2 agents blocked — needs a decision", out["tooltip"])
         self.assertIn("TP Core · claude — task 1", out["tooltip"])
         self.assertIn("TP Core · claude — task 3", out["tooltip"])
-        self.assertNotIn("task 2", out["tooltip"])
+        self.assertIn("TP Core · claude — task 2", out["tooltip"])  # working, its own section
 
     def test_output_is_utf8_not_escaped_surrogates(self):
         # Surrogate-pair escapes for the nerd-font glyph are legal JSON but not
@@ -249,8 +291,22 @@ class ModuleTest(unittest.TestCase):
         self.run_module("--focus")
         self.assertIn("herdr agent focus w1:p2", self.sb.calls("herdr"))
 
-    def test_click_with_nothing_blocked_does_nothing(self):
-        self.agents("idle")
+    def test_click_with_done_only_focuses_the_done_agent(self):
+        self.agents("working", "done", "idle")
+        self.run_module("--focus")
+        self.assertIn("herdr agent focus w1:p2", self.sb.calls("herdr"))
+
+    def test_click_with_blocked_and_done_focuses_the_blocked_agent(self):
+        # blocked outranks done for the click target too.
+        self.agents("done", "blocked")
+        self.run_module("--focus")
+        self.assertIn("herdr agent focus w1:p2", self.sb.calls("herdr"))
+        self.assertEqual(
+            [c for c in self.sb.calls("herdr") if "focus" in c],
+            ["herdr agent focus w1:p2"])
+
+    def test_click_with_only_idle_or_working_does_nothing(self):
+        self.agents("idle", "working")
         self.run_module("--focus")
         self.assertEqual([c for c in self.sb.calls("herdr") if "focus" in c], [])
         self.assertEqual(self.sb.calls("swaymsg"), [])

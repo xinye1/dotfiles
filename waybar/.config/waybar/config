@@ -195,15 +195,18 @@
         "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 -x waybar"
     },
 
-    // herdr agents: a dim count of those working, turning into a red count
-    // of those blocked on a question or an approval. Hidden only when herdr is
-    // not running. Signal 9 comes from herdr's `attention` plugin on every
-    // agent state change, so the interval is only a fallback. Click: go to
-    // the first blocked agent.
+    // herdr agents: a dim count working, an amber count of those *done* but
+    // not yet viewed (an answer is waiting on you), or — outranking both — a
+    // red count of those *blocked* on a question or approval. Hidden only
+    // when herdr is not running. Signal 9 comes from herdr's `attention`
+    // plugin and keeps blocked/working/done transitions instant, but viewing
+    // a pane (which clears done -> idle) fires no such event, so the 5s
+    // interval is what actually clears a stale "waiting". Click: go to the
+    // first blocked agent, else the first done one.
     "custom/herdr": {
         "exec": "~/.config/waybar/scripts/herdr_blocked.py",
         "return-type": "json",
-        "interval": 30,
+        "interval": 5,
         "signal": 9,
         "exec-on-event": false,
         "format": "{}",
