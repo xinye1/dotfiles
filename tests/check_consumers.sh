@@ -234,6 +234,62 @@ if have tmux; then
     tmux -L "$sock" kill-server 2>/dev/null
 fi
 
+# --- herdr ---
+# herdr ignores an unknown config key with a one-line diagnostic and carries on,
+# so "it started" proves nothing; `server reload-config` returns those
+# diagnostics as JSON, and that is the question asked here. The server is a
+# throwaway: its own config dir, state dir and socket, every HERDR_* variable
+# of the calling shell dropped (this suite may well run inside a herdr pane),
+# and it is stopped by the PID started here — never by name, never with
+# `herdr server stop`, either of which could reach the live one (§9.30).
+#
+# The socket lives directly under /tmp: a Unix socket path is capped near 108
+# bytes, and a scratch dir under a long $TMPDIR overflows it. The live plugin
+# is linked too, since herdr refuses a manifest it cannot use (a missing
+# min_herdr_version, an unknown platform) at link time.
+if have herdr; then
+    hd=$(mktemp -d /tmp/herdr-check.XXXXXX)
+    mkdir -p "$hd/config/herdr" "$hd/state"
+    cp "$HOME/.config/herdr/config.toml" "$hd/config/herdr/config.toml"
+    hq() {
+        env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+            XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
+            HERDR_SOCKET_PATH="$hd/s" herdr "$@"
+    }
+    # Not through hq: backgrounding a function forks a subshell, and $! would
+    # be that subshell rather than the server. env execs herdr in place.
+    env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+        XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
+        HERDR_SOCKET_PATH="$hd/s" herdr server >/dev/null 2>&1 </dev/null &
+    hpid=$!
+    i=0
+    while [ ! -S "$hd/s" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+    if [ ! -S "$hd/s" ]; then
+        no "herdr accepts its config" "throwaway server did not come up"
+    else
+        out=$(hq server reload-config 2>&1)
+        case $out in
+            *'"diagnostics":[]'*'"status":"applied"'*)
+                ok "herdr accepts its config (no ignored keys)" ;;
+            *)  no "herdr accepts its config (no ignored keys)" "$out" ;;
+        esac
+        out=$(hq plugin link "$HOME/.config/herdr/local-plugins/attention" 2>&1 \
+              && hq plugin list 2>&1)
+        case $out in
+            *'local.attention (Attention) enabled'*warning*|*error*)
+                no "herdr links the attention plugin cleanly" "$out" ;;
+            *'local.attention (Attention) enabled'*)
+                ok "herdr links the attention plugin cleanly" ;;
+            *)  no "herdr links the attention plugin cleanly" "$out" ;;
+        esac
+    fi
+    kill "$hpid" 2>/dev/null
+    wait "$hpid" 2>/dev/null
+    rm -rf "$hd"
+else
+    sk "herdr accepts its config" "herdr is not installed"
+fi
+
 # --- yazi ---
 # `yazi --debug` is a real validator, and a better one than most consumers here
 # have: it parses init.lua, yazi.toml, keymap.toml and theme.toml and exits 1

@@ -1,0 +1,16 @@
+# Linked, not installed: `herdr plugin link ~/.config/herdr/local-plugins/attention`
+# (setup.sh does it). PLAYBOOK §9.30.
+id = "local.attention"
+name = "Attention"
+version = "1.0.0"
+# Required by herdr, not optional: link refuses a manifest without it.
+min_herdr_version = "0.8.0"
+description = "Critical desktop notification while an agent is blocked; withdrawn when it moves on"
+platforms = ["linux"]
+
+# pane.agent_status_changed fires on every state change of every pane, so the
+# hook is cheap by design and does its own filtering. It runs with cwd = this
+# directory, as the user, with the event in HERDR_PLUGIN_EVENT_JSON.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "attention.py"]
