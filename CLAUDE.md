@@ -58,6 +58,15 @@ triggers, not the full story: read the named section before working in its area.
   Colloid does) and breaks on the switch, so verify by rendering, not by reading —
   `tests/check_waybar_paint.py`, via `check_consumers.sh`, does it under *both* palettes' GTK
   themes (§9.27).
+- **herdr** runs every Claude pane, and this session is probably inside one: a bare `herdr …`
+  reaches the LIVE server through the inherited `HERDR_SOCKET_PATH`. Tests use their own
+  `XDG_CONFIG_HOME`/`XDG_STATE_HOME`/short `HERDR_SOCKET_PATH` under `/tmp`, `HERDR_*` unset, and
+  stop the server by the PID `env … herdr server &` gave them — never `herdr server stop`, `pkill
+  herdr` or `setsid` (§9.30). Every key must be in `herdr --default-config` of the installed binary
+  (the website documents newer releases; unknown keys are ignored in silence); herdr's settings
+  screen rewrites the tracked `config.toml` in place, so `git status` after using it. Don't add a
+  Claude hook that reports agent *state* — herdr reads it from the screen on purpose. Any `pkill
+  -RTMIN` to waybar needs `-x`, or it also kills the supervisor (§9.29, §9.30).
 - waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
   lives in `~/.cache/claude-usage/` (safe to delete) (§9.23).
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
@@ -104,12 +113,13 @@ sh tests/theme_test.sh        # sandboxed; never touches the live desktop
 sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
+python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
 a fake `$HOME` and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live
 desktop. `check_consumers.sh` is the one that would have caught the breakages that reached the
-desktop: it asks waybar, foot, sway, vim, nvim, tmux and yazi whether they accept what was
+desktop: it asks waybar, foot, sway, vim, nvim, tmux, yazi and herdr whether they accept what was
 rendered, rather than inspecting files from outside; it briefly starts a second waybar, and it
 offscreen-renders every waybar module under **both** palettes' GTK themes (§9.27). A check there
 can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.
@@ -123,6 +133,14 @@ spent two days running orphaned (supervisor dead, `PPid: 1`, crash recovery gone
 perfectly healthy, and then stayed down 13 hours. Point `WBR_BIN` at another copy to check the
 assertions can still fail; it was built by proving 4 of its 6 checks fail against the pre-fix
 script (§9.29).
+
+**Run `tests/herdr_test.py` after any edit to the herdr attention plugin,
+`waybar/.config/waybar/scripts/herdr_blocked.py` or `bin/.local/bin/herdr-session-backup`.** Every
+external command (notify-send, makoctl, swaymsg, pkill, herdr) is a logging stub on `PATH`, so
+nothing reaches the desktop, the bar or a herdr socket. It was checked by mutation: dropping `-x`,
+the focus filter, the withdraw, the blocked-only filter, the empty-session guard and the
+unchanged-skip each turn it red. `check_consumers.sh` adds the live half: a throwaway herdr server
+judges the deployed `config.toml` and links the plugin (§9.30).
 
 **Run `tp_backup_test.sh` after any edit to `bin/.local/bin/tp-backup`.** It builds throwaway repos
 under a fake `$HOME` and exercises only `__capture`, so restic, ssh and the network are never

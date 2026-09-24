@@ -1441,6 +1441,120 @@ done
 tail "${XDG_STATE_HOME:-$HOME/.local/state}/waybar/run.log"
 ```
 
+### 9.30 herdr: the agent multiplexer, its alerts, and what tmux is still for
+
+[herdr](https://herdr.dev) runs every Claude Code session on this machine: workspaces → tabs →
+panes, with each pane's agent classified `idle` / `working` / `blocked` / `done`. The research
+behind this setup, with sources and a fact-check, is
+`docs/specs/2026-09-23-herdr-agent-setup-research.md`. What lives here:
+
+| Piece | File | Job |
+|---|---|---|
+| config | `herdr/.config/herdr/config.toml` | theme, keys, sidebar rows, toast delivery |
+| attention plugin | `herdr/.config/herdr/local-plugins/attention/` | critical notification while an agent is blocked, withdrawn when it moves on; pokes waybar |
+| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | count of blocked agents, hidden at zero; click goes to the first |
+| session backup | `bin/.local/bin/herdr-session-backup` + `systemd/…/herdr-session-backup.{service,timer}` | hourly copy of `session.json` when it changed |
+| tmux guard | `tmux/.config/tmux/tmux.conf` (`set-environment -gu HERDR_*`) | stop a tmux server inheriting one herdr pane's identity |
+
+**The web documents a newer herdr than the one installed.** herdr.dev's docs default to the latest
+release; the authority for what *this* binary accepts is `herdr --default-config`. An unknown key is
+ignored with a one-line diagnostic, not an error — so a key copied from the website can do nothing
+in silence. The one exception runs the other way: a typo inside a *styled* sidebar token
+(`{ token = …, fg = … }`) is `deny_unknown_fields` and fails the whole parse. `check_consumers.sh`
+asks herdr itself: it starts a throwaway server and reads the JSON from `server reload-config`,
+which lists every ignored key.
+
+**herdr writes its own config.** Its settings screen (theme, sound, toast delivery, border labels,
+panel sort) rewrites `config.toml` in place, so through the stow symlink those edits appear in
+`git status`. Commit what you meant, revert what you didn't — the same drill as nwg-look (§9.1),
+minus the clobbering.
+
+**Colour: `name = "terminal"`, plus one override.** The terminal theme draws with the host
+terminal's ANSI colours, which kitty renders from `palettes.toml`, so a `theme` switch recolours
+herdr with no template and no hex in this file. The two alternatives both break a convention:
+`[theme.custom]` rendered from roles would put `config.toml` on the hardcoded-path render list
+(§2.3) *and* lose herdr's own in-place edits at the next render; switching `name = "nord"/"gruvbox"`
+would make every palette switch a repo change. Measured before choosing (§9.28): the terminal
+theme's `surface1` is ANSI 8, and herdr draws text on it (copy-mode search matches, release-note
+code blocks) — fg on gruvbox's ANSI 8 is 2.68:1. `surface1 = "black"` (ANSI 0, a *named* colour, so
+no hex) is the only one of the sixteen that clears 4.5:1 in both palettes (7.45 / 8.45). Its price
+is separators and tree lines at ~1.25:1, which is chrome.
+
+**Agent state comes from the screen, on purpose.** The official Claude integration
+(`herdr integration install claude`) reports only *which conversation* a pane holds, for restore.
+herdr's authors moved Claude off hook-reported state because hooks "can miss permission approval
+results, escape interrupts". Do not add a `pane report-agent` Claude hook to "fix" a misreading —
+it would override the screen and can stick (e.g. `working` after an Esc). Screen detection has open
+bugs in both directions (herdr #3090, #3414, #3467, #4376, #3993), so nothing here gates on state
+alone: the alert withdraws itself, and the waybar count is recomputed from `herdr agent list`
+rather than tracked.
+
+**The attention plugin.** herdr runs `attention.py` on every `pane.agent_status_changed`, for every
+pane, with the event in `HERDR_PLUGIN_EVENT_JSON` (fields under `data`) and cwd = the plugin's
+directory. On `blocked` it sends `notify-send --app-name=herdr --urgency=critical`, keyed per pane
+so a re-block replaces rather than stacks; on any other status it `makoctl dismiss`es that pane's
+notification. It skips the notification only when the pane is herdr's focused pane **and** the
+sway-focused window is the terminal hosting a herdr client (a `herdr` process descended from that
+window's pid) — focused inside herdr but looking at another window still notifies. Every event
+also sends `pkill -RTMIN+9 -x waybar`. It is *linked*, not installed:
+`herdr plugin link ~/.config/herdr/local-plugins/attention` (setup.sh does it; idempotent, needs no
+running server). `min_herdr_version` is mandatory — link refuses a manifest without it. Because it
+replaces herdr's own desktop notifications, `ui.toast.delivery = "herdr"` keeps herdr's toasts
+in-app instead of doubling them (and herdr ≤ 0.8.2's `"system"` delivery sent them unlabelled, as
+"Notify Send").
+
+**`-x waybar` is load-bearing — and the claude widget shipped without it.** `pkill -RTMIN+8 waybar`
+is a *pattern*: it also matches the supervisor, whose comm is `waybar_run.sh` (it is exec'd, not
+run via `bash`). bash has no trap for real-time signals and dies of one — measured: exit 170 — and
+the bar goes with it through pdeathsig (§9.29), with nothing to restart it until the next
+`swaymsg reload`. The claude widget's on-click did exactly this until 2026-09-24. `theme_test.sh`
+now asserts every `pkill -RTMIN` in the repo, comments included, names `-x waybar`.
+
+**What tmux is still for.** Interactively, nothing: herdr covers detach/attach, named sessions,
+SSH, scripting, and restores layout and Claude conversations after a reboot. Its gaps on 0.8.0 are
+a status bar (0.8.2+), tpm plugins, regex scrollback search and paste buffers. But the agents here
+run long **background jobs** in detached tmux sessions (`tmux new-session -d -s eodhd-…`), and
+that is the right tool: the tmux server double-forks away from the herdr pane, so the job survives
+a herdr restart — including the upgrade — where a job in a herdr pane would die. Nobody attaches to
+those sessions, so the shared `ctrl+b` prefix never collides; attaching one *inside* a herdr pane
+needs `ctrl+b ctrl+b`. Two rules follow:
+
+- **Never run an agent inside tmux inside herdr.** herdr sees `tmux` as the pane process and stops
+  detecting the agent.
+- **A tmux server started from a herdr pane inherits that pane's identity.** tmux copies its
+  starting environment into the *global* environment, so every later session carried
+  `HERDR_ENV=1` and `HERDR_PANE_ID=wK:p2` (found live on 2026-09-24): `herdr` then refuses to launch
+  there as "nested", and anything herdr-aware inside believes it *is* pane `wK:p2`. herdr #2134
+  was closed unfixed. `tmux.conf` unsets the five `HERDR_*` variables at load;
+  `check_consumers.sh` starts a server with them set and asserts they are gone. An already-running
+  server keeps them until `tmux set-environment -gu <name>` or a restart.
+
+**Session backups.** One failure (herdr #4320, on 0.9.0, fixed only on the preview channel so far)
+rewrote `session.json` as a valid session with nothing in it. herdr 0.9.1 keeps copies of sessions
+it cannot *load*; nothing keeps one that loads fine and is empty. `herdr-session-backup` (hourly,
+`herdr-session-backup.timer`) copies `session.json` to `~/.local/state/herdr-backup/` when it
+changed, keeps 48, and **refuses to copy a session with no workspaces** (exit 1, visible in
+`systemctl --user status`) so a wipe cannot rotate the good copies out. Restore: from a terminal
+*outside* herdr, `herdr server stop` (this ends every pane process), copy the chosen file over
+`~/.config/herdr/session.json`, run `herdr`.
+
+**Upgrading herdr.** 0.9.1 only *adds* config keys over 0.8.0, so this config carries over
+unchanged. Do it from a terminal outside herdr: `systemctl --user start herdr-session-backup`,
+`herdr server stop`, `herdr update`, `herdr`. Not `herdr update --handoff`: live handoff is still
+experimental and has lost agents' scrollback (herdr #3864). Resume brings each Claude pane back to
+its conversation — except a pane where `/clear` or `/resume` ran, which can come back to the *old*
+one (herdr #1653, reproduced with the v7 hook installed here).
+
+**Testing without touching the live herdr.** Every `herdr` command inherits `HERDR_SOCKET_PATH`
+from the pane it runs in, so from inside herdr a test reaches the live session unless it overrides
+it. A test server needs its own `XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `HERDR_SOCKET_PATH`, with
+`HERDR_ENV`/`HERDR_PANE_ID`/`HERDR_TAB_ID`/`HERDR_WORKSPACE_ID` unset; the socket path must be short
+(a Unix socket is capped near 108 bytes — put it directly under `/tmp`). Start it as
+`env … herdr server &` so `$!` is the server itself, and stop it by that PID. Never `herdr server
+stop` or `pkill herdr` from a test, and never `setsid` it: setsid forks, `$!` is then the wrong
+process, and the server you thought you stopped keeps running with *your* PATH — which is how a
+stubbed test once sent a real notification.
+
 ## 10. Troubleshooting
 
 | Symptom | Likely cause | Check / fix |
