@@ -1452,7 +1452,7 @@ behind this setup, with sources and a fact-check, is
 |---|---|---|
 | config | `herdr/.config/herdr/config.toml` | theme, keys, sidebar rows, toast delivery |
 | attention plugin | `herdr/.config/herdr/local-plugins/attention/` | critical notification while an agent is blocked, withdrawn when it moves on; pokes waybar |
-| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | dim count of agents working; red count of agents blocked when any are; hidden only when herdr is not running; click goes to the first blocked |
+| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | dim count working, else amber count *done* (finished unseen — an answer is waiting), else red count *blocked* when any are; hidden only when herdr is not running; click goes to the first blocked, else the first done |
 | session backup | `bin/.local/bin/herdr-session-backup` + `systemd/…/herdr-session-backup.{service,timer}` | hourly copy of `session.json` when it changed |
 | tmux guard | `tmux/.config/tmux/tmux.conf` (`set-environment -gu HERDR_*`) | stop a tmux server inheriting one herdr pane's identity |
 
@@ -1490,6 +1490,22 @@ alone: the alert withdraws itself, and the waybar count is recomputed from `herd
 rather than tracked.
 The module is always visible while herdr runs — a dim working count (`@dim`: text meant to be
 read quietly) — because one that appears only on `blocked` looks exactly like one that is broken.
+
+**Three states, one priority order.** `custom/herdr` picks one number and class per agent status,
+blocked outranking done outranking working: any `blocked` agent (a decision is needed, including a
+multiple-choice question dialog — Claude Code's are already reported as `blocked`) shows that count
+in `@critical`; else any `done` agent shows that count `waiting` in `@warning`; else the plain
+`working` count shows `quiet` in `@dim`. `done` means an agent finished its turn *while you weren't
+looking at that tab* — it is a lower bound on "there's an answer waiting for you", not an exact one,
+because it never appears at all if you were watching when the turn finished (straight to `idle`
+instead), and it clears to `idle` — dropping out of the count — the moment you *view* the tab again,
+whether or not you actually typed an answer; herdr marks a tab seen as a whole, not per message. The
+tooltip lists every non-empty status, including `idle` under "seen, not answered yet", since herdr
+gives no way to tell an idle agent that was answered from one that was only glanced at and left.
+Click focuses the first blocked agent, else the first done one. Signal 9 from the attention plugin
+keeps blocked/working/done transitions instant, but viewing a pane emits no
+`pane.agent_status_changed` event — the done → idle move happens client-side with nothing to poke
+the bar — so the config's 5 s interval, not the signal, is what clears a stale "waiting".
 
 **The attention plugin.** herdr runs `attention.py` on every `pane.agent_status_changed`, for every
 pane, with the event in `HERDR_PLUGIN_EVENT_JSON` (fields under `data`) and cwd = the plugin's
