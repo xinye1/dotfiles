@@ -82,6 +82,7 @@
         "pulseaudio",
         "battery",
         "custom/network",
+        "custom/herdr",
         "custom/claude",
         "clock",
         "tray",
@@ -192,6 +193,20 @@
         // supervisor waybar_run.sh, and an RT signal it has no trap for kills
         // it — taking the bar with it via pdeathsig (PLAYBOOK §9.29, §9.30).
         "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 -x waybar"
+    },
+
+    // herdr agents blocked on a question or an approval. Hidden at zero.
+    // Signal 9 comes from herdr's `attention` plugin on every agent state
+    // change, so the interval is only a fallback. Click: go to the first one.
+    "custom/herdr": {
+        "exec": "~/.config/waybar/scripts/herdr_blocked.py",
+        "return-type": "json",
+        "interval": 30,
+        "signal": 9,
+        "exec-on-event": false,
+        "format": "{}",
+        "justify": "center",
+        "on-click": "~/.config/waybar/scripts/herdr_blocked.py --focus"
     },
 
     "tray": {

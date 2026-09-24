@@ -76,6 +76,7 @@
 /* Every modules */
 #mode,
 #custom-network,
+#custom-herdr,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -122,6 +123,7 @@
 #mode,
 #window,
 #custom-network,
+#custom-herdr,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -200,6 +202,10 @@
 #custom-network.disconnected {
     color: @critical;
 }
+
+/* Only ever shown when something is blocked, so it is always the alert
+   colour. `blocked` is not a stock GTK class, unlike `warning` (§9.27). */
+#custom-herdr.blocked   { color: @critical; }
 
 #custom-claude          { color: @fg; }
 #custom-claude.warning  { color: @warning; }
