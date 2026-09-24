@@ -19,9 +19,9 @@
 #
 # EVERY KEY BELOW WAS COPIED FROM THE PRESET EMBEDDED IN THE INSTALLED BINARY
 # (yazi 26.5.6), and that matters more than it looks. yazi rejects a bad hex, a
-# bad value and an unknown [section] loudly — `yazi --debug` exits 1 with a
-# caret under the offending token — but an unknown KEY inside a known section is
-# ignored in silence, with no warning even in the debug output. That is the same
+# bad value and an unknown [section] loudly — `ya env` exits 1 (`yazi --debug`
+# before 26.9) — but an unknown KEY inside a known section is ignored in
+# silence, with no warning even in that report. That is the same
 # failure shape as an undefined GTK @name or an empty tmux `fg=`, so the guard
 # is provenance rather than validation: re-derive the keys from the binary, not
 # from documentation, if yazi is ever upgraded across a schema change. The

@@ -1018,9 +1018,13 @@ exit code is dominated by the latter.
 
 ### 9.22 yazi ignores an unknown theme key in silence
 
-No error, no warning, not even in `--debug`. It is strict about everything else: `yazi --debug
-</dev/null` exits 1 with a caret under a bad hex, a bad value, malformed TOML or an unknown
-`[section]`, which makes it a better validator than most consumers here. But a *key* misspelt
+No error, no warning, not even in `ya env`. It is strict about everything else: `ya env` exits 1
+on a bad colour value, malformed TOML or an unknown `[section]` (re-measured on 26.9.1), which makes
+it a better validator than most consumers here. Before 26.9 the same report was `yazi --debug
+</dev/null`; 26.9 removed that flag, and because yazi now touches the terminal before it parses its
+arguments, the old check *hung* in a real terminal (stopped by the kernel under `timeout`) rather
+than failing. `check_consumers.sh` now runs `ya env` inside a `script` pseudo-terminal, so it behaves
+the same from a terminal, a herdr pane or an agent's shell. But a *key* misspelt
 inside a known section is dropped without a word, and the schema does move (`[manager]` was
 renamed `[mgr]`). So the keys in `theme.toml.tmpl` are copied from the preset embedded in the
 installed binary, not from documentation — re-derive them the same way after an upgrade:

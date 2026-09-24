@@ -291,18 +291,28 @@ else
 fi
 
 # --- yazi ---
-# `yazi --debug` is a real validator, and a better one than most consumers here
-# have: it parses init.lua, yazi.toml, keymap.toml and theme.toml and exits 1
-# with the offending line and a caret under the token. Measured against a
-# scratch $YAZI_CONFIG_HOME, it rejects malformed TOML, an unknown [section],
-# a bad hex (`Failed to parse Colors`) and an empty value.
+# `ya env` is a real validator, and a better one than most consumers here have:
+# it loads yazi.toml, keymap.toml and theme.toml and exits 1 on any of them it
+# cannot parse. Measured against a scratch $YAZI_CONFIG_HOME on yazi 26.9.1, it
+# rejects malformed TOML in theme.toml or yazi.toml and a bad colour value.
 #
-# `</dev/null` is not decoration. On a parse failure yazi prints "Press <Enter>
-# to continue with preset settings..." and WAITS -- interactively it then starts
-# in preset colours, which is the degradation this check exists to notice.
-# Closing stdin turns that prompt into the non-zero exit.
+# Until yazi 26.9 this was `yazi --debug`. 26.9 dropped that flag (`ya env`
+# prints the same report) -- and the old line did not fail, it HUNG, in a real
+# terminal only: yazi now touches the terminal before it parses its arguments,
+# `timeout` runs its child outside the terminal's foreground process group, so
+# the kernel stopped yazi (state `T`) the moment it did, and a stopped process
+# never acts on timeout's SIGTERM. From a shell with no terminal it failed with
+# "Inappropriate ioctl for device" instead, which is why nothing caught it.
 #
-# What --debug does NOT catch, and the reason theme.toml.tmpl carries a header
+# Hence the wrapper. `script` gives `ya` a pseudo-terminal of its own, so the
+# check runs identically from a terminal, a pane or an agent's shell and never
+# touches the caller's terminal (its stdin and stdout are not one). Inside it,
+# `--foreground` keeps `ya` in the foreground of that terminal, so it cannot be
+# stopped; the outer `timeout -s KILL` is the backstop that ends the whole thing
+# whatever `ya` does. The report goes to a file because `script` mixes the
+# terminal's traffic into its own output.
+#
+# What this does NOT catch, and the reason theme.toml.tmpl carries a header
 # about where its keys came from: an unknown KEY inside a known section is
 # ignored in silence, with no warning even here. Same shape as an undefined GTK
 # @name or an empty tmux `fg=`.
@@ -310,30 +320,42 @@ fi
 # Hence the second assertion, which is the sharper one. yazi exits 0 with no
 # theme.toml at all, quietly using its preset colours -- exactly what a fresh
 # clone that has not run `theme`, or an unfolded `yazi` package that has not
-# been `stow -R`'d after a new file, would produce. The debug output names each
+# been `stow -R`'d after a new file, would produce. The report names each
 # config path and either its size or the errno, so asking whether the theme
 # actually loaded is a question with a real answer.
-if have yazi; then
-    if out=$(timeout 20 yazi --debug </dev/null 2>&1); then
-        # Captured, not piped straight into `case`. An absent line used to fall
-        # through the empty result to `*)` -> ok, so the sharper of the two
-        # assertions -- the one that catches yazi sitting quietly on preset
-        # colours -- would have gone green forever the day a yazi release
-        # renamed or reformatted its `Theme :` row. A check that can no longer
-        # see its subject reports that, rather than success.
-        themeline=$(printf '%s\n' "$out" | grep -E '^ +Theme +:' || true)
-        case "$themeline" in
-            "") no "yazi loaded its rendered theme" \
-                   "no 'Theme :' row in \`yazi --debug\` output — this check can no longer see whether the theme loaded; re-derive it from the current output" ;;
-            *"No such file"*|*error*)
-                no "yazi loaded its rendered theme" \
-                   "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
-            *)  ok "yazi accepts its config and loaded its rendered theme" ;;
-        esac
-    else
-        no "yazi accepts its config" \
-           "$(printf '%s\n' "$out" | grep -v '^ *$' | tail -3 | head -2)"
-    fi
+if ! have ya; then
+    sk "yazi accepts its config" "\`ya\` is not installed"
+elif ! have script; then
+    sk "yazi accepts its config" "\`script\` (util-linux) is not installed; \`ya env\` needs a terminal"
+else
+    yo=$(mktemp)
+    timeout -s KILL 30 script -qfec \
+        "timeout --foreground -k 2 20 ya env </dev/null >'$yo' 2>&1; echo \"exit=\$?\" >>'$yo'" \
+        /dev/null </dev/null >/dev/null 2>&1
+    out=$(cat "$yo"); rm -f "$yo"
+    case "$out" in
+        *exit=0*)
+            # Captured, not piped straight into `case`. An absent line used to
+            # fall through the empty result to `*)` -> ok, so the sharper of the
+            # two assertions -- the one that catches yazi sitting quietly on
+            # preset colours -- would have gone green forever the day a yazi
+            # release renamed or reformatted its `Theme :` row. A check that can
+            # no longer see its subject reports that, rather than success.
+            themeline=$(printf '%s\n' "$out" | grep -E '^ +Theme +:' || true)
+            case "$themeline" in
+                "") no "yazi loaded its rendered theme" \
+                       "no 'Theme :' row in \`ya env\` output — this check can no longer see whether the theme loaded; re-derive it from the current output" ;;
+                *"No such file"*|*error*)
+                    no "yazi loaded its rendered theme" \
+                       "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
+                *)  ok "yazi accepts its config and loaded its rendered theme" ;;
+            esac ;;
+        "")
+            no "yazi accepts its config" "\`ya env\` produced no output within 30s (killed)" ;;
+        *)
+            no "yazi accepts its config" \
+               "$(printf '%s\n' "$out" | grep -v -e '^ *$' -e '^exit=' | tail -3 | head -2)" ;;
+    esac
 fi
 
 # --- vim ---
