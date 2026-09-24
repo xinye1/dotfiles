@@ -188,7 +188,10 @@
         "exec-on-event": false,
         "format": "{}",
         "justify": "center",
-        "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 waybar"
+        // `-x` is load-bearing: a bare `waybar` pattern also matches the
+        // supervisor waybar_run.sh, and an RT signal it has no trap for kills
+        // it — taking the bar with it via pdeathsig (PLAYBOOK §9.29, §9.30).
+        "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 -x waybar"
     },
 
     "tray": {

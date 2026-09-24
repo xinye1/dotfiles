@@ -748,7 +748,7 @@ file called `zz-local` is a clean way to override anything without editing the t
 ### 9.7 The dead waybar keyboard-layout signal
 
 `custom/keyboard-layout` in the waybar config declares `"signal": 1`, meaning it refreshes on
-`SIGRTMIN+1`. **Nothing ever sends that signal** — the only `pkill -RTMIN+1 waybar` in the repo is
+`SIGRTMIN+1`. **Nothing ever sends that signal** — the only `pkill -RTMIN+1 -x waybar` in the repo is
 inside a commented-out layout-toggle example in `config.d/input`. The module still updates on its
 30-second `interval`, so this is latent rather than broken. If you ever enable layout switching,
 uncomment that example and the module becomes instant.
