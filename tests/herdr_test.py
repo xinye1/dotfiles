@@ -211,13 +211,26 @@ class ModuleTest(unittest.TestCase):
     def test_herdr_not_running_hides_the_module(self):
         self.assertEqual(json.loads(self.run_module()), {"text": ""})
 
-    def test_nothing_blocked_hides_the_module(self):
-        self.agents("idle", "working", "done")
-        self.assertEqual(json.loads(self.run_module()), {"text": ""})
+    def test_nothing_blocked_shows_a_quiet_working_count(self):
+        # Always visible while herdr runs, so a glance proves the module is
+        # alive — but dim, and counting only the agents actually working.
+        self.agents("idle", "working", "done", "working")
+        out = json.loads(self.run_module())
+        self.assertEqual(out["text"].split("\n")[1], "2")
+        self.assertEqual(out["class"], "quiet")
+        self.assertIn("4 agents, 2 working, none blocked", out["tooltip"])
+        self.assertIn("TP Core · claude — task 2", out["tooltip"])
+        self.assertNotIn("task 1", out["tooltip"])
+
+    def test_no_agents_at_all_still_shows_zero(self):
+        self.agents()
+        out = json.loads(self.run_module())
+        self.assertEqual((out["text"].split("\n")[1], out["class"]), ("0", "quiet"))
 
     def test_counts_only_blocked_agents(self):
         self.agents("blocked", "working", "blocked")
         out = json.loads(self.run_module())
+        # The blocked count, not the working one (1) and not the total (3).
         self.assertEqual(out["text"].split("\n")[1], "2")
         self.assertEqual(out["class"], "blocked")
         self.assertIn("2 agents waiting for you", out["tooltip"])

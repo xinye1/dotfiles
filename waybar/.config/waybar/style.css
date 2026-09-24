@@ -203,8 +203,10 @@
     color: @critical;
 }
 
-/* Only ever shown when something is blocked, so it is always the alert
-   colour. `blocked` is not a stock GTK class, unlike `warning` (§9.27). */
+/* herdr: a working count read quietly (@dim: text, not chrome — §3.1), and
+   the blocked count as an alert. Neither `quiet` nor `blocked` is a stock GTK
+   class, unlike `warning` (§9.27). */
+#custom-herdr.quiet     { color: @dim; }
 #custom-herdr.blocked   { color: @critical; }
 
 #custom-claude          { color: @fg; }

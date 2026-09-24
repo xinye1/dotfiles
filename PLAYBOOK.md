@@ -1452,7 +1452,7 @@ behind this setup, with sources and a fact-check, is
 |---|---|---|
 | config | `herdr/.config/herdr/config.toml` | theme, keys, sidebar rows, toast delivery |
 | attention plugin | `herdr/.config/herdr/local-plugins/attention/` | critical notification while an agent is blocked, withdrawn when it moves on; pokes waybar |
-| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | count of blocked agents, hidden at zero; click goes to the first |
+| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | dim count of agents working; red count of agents blocked when any are; hidden only when herdr is not running; click goes to the first blocked |
 | session backup | `bin/.local/bin/herdr-session-backup` + `systemd/…/herdr-session-backup.{service,timer}` | hourly copy of `session.json` when it changed |
 | tmux guard | `tmux/.config/tmux/tmux.conf` (`set-environment -gu HERDR_*`) | stop a tmux server inheriting one herdr pane's identity |
 
@@ -1488,6 +1488,8 @@ it would override the screen and can stick (e.g. `working` after an Esc). Screen
 bugs in both directions (herdr #3090, #3414, #3467, #4376, #3993), so nothing here gates on state
 alone: the alert withdraws itself, and the waybar count is recomputed from `herdr agent list`
 rather than tracked.
+The module is always visible while herdr runs — a dim working count (`@dim`: text meant to be
+read quietly) — because one that appears only on `blocked` looks exactly like one that is broken.
 
 **The attention plugin.** herdr runs `attention.py` on every `pane.agent_status_changed`, for every
 pane, with the event in `HERDR_PLUGIN_EVENT_JSON` (fields under `data`) and cwd = the plugin's

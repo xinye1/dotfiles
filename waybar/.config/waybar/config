@@ -195,9 +195,11 @@
         "on-click": "~/.config/waybar/scripts/claude_usage.py --refresh; pkill -RTMIN+8 -x waybar"
     },
 
-    // herdr agents blocked on a question or an approval. Hidden at zero.
-    // Signal 9 comes from herdr's `attention` plugin on every agent state
-    // change, so the interval is only a fallback. Click: go to the first one.
+    // herdr agents: a dim count of those working, turning into a red count
+    // of those blocked on a question or an approval. Hidden only when herdr is
+    // not running. Signal 9 comes from herdr's `attention` plugin on every
+    // agent state change, so the interval is only a fallback. Click: go to
+    // the first blocked agent.
     "custom/herdr": {
         "exec": "~/.config/waybar/scripts/herdr_blocked.py",
         "return-type": "json",

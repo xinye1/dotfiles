@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""custom/herdr: how many herdr agents are blocked, waiting for an answer.
+"""custom/herdr: herdr's agents at a glance, loud only when one is blocked.
 
-Prints waybar JSON. Zero blocked, or herdr not running, prints an empty text,
-which hides the module — the bar only grows when something needs the user.
+Prints waybar JSON:
+- herdr not running  -> empty text, which hides the module;
+- nothing blocked    -> the number of agents *working*, class `quiet` (dim) —
+                        always there, so a glance shows the module is alive;
+- anything blocked   -> the number *blocked*, class `blocked` (critical).
 herdr's `attention` plugin sends signal 9 on every agent state change, so the
 count is live; the interval in the config is only a fallback. PLAYBOOK §9.30.
 
@@ -47,12 +50,18 @@ def herdr(*args):
         return None
 
 
-def blocked_agents():
+def agents():
     result = herdr("agent", "list")
     if result is None:
         return None
-    return [a for a in result.get("agents", [])
-            if a.get("agent_status") == "blocked"]
+    return result.get("agents", [])
+
+
+def blocked_agents():
+    listed = agents()
+    if listed is None:
+        return None
+    return [a for a in listed if a.get("agent_status") == "blocked"]
 
 
 def workspace_labels():
@@ -61,21 +70,34 @@ def workspace_labels():
             for w in result.get("workspaces", [])}
 
 
+def describe(agent, labels):
+    where = labels.get(agent.get("workspace_id"), agent.get("workspace_id", "?"))
+    title = (agent.get("terminal_title_stripped") or "").strip()
+    name = agent.get("display_agent") or agent.get("agent") or "agent"
+    return f"{where} · {name}" + (f" — {title}" if title else "")
+
+
+def plural(n, word):
+    return f"{n} {word}{'s' if n != 1 else ''}"
+
+
 def render():
-    blocked = blocked_agents()
-    if not blocked:
+    listed = agents()
+    if listed is None:
         return {"text": ""}
-    labels = workspace_labels()
-    lines = []
-    for agent in blocked:
-        where = labels.get(agent.get("workspace_id"), agent.get("workspace_id", "?"))
-        title = (agent.get("terminal_title_stripped") or "").strip()
-        name = agent.get("display_agent") or agent.get("agent") or "agent"
-        lines.append(f"{where} · {name}" + (f" — {title}" if title else ""))
-    count = len(blocked)
-    head = f"{count} agent{'s' if count != 1 else ''} waiting for you"
-    return {"text": f"{ICON}\n{count}", "class": "blocked",
-            "tooltip": head + "\n" + "\n".join(lines) + "\n\nClick: go to the first"}
+    blocked = [a for a in listed if a.get("agent_status") == "blocked"]
+    working = [a for a in listed if a.get("agent_status") == "working"]
+    labels = workspace_labels() if (blocked or working) else {}
+    if blocked:
+        lines = [plural(len(blocked), "agent") + " waiting for you"]
+        lines += [describe(a, labels) for a in blocked]
+        lines += ["", "Click: go to the first"]
+        return {"text": f"{ICON}\n{len(blocked)}", "class": "blocked",
+                "tooltip": "\n".join(lines)}
+    lines = [f"herdr: {plural(len(listed), 'agent')}, {len(working)} working, none blocked"]
+    lines += [describe(a, labels) for a in working]
+    return {"text": f"{ICON}\n{len(working)}", "class": "quiet",
+            "tooltip": "\n".join(lines)}
 
 
 def focus_first():
