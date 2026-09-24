@@ -247,45 +247,56 @@ fi
 # bytes, and a scratch dir under a long $TMPDIR overflows it. The live plugin
 # is linked too, since herdr refuses a manifest it cannot use (a missing
 # min_herdr_version, an unknown platform) at link time.
+#
+# A missing ~/.config/herdr/config.toml (herdr installed but not stowed, or
+# stowed onto a machine that has not run `theme`/`stow herdr` yet) is a FAIL,
+# not a skip: `have herdr` is true, so this can actually check something, and
+# starting a throwaway server would just be checking herdr's own default
+# config rather than answering anything about this repo's.
 if have herdr; then
-    hd=$(mktemp -d /tmp/herdr-check.XXXXXX)
-    mkdir -p "$hd/config/herdr" "$hd/state"
-    cp "$HOME/.config/herdr/config.toml" "$hd/config/herdr/config.toml"
-    hq() {
+    if [ ! -f "$HOME/.config/herdr/config.toml" ]; then
+        no "herdr accepts its config" "no ~/.config/herdr/config.toml — run \`stow herdr\`"
+    else
+        hd=$(mktemp -d /tmp/herdr-check.XXXXXX)
+        mkdir -p "$hd/config/herdr" "$hd/state"
+        cp "$HOME/.config/herdr/config.toml" "$hd/config/herdr/config.toml"
+        hq() {
+            env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+                XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
+                HERDR_SOCKET_PATH="$hd/s" herdr "$@"
+        }
+        # Not through hq: backgrounding a function forks a subshell, and $!
+        # would be that subshell rather than the server. env execs herdr in
+        # place.
         env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
             XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
-            HERDR_SOCKET_PATH="$hd/s" herdr "$@"
-    }
-    # Not through hq: backgrounding a function forks a subshell, and $! would
-    # be that subshell rather than the server. env execs herdr in place.
-    env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
-        XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
-        HERDR_SOCKET_PATH="$hd/s" herdr server >/dev/null 2>&1 </dev/null &
-    hpid=$!
-    i=0
-    while [ ! -S "$hd/s" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
-    if [ ! -S "$hd/s" ]; then
-        no "herdr accepts its config" "throwaway server did not come up"
-    else
-        out=$(hq server reload-config 2>&1)
-        case $out in
-            *'"diagnostics":[]'*'"status":"applied"'*)
-                ok "herdr accepts its config (no ignored keys)" ;;
-            *)  no "herdr accepts its config (no ignored keys)" "$out" ;;
-        esac
-        out=$(hq plugin link "$HOME/.config/herdr/local-plugins/attention" 2>&1 \
-              && hq plugin list 2>&1)
-        case $out in
-            *'local.attention (Attention) enabled'*warning*|*error*)
-                no "herdr links the attention plugin cleanly" "$out" ;;
-            *'local.attention (Attention) enabled'*)
-                ok "herdr links the attention plugin cleanly" ;;
-            *)  no "herdr links the attention plugin cleanly" "$out" ;;
-        esac
+            HERDR_SOCKET_PATH="$hd/s" herdr server >/dev/null 2>&1 </dev/null &
+        hpid=$!
+        i=0
+        while [ ! -S "$hd/s" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+        if [ ! -S "$hd/s" ]; then
+            no "herdr accepts its config" "throwaway server did not come up"
+        else
+            out=$(hq server reload-config 2>&1)
+            case $out in
+                *'"diagnostics":[]'*'"status":"applied"'*)
+                    ok "herdr accepts its config (no ignored keys)" ;;
+                *)  no "herdr accepts its config (no ignored keys)" "$out" ;;
+            esac
+            out=$(hq plugin link "$HOME/.config/herdr/local-plugins/attention" 2>&1 \
+                  && hq plugin list 2>&1)
+            case $out in
+                *'local.attention (Attention) enabled'*warning*|*error*)
+                    no "herdr links the attention plugin cleanly" "$out" ;;
+                *'local.attention (Attention) enabled'*)
+                    ok "herdr links the attention plugin cleanly" ;;
+                *)  no "herdr links the attention plugin cleanly" "$out" ;;
+            esac
+        fi
+        kill "$hpid" 2>/dev/null
+        wait "$hpid" 2>/dev/null
+        rm -rf "$hd"
     fi
-    kill "$hpid" 2>/dev/null
-    wait "$hpid" 2>/dev/null
-    rm -rf "$hd"
 else
     sk "herdr accepts its config" "herdr is not installed"
 fi

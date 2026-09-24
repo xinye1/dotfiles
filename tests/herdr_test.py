@@ -184,6 +184,20 @@ class AttentionTest(unittest.TestCase):
         self.fire("blocked")
         self.assertFalse(self.marker().exists())
 
+    def test_dismiss_marker_survives_makoctl_failure_but_not_success(self):
+        # makoctl exits 0 even for an already-gone id, so a non-zero exit is
+        # the only signal that mako did not actually answer — the marker must
+        # survive that so the next status event retries the dismiss.
+        self.fire("blocked")
+        (self.sb.bin / "makoctl").write_text(STUB + "exit 1\n")
+        self.fire("working")
+        self.assertTrue(self.marker().exists())
+        (self.sb.bin / "makoctl").write_text(STUB)  # back to the exit-0 stub
+        self.fire("idle")
+        self.assertFalse(self.marker().exists())
+        self.assertEqual(self.sb.calls("makoctl"),
+                         ["makoctl dismiss -n 41", "makoctl dismiss -n 41"])
+
 
 class ModuleTest(unittest.TestCase):
     def setUp(self):
@@ -285,6 +299,19 @@ class ModuleTest(unittest.TestCase):
         # what the other modules emit; keep the glyph literal.
         self.agents("blocked")
         self.assertNotIn("\\ud", self.run_module())
+
+    def test_tooltip_escapes_pango_markup_characters(self):
+        # waybar renders the tooltip as Pango markup, so a title or workspace
+        # label carrying `&`/`<`/`>` must come out escaped, not raw.
+        self.reply("agent", "list", {"agents": [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "agent": "claude",
+             "agent_status": "blocked",
+             "terminal_title_stripped": "build <core> & co"}]})
+        self.reply("workspace", "list", {"workspaces": [
+            {"workspace_id": "w1", "label": "TP Core"}]})
+        out = json.loads(self.run_module())
+        self.assertIn("build &lt;core&gt; &amp; co", out["tooltip"])
+        self.assertNotIn("<core>", out["tooltip"])
 
     def test_click_focuses_the_first_blocked_agent(self):
         self.agents("working", "blocked", "blocked")

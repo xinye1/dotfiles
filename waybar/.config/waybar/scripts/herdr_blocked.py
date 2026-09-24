@@ -44,6 +44,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 TIMEOUT = 2
 ICON = "\U000f06a9"  # nf-md-robot
@@ -103,9 +104,12 @@ def workspace_labels():
 
 
 def describe(agent, labels):
-    where = labels.get(agent.get("workspace_id"), agent.get("workspace_id", "?"))
-    title = (agent.get("terminal_title_stripped") or "").strip()
-    name = agent.get("display_agent") or agent.get("agent") or "agent"
+    # waybar renders the tooltip as Pango markup, so any of these can carry a
+    # `&`/`<`/`>` from a workspace label or terminal title — escape rather
+    # than rely on waybar's version-dependent `escape` option.
+    where = escape(labels.get(agent.get("workspace_id"), agent.get("workspace_id", "?")))
+    title = escape((agent.get("terminal_title_stripped") or "").strip())
+    name = escape(agent.get("display_agent") or agent.get("agent") or "agent")
     return f"{where} · {name}" + (f" — {title}" if title else "")
 
 

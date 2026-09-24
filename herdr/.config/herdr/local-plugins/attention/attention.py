@@ -124,8 +124,12 @@ def main():
                     marker.parent.mkdir(parents=True, exist_ok=True)
                     marker.write_text(notification_id)
     elif previous:
-        run(["makoctl", "dismiss", "-n", previous])
-        marker.unlink(missing_ok=True)
+        dismissed = run(["makoctl", "dismiss", "-n", previous])
+        # makoctl exits 0 even for an already-gone id, so this cannot loop:
+        # only a real answer from mako clears the marker, otherwise the next
+        # status event for this pane retries the dismiss.
+        if dismissed is not None and dismissed.returncode == 0:
+            marker.unlink(missing_ok=True)
 
     run(["pkill", f"-RTMIN+{WAYBAR_SIGNAL}", "-x", "waybar"])
 
