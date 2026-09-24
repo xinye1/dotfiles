@@ -211,6 +211,10 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
 # decrement a counter -- claude_usage_test.py already prints its own failures.
 python3 "$REPO/tests/claude_usage_test.py" >/dev/null
 
+# herdr's attention plugin, the waybar custom/herdr module and the session
+# backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.
+python3 "$REPO/tests/herdr_test.py" 2>/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar
