@@ -204,9 +204,16 @@ fi
 # What this does NOT catch: a status-format whose `align=` groups are wrong.
 # tmux accepts that silently too, and the only way to see it is to attach a
 # client and look at the bar. See the note on `list=on` in tmux.conf.
+#
+# The server is started as a herdr pane would start it — with herdr's pane
+# identity in its environment — because that is how tmux runs on this machine
+# (agents' background jobs), and tmux copies it into every later session unless
+# the config removes it (§9.30).
 if have tmux; then
     sock=dotfiles-check-$$
-    out=$(tmux -L "$sock" -f "$HOME/.config/tmux/tmux.conf" \
+    out=$(HERDR_ENV=1 HERDR_PANE_ID=check:p1 HERDR_TAB_ID=check:t1 \
+          HERDR_WORKSPACE_ID=check HERDR_SOCKET_PATH=/nonexistent \
+          tmux -L "$sock" -f "$HOME/.config/tmux/tmux.conf" \
               new-session -d -s check 2>&1)
     if [ -n "$out" ]; then
         no "tmux accepts its config" "$(printf '%s' "$out" | head -2)"
@@ -219,6 +226,10 @@ if have tmux; then
                    "an empty fg=/bg= means colors.gen.conf is missing a @thm_ role" ;;
             *)  ok "tmux accepts its config and resolves every colour" ;;
         esac
+        leaked=$(tmux -L "$sock" show-environment -g 2>/dev/null | grep '^HERDR' || true)
+        [ -z "$leaked" ] \
+          && ok "tmux drops herdr's pane identity from its global environment" \
+          || no "tmux drops herdr's pane identity from its global environment" "$leaked"
     fi
     tmux -L "$sock" kill-server 2>/dev/null
 fi
