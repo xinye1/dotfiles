@@ -463,7 +463,7 @@ unverified [65] — test in the trial.
 
 | # | Default | Fix |
 |---|---|---|
-| S1 | ufw deny-incoming (host input: only LocalSend 53317 + Docker DNS; ufw-docker lets private ranges reach *published container* ports); Omarchy's Tailscale installer adds **no** `tailscale0` rule (only the Sunshine installer does, for its own ports) [37] | `ufw allow in on tailscale0` [38]. Don't also run firewalld — both filter, so every port would need opening twice [52] |
+| S1 | ufw deny-incoming (host input: only LocalSend 53317 + Docker DNS; ufw-docker lets private ranges reach *published container* ports); Omarchy's Tailscale installer adds **no** `tailscale0` rule (only the Sunshine installer does, for its own ports) [37] | Open only what the tailnet uses: `ufw allow in on tailscale0 to any port 443 proto tcp` and the same for `8443` (the two `tailscale serve` ports), plus `22` if you SSH in over Tailscale. Tailscale's guide uses a blanket `ufw allow in on tailscale0` [38], which exposes *every* listening port to every device the tailnet ACL lets through. Prove it with §9.7's curls from another tailnet device. Don't also run firewalld — both filter, so every port would need opening twice [52] |
 | S2 | `docker.socket` only; containers created by Omarchy's DB installer with `unless-stopped` don't return after reboot (#8541, open; fix PR #8098 referenced) [39] | `systemctl enable docker.service` — only if you run containers |
 | S3 | No linger | `loginctl enable-linger xinye` (family-site, tp-backup timers run without a login) |
 | S4 | Lid suspends on AC | Deploy this repo's `inhibit-sleep-on-ac.service` + udev rule (`sudo systemd-system/deploy.sh`) — **tracked since 2026-09-25**, and the deploy asserts logind really holds the lid-switch block. Optionally belt-and-braces: `/etc/systemd/logind.conf.d/50-server.conf` with `HandleLidSwitchExternalPower=ignore` |
@@ -472,12 +472,22 @@ unverified [65] — test in the trial.
 
 Plus identity. **The OS hostname will change (decided; new name later)**, because `xps-eos` names
 hardware and an OS that are both going away. The family's two links hang off the *tailnet* name,
-and Tailscale lets that differ from the OS hostname: `tailscale set --hostname=<name>` — "hostname
-to use instead of the one provided by the OS" [73]. So pick the tailnet name for the *service*, not
-the machine (it outlives this laptop, and it moves with the server role to a mini PC), move the
-family's bookmarks once, and never again. Restoring `/var/lib/tailscale/tailscaled.state` keeps
-the node's identity and its `tailscale serve` config; re-registering creates a new node. Either
-way, re-check `tailscale serve status` afterwards.
+and there are two ways to make that name outlive the machine:
+
+- **Tailscale Services** (`tailscale serve --service=svc:<name>`): a service gets its own MagicDNS
+  name and addresses, and "remains accessible at the same address even when you migrate it to a
+  different host" [74]. The catch: "The device hosting the resource must use a tag-based
+  identity" — not a user-authenticated login — and an admin must approve the host [74]. This is
+  the clean answer if a tagged server node suits you.
+- **A service-shaped machine name** on the node: `tailscale set --hostname=<name>` — "hostname to
+  use instead of the one provided by the OS" [73]. Machine names are unique per tailnet: while the
+  old node holds a name, a new one gets "`<hostname>-1`" and **keeps** that suffix even after the
+  old name is freed [75]. So on any move, **rename or remove the old node first**, then set the
+  name on the new one, then verify — a short outage, in that order.
+
+Either way, move the family's bookmarks once. Restoring `/var/lib/tailscale/tailscaled.state` onto
+the same box keeps the node's identity and its `tailscale serve` config; re-registering creates a
+new node. Re-check `tailscale serve status` afterwards.
 
 ### 5.4 Backups
 
@@ -490,7 +500,7 @@ Jellyfin stopped, as its docs require [44]) if it isn't already covered.
 ## 6. Keeping this repo sane on Omarchy
 
 1. **Stow override files, never whole directories Omarchy writes into.** Use `--no-folding` for
-   `hypr`, `omarchy`, `tmux`, `foot`, `starship`, `herdr` — a `.bak.*` or migration-added file
+   `hypr`, `omarchy`, `tmux`, `starship`, `herdr` — a `.bak.*` or migration-added file
    must land in `~/.config`, not the repo [18]. `nvim` is the one folded exception you already
    accept (its lockfile), and it gets the drift hook.
 2. **`/etc/skel` has already populated `~/.config` by first login.** `stow -n` will refuse every
@@ -604,7 +614,7 @@ removed — back up anything wanted from its partitions first).
 | R2 | Backup includes `~/.ssh`, `~/.gnupg`, `~/.claude`, `~/.config/{tp-backup,rclone,gh,gdrive-backup,jellyfin-roles,mise}`, `~/.local/state/herdr`, untracked user units, `/var/lib/jellyfin`, `/etc/jellyfin` (if present), `/var/lib/tailscale`, `/etc/systemd/system/inhibit-sleep-on-ac.service`, `/etc/udev/rules.d/99-inhibit-sleep-on-ac.rules`, `/var/lib/postgres` and `/var/lib/docker` if non-empty | must |
 | R3 | A restore of R2 has been **tested** (list + one file per location), not assumed | must |
 | R4 | G1: stable mirror `jellyfin-server` ≥ installed version, checked on the day | must |
-| R5 | New OS hostname (TBD); a service-level tailnet name set with `tailscale set --hostname`; both family URLs answer on it after migration | must |
+| R5 | New OS hostname (TBD); family URLs on a machine-independent name — a Tailscale Service, or a service-shaped machine name claimed after the old node releases it (§5.3); both answer after migration | must |
 | R6 | Never-sleep-on-AC holds: lid close on AC does not suspend; on battery it does | must |
 | R7 | family-site and all tp-backup timers active after an unattended reboot, with no desktop login (linger) | must |
 | R8 | `/var/lib/jellyfin` on its own subvolume, outside root snapshots | should |
@@ -762,7 +772,7 @@ longer — nothing is wiped, and the laptop stays a working fallback:
 | Phase 1 trial needs a VM or spare disk | The new PC *is* the trial |
 | Hardware facts in §4 (NVIDIA, 4K, lid) | Mostly moot: prefer integrated Intel/AMD graphics (D3). A desktop has no lid; drop S4's lid parts, keep the inhibitor only if it has a battery/AC split |
 | Backups (R2/R3) guard against a wipe | Same list, used as a **copy** onto the new PC; R3 still proves they restore |
-| Tailscale: restore state onto the same box | Stand the service up on the new node, set the **service-level tailnet name** there (§5.3), move `tailscale serve` config, verify both URLs, *then* retire the name on the laptop |
+| Tailscale: restore state onto the same box | With **Tailscale Services** (§5.3): advertise the service from the new (tagged, approved) host, verify, then stop advertising it from the laptop — no rename, no outage. With **a machine name**: stand everything up on the new node first, then free the name on the laptop (rename/remove its node), *then* `tailscale set --hostname` on the new node and verify — the name can't be claimed while the laptop holds it [75] |
 | G1 gates the wipe | G1 gates the **cut-over** of Jellyfin (the DB still can't go to an older Jellyfin) |
 
 Order on a new PC: Phase 4 (dev layer) and Phase 5 (look) first — they're risk-free there — then
@@ -865,6 +875,8 @@ c3e67f5.
 71. `bin/omarchy-install-browser`, `bin/omarchy-default-browser`, `bin/omarchy-theme-set-browser` (Chrome install from the AUR, default, and theming) at v4.0.4 [source] — ✓ read directly
 72. Chromium Blog, "Limiting Private API availability in Chromium" (2021-01-15; Chrome Sync unavailable to third-party Chromium builds from 2021-03-15) — https://blog.chromium.org/2021/01/limiting-private-api-availability-in.html · coverage: https://www.bleepingcomputer.com/news/google/google-to-kill-chrome-sync-feature-in-third-party-browsers/ — · not independently re-verified (post body didn't render; dates from coverage)
 73. `tailscale set --help` (1.102): "--hostname … hostname to use instead of the one provided by the OS" — ✓ read directly
+74. Tailscale docs: Tailscale Services ("remains accessible at the same address even when you migrate it to a different host"; "The device hosting the resource must use a tag-based identity"; admin approval) — https://tailscale.com/docs/features/tailscale-services — ✓ read directly
+75. Tailscale KB 1098: Machine names (duplicate → "`<hostname>-1`", kept even after the conflict clears; rename via admin console or `tailscale set --hostname`) — https://tailscale.com/kb/1098/machine-names — ✓ read directly
 
 ---
 
@@ -914,7 +926,7 @@ NVIDIA idle-power penalty on this machine (C4.3's application) both rest on a si
 inference. The trial (§9.6 step 7) turns each into a measurement.
 
 **Added after Phase 5** (with Xinye's decisions, 2026-09-25): D6's ligature facts [68][69][70],
-D9's Chrome facts [71][72], §5.3's tailnet-name mechanism [73], and D3's "NVIDIA is optional"
+D9's Chrome facts [71][72], §5.3's tailnet-name mechanisms [73][74][75] (the latter two raised by CodeRabbit's PR review), and D3's "NVIDIA is optional"
 (the installer's `lspci` gate [26], already Phase-5-verified as C4.1). Each was read from its
 primary source by the main session, not voted on; [72] rests on secondary coverage of a primary
 post whose body didn't render.
