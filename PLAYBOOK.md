@@ -420,7 +420,10 @@ family site). The udev rule starts and stops the unit on plug/unplug; the unit h
 the unit once covered only `sleep:idle`, and the box slept 23 hours through a nightly with the unit
 `active` throughout (trading-platform-v2 `docs/runbooks/automation-nightly-watchdogs.md`). Until
 2026-09-25 these two files lived only in `/etc`, edited by hand, so a reinstall would have lost
-them silently. The other is the **jellyfin-state-dump** timer.
+them silently. The tracked unit adds `Restart=on-failure` (the hand-made one had `Restart=no`, so
+a dead `systemd-inhibit` left the machine sleepable until the next plug event). A deploy that
+changes the unit restarts it, which drops the block for a moment, so **don't deploy during a tp2
+nightly window**. The other is the **jellyfin-state-dump** timer.
 
 **`systemd-system/deploy.sh` is the one procedure for deploying this tree** — run it, don't
 hand-copy the individual files. It installs the sleep inhibitor first, so nothing Jellyfin-related

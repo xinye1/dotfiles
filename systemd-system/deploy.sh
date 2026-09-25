@@ -84,9 +84,10 @@ INHIBIT_UNIT=/etc/systemd/system/inhibit-sleep-on-ac.service
 INHIBIT_RULE=/etc/udev/rules.d/99-inhibit-sleep-on-ac.rules
 AC_ONLINE=/sys/class/power_supply/AC/online
 
-STAGE="check sources"
-for f in "$SERVICE_SRC" "$TIMER_SRC" "$FAILED_SRC" "$SCRIPT_SRC" "$CONF_EXAMPLE" \
-         "$INHIBIT_UNIT_SRC" "$INHIBIT_RULE_SRC"; do
+STAGE="check inhibitor sources"
+# Only the inhibitor's own sources are checked here: a missing jellyfin file
+# must not stop the sleep policy from landing (they're checked after it).
+for f in "$INHIBIT_UNIT_SRC" "$INHIBIT_RULE_SRC"; do
     [[ -e "$f" ]] || { echo "deploy: expected file missing: $f (is $REPO up to date?)" >&2; exit 1; }
 done
 if command -v git >/dev/null && git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
@@ -143,8 +144,21 @@ if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
              echo "deploy: sleep:idle:handle-lid-switch -- the machine CAN sleep" >&2; exit 1; }
     echo "  on AC: logind holds the ac-power block inhibitor over sleep:idle:handle-lid-switch: OK"
 else
-    echo "  on battery: inhibitor correctly not held (udev starts it when AC returns)"
+    # On battery the machine SHOULD be able to sleep. udev stops the unit on
+    # unplug, but a unit left active (a missed event, a manual start) would
+    # keep the block -- ExecCondition only runs at start. Stop it, then assert
+    # the outcome here too.
+    systemctl stop inhibit-sleep-on-ac.service
+    if systemd-inhibit --list --no-legend --no-pager | grep -E '^ac-power[[:space:]]' >/dev/null; then
+        echo "deploy: on battery, but logind still holds an ac-power inhibitor" >&2; exit 1
+    fi
+    echo "  on battery: no ac-power inhibitor held (udev starts it when AC returns): OK"
 fi
+
+STAGE="check jellyfin sources"
+for f in "$SERVICE_SRC" "$TIMER_SRC" "$FAILED_SRC" "$SCRIPT_SRC" "$CONF_EXAMPLE"; do
+    [[ -e "$f" ]] || { echo "deploy: expected file missing: $f (is $REPO up to date?)" >&2; exit 1; }
+done
 
 STAGE="stop timer for the duration of the install"
 # On a re-run (script, config and units already deployed and the timer
