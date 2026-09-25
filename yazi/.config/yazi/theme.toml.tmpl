@@ -33,7 +33,10 @@
 # on preset colours. `[which]` and `[help]` both gained a `border` key in the
 # same span; themed below to match every other floating panel's border.
 #
-#     strings /usr/bin/yazi | grep -n 'schemas/theme.json'
+# The binary holds the dark preset then the light one, each opening with the
+# same `#:schema .../theme.json` line; the dark one is the bytes between the
+# first two. PLAYBOOK §9.22 has the one-liner — not `strings`, which breaks the
+# multi-byte icon glyphs across lines.
 #
 # `[mgr] syntect_theme` is deliberately absent. yazi embeds a tmTheme named
 # `ANSI` whose colours are placeholder indices into the 16 terminal slots, and
