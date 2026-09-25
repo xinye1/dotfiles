@@ -772,7 +772,7 @@ longer — nothing is wiped, and the laptop stays a working fallback:
 | Phase 1 trial needs a VM or spare disk | The new PC *is* the trial |
 | Hardware facts in §4 (NVIDIA, 4K, lid) | Mostly moot: prefer integrated Intel/AMD graphics (D3). A desktop has no lid; drop S4's lid parts, keep the inhibitor only if it has a battery/AC split |
 | Backups (R2/R3) guard against a wipe | Same list, used as a **copy** onto the new PC; R3 still proves they restore |
-| Tailscale: restore state onto the same box | With **Tailscale Services** (§5.3): advertise the service from the new (tagged, approved) host, verify, then stop advertising it from the laptop — no rename, no outage. With **a machine name**: stand everything up on the new node first, then free the name on the laptop (rename/remove its node), *then* `tailscale set --hostname` on the new node and verify — the name can't be claimed while the laptop holds it [75] |
+| Tailscale: restore state onto the same box | With **Tailscale Services** (§5.3): advertise the service from the new (tagged, approved) host, verify, then stop advertising it from the laptop — no rename, and the **address** never changes; Jellyfin itself is still down while its state is copied (next paragraph). With **a machine name**: stand everything up on the new node first, then free the name on the laptop (rename/remove its node), *then* `tailscale set --hostname` on the new node and verify — the name can't be claimed while the laptop holds it [75] |
 | G1 gates the wipe | G1 gates the **cut-over** of Jellyfin (the DB still can't go to an older Jellyfin) |
 
 Order on a new PC: Phase 4 (dev layer) and Phase 5 (look) first — they're risk-free there — then
