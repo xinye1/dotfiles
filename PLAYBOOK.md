@@ -1027,8 +1027,17 @@ than failing. `check_consumers.sh` now runs `ya env` inside a `script` pseudo-te
 the same from a terminal, a herdr pane or an agent's shell. But a *key* misspelt
 inside a known section is dropped without a word, and the schema does move (`[manager]` was
 renamed `[mgr]`). So the keys in `theme.toml.tmpl` are copied from the preset embedded in the
-installed binary, not from documentation — re-derive them the same way after an upgrade:
-`strings /usr/bin/yazi | grep -n 'schemas/theme.json'`, then read forward.
+installed binary, not from documentation — re-derive them the same way after an upgrade. The
+binary holds two copies, dark then light, each opening with the same `#:schema` line; the dark one
+is the text between the first two:
+
+```sh
+python3 -c "import sys; b=open('/usr/bin/yazi','rb').read(); m=b'#:schema https://yazi-rs.github.io/schemas/theme.json'; i=b.index(m); sys.stdout.write(b[i:b.index(m,i+1)].decode())"
+```
+
+Not `strings /usr/bin/yazi` and read forward: that finds the preset but breaks the multi-byte icon
+glyphs across lines, so the `[icon]` tables come out mangled (found re-deriving for 26.9.1, when
+`[help]` had silently renamed `on`/`run`/`desc` to `chord`/`action`).
 
 More yazi traps, all the same shape — **a bare array key replaces, only `prepend_*`/`append_*`
 merge**: `keymap` wipes the whole preset keymap, and `[filetype] rules` and the four `[icon]`

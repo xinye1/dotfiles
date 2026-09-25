@@ -18,16 +18,25 @@
 # full: `[filetype] rules` and the four `[icon]` tables. See the notes above each.
 #
 # EVERY KEY BELOW WAS COPIED FROM THE PRESET EMBEDDED IN THE INSTALLED BINARY
-# (yazi 26.5.6), and that matters more than it looks. yazi rejects a bad hex, a
+# (yazi 26.9.1), and that matters more than it looks. yazi rejects a bad hex, a
 # bad value and an unknown [section] loudly — `ya env` exits 1 (`yazi --debug`
 # before 26.9) — but an unknown KEY inside a known section is ignored in
 # silence, with no warning even in that report. That is the same
 # failure shape as an undefined GTK @name or an empty tmux `fg=`, so the guard
 # is provenance rather than validation: re-derive the keys from the binary, not
 # from documentation, if yazi is ever upgraded across a schema change. The
-# `[manager]` -> `[mgr]` rename is the precedent.
+# `[manager]` -> `[mgr]` rename is the precedent, and re-deriving for 26.9.1
+# caught a second one: `[help]` superseded `on` with `chord`, superseded `run`
+# and `desc` with a single `action`, and dropped `footer` outright. This
+# template still carried the 26.5.6 names — `on`/`run`/`desc`/`footer` — which
+# 26.9.1 accepted and silently ignored, so the help screen was quietly running
+# on preset colours. `[which]` and `[help]` both gained a `border` key in the
+# same span; themed below to match every other floating panel's border.
 #
-#     strings /usr/bin/yazi | grep -n 'schemas/theme.json'
+# The binary holds the dark preset then the light one, each opening with the
+# same `#:schema .../theme.json` line; the dark one is the bytes between the
+# first two. PLAYBOOK §9.22 has the one-liner — not `strings`, which breaks the
+# multi-byte icon glyphs across lines.
 #
 # `[mgr] syntect_theme` is deliberately absent. yazi embeds a tmTheme named
 # `ANSI` whose colours are placeholder indices into the 16 terminal slots, and
@@ -96,6 +105,7 @@ progress_normal = { fg = "{{accent}}",    bg = "{{surface}}" }
 progress_error  = { fg = "{{critical}}",  bg = "{{surface}}" }
 
 [which]
+border          = { fg = "{{accent}}" }
 mask            = { bg = "{{surface}}" }
 cand            = { fg = "{{indicator}}" }
 rest            = { fg = "{{muted}}" }
@@ -143,11 +153,12 @@ title   = { fg = "{{fg}}" }
 hovered = { fg = "{{accent2}}", bold = true }
 
 [help]
-on      = { fg = "{{accent}}" }
-run     = { fg = "{{accent2}}" }
-desc    = { fg = "{{fg}}" }
+# 26.9.1 superseded `on` with `chord`, superseded `run`/`desc` with a single
+# `action`, and removed `footer` outright — see the header comment.
+border  = { fg = "{{accent}}" }
+chord   = { fg = "{{accent}}" }
+action  = { fg = "{{fg}}" }
 hovered = { fg = "{{bg}}", bg = "{{accent}}", bold = true }
-footer  = { fg = "{{bg}}", bg = "{{fg}}" }
 
 # File-specific styles.
 #
@@ -159,13 +170,13 @@ footer  = { fg = "{{bg}}", bg = "{{fg}}" }
 [filetype]
 rules = [
 	# Image
-	{ mime = "image/*", fg = "{{warning}}" },
+	{ mime = "**/image/*", fg = "{{warning}}" },
 	# Media
-	{ mime = "{audio,video}/*", fg = "{{accent2}}" },
+	{ mime = "**/{audio,video}/*", fg = "{{accent2}}" },
 	# Archive
-	{ mime = "application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", fg = "{{critical}}" },
+	{ mime = "**/application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", fg = "{{critical}}" },
 	# Document
-	{ mime = "application/{pdf,doc,rtf}", fg = "{{accent}}" },
+	{ mime = "**/application/{pdf,doc,rtf}", fg = "{{accent}}" },
 	# Virtual file system — an entry yazi knows of but cannot currently reach.
 	{ mime = "vfs/{absent,stale}", fg = "{{muted}}" },
 	# Special file
@@ -404,13 +415,13 @@ exts = [
 conds = [
 	# Special files, then the fallbacks every other row lands on
 	{ if = "orphan", text = "", fg = "{{critical}}" },
-	{ if = "dummy", text = "", fg = "{{critical}}" },
 	{ if = "link", text = "", fg = "{{muted}}" },
 	{ if = "block", text = "", fg = "{{warning}}" },
 	{ if = "char", text = "", fg = "{{warning}}" },
 	{ if = "fifo", text = "", fg = "{{warning}}" },
 	{ if = "sock", text = "", fg = "{{warning}}" },
 	{ if = "sticky", text = "", fg = "{{warning}}" },
+	{ if = "dummy", text = "", fg = "{{critical}}" },
 	{ if = "dir & hovered", text = "", fg = "{{accent2}}" },
 	{ if = "dir", text = "", fg = "{{accent2}}" },
 	{ if = "exec", text = "", fg = "{{success}}" },
