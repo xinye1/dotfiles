@@ -113,8 +113,10 @@ cache is missing, empty, or does not match the palette, and it locks either way 
 
 `docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
 would install to `~/tests/…`. `systemd-system/` mirrors the root filesystem (`/etc/systemd/system`,
-`/usr/local/bin`) rather than `$HOME`, so it isn't stow-managed either — `setup.sh` excludes it and
-`sudo systemd-system/deploy.sh` installs it instead, root-owned throughout (PLAYBOOK §5.2).
+`/etc/udev/rules.d`, `/usr/local/bin`) rather than `$HOME`, so it isn't stow-managed either —
+`setup.sh` excludes it and `sudo systemd-system/deploy.sh` installs it instead, root-owned
+throughout (PLAYBOOK §5.2). It carries the Jellyfin state dump and the never-sleep-on-AC inhibitor
+this machine's server role depends on.
 
 `.stowrc` pins `--target=~`. Without it stow targets the repo's *parent*, which is wrong here and
 fails silently: stow exits 0 having linked to the wrong place. Diagnose by checking where the link

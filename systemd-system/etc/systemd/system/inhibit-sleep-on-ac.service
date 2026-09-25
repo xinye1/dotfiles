@@ -1,0 +1,15 @@
+[Unit]
+Description=Block idle sleep while on AC power (tp2 nightly protection)
+
+[Service]
+# Start only if AC is actually online (guards boot-on-battery; udev handles
+# transitions afterwards).
+ExecCondition=/bin/sh -c '[ "$(cat /sys/class/power_supply/AC/online)" = "1" ]'
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle:handle-lid-switch --who=ac-power --why="plugged into AC" --mode=block /usr/bin/sleep infinity
+# Re-establish the block if systemd-inhibit dies abnormally while on AC.
+# on-failure never fires for the udev rule's deliberate stop on unplug, and a
+# restart re-runs ExecCondition, so a restart on battery is a clean skip.
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

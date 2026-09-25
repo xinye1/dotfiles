@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
 # systemd-system/deploy.sh — installs everything under systemd-system/ onto
-# this machine: the jellyfin-state-dump script, its config, then its three
-# units (.service, .timer, the OnFailure= alerter). This is the canonical,
-# only procedure for deploying this tree — see README.md and PLAYBOOK.md
-# §5.2, which point here rather than duplicating the steps.
+# this machine: first the never-sleep-on-AC inhibitor (a unit and the udev
+# rule that starts/stops it on plug/unplug), then the jellyfin-state-dump
+# script, its config, and its three units (.service, .timer, the OnFailure=
+# alerter). This is the canonical, only procedure for deploying this tree —
+# see README.md and PLAYBOOK.md §5.2, which point here rather than
+# duplicating the steps.
 #
 # Usage:  sudo systemd-system/deploy.sh     (run from the repo root)
 #     or: sudo bash /path/to/systemd-system/deploy.sh
@@ -76,15 +78,102 @@ SCRIPT_SRC="$SRC/usr/local/bin/jellyfin-state-dump"
 CONF_EXAMPLE="$SRC/etc/jellyfin-state-dump.conf.example"  # sanity-checked below, not installed —
                                                             # this script seeds the real config by
                                                             # extracting values, not by copying this
+INHIBIT_UNIT_SRC="$SRC/etc/systemd/system/inhibit-sleep-on-ac.service"
+INHIBIT_RULE_SRC="$SRC/etc/udev/rules.d/99-inhibit-sleep-on-ac.rules"
+INHIBIT_UNIT=/etc/systemd/system/inhibit-sleep-on-ac.service
+INHIBIT_RULE=/etc/udev/rules.d/99-inhibit-sleep-on-ac.rules
+AC_ONLINE=/sys/class/power_supply/AC/online
 
-STAGE="check sources"
-for f in "$SERVICE_SRC" "$TIMER_SRC" "$FAILED_SRC" "$SCRIPT_SRC" "$CONF_EXAMPLE"; do
+STAGE="check inhibitor sources"
+# Only the inhibitor's own sources are checked here: a missing jellyfin file
+# must not stop the sleep policy from landing (they're checked after it).
+for f in "$INHIBIT_UNIT_SRC" "$INHIBIT_RULE_SRC"; do
     [[ -e "$f" ]] || { echo "deploy: expected file missing: $f (is $REPO up to date?)" >&2; exit 1; }
 done
 if command -v git >/dev/null && git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
     echo "deploy: installing from $REPO @ $(git -C "$REPO" rev-parse --short HEAD)" \
          "$(git -C "$REPO" diff --quiet -- systemd-system 2>/dev/null || echo '(systemd-system has local changes)')"
 fi
+
+# --- never sleep on AC ------------------------------------------------------
+# This machine is a server while it is plugged in: tp2's nightly jobs, Jellyfin
+# and the family site all assume it stays up. inhibit-sleep-on-ac.service holds
+# a logind *block* inhibitor for sleep, idle AND handle-lid-switch while AC is
+# online; the udev rule starts/stops it on plug/unplug. handle-lid-switch is a
+# separate inhibitor class from sleep -- the unit once covered only sleep:idle
+# and the box slept 23 h through a nightly with the guard "active" the whole
+# time (trading-platform-v2 docs/runbooks/automation-nightly-watchdogs.md).
+# Installed FIRST, before anything jellyfin-related can fail, because this is
+# the part whose absence costs a night.
+STAGE="install sleep inhibitor"
+inhibit_unit_changed=0
+cmp -s "$INHIBIT_UNIT_SRC" "$INHIBIT_UNIT" 2>/dev/null || inhibit_unit_changed=1
+echo "deploy: installing sleep inhibitor -> $INHIBIT_UNIT, $INHIBIT_RULE"
+install -m 644 -o root -g root "$INHIBIT_UNIT_SRC" "$INHIBIT_UNIT"
+install -m 644 -o root -g root "$INHIBIT_RULE_SRC" "$INHIBIT_RULE"
+systemctl daemon-reload
+udevadm control --reload
+systemctl enable inhibit-sleep-on-ac.service
+if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
+    # Restart only when the unit's content actually changed: a restart drops
+    # the block inhibitor for a moment, which is pointless if nothing new
+    # would be picked up.
+    if (( inhibit_unit_changed )) && systemctl is-active --quiet inhibit-sleep-on-ac.service; then
+        systemctl restart inhibit-sleep-on-ac.service
+    else
+        systemctl start inhibit-sleep-on-ac.service
+    fi
+fi
+
+STAGE="verify: sleep inhibitor"
+# The unit is Type=simple: `systemctl start` returns once systemd-inhibit is
+# forked, before it has registered its lock with logind over D-Bus (and a
+# stop likewise returns before logind drops it). Poll for up to 5 s rather
+# than judge one instant.
+ac_inhibitor_held() {
+    systemd-inhibit --list --no-legend --no-pager \
+        | grep -E '^ac-power[[:space:]].*sleep:idle:handle-lid-switch[[:space:]].*[[:space:]]block$' >/dev/null
+}
+any_ac_inhibitor() {
+    systemd-inhibit --list --no-legend --no-pager | grep -E '^ac-power[[:space:]]' >/dev/null
+}
+wait_until() {   # $1 = predicate command; true once it holds, false after ~5 s
+    local _
+    for _ in {1..20}; do "$@" && return 0; sleep 0.25; done
+    return 1
+}
+cmp -s "$INHIBIT_UNIT_SRC" "$INHIBIT_UNIT" \
+    || { echo "deploy: $INHIBIT_UNIT does not match the repo copy" >&2; exit 1; }
+cmp -s "$INHIBIT_RULE_SRC" "$INHIBIT_RULE" \
+    || { echo "deploy: $INHIBIT_RULE does not match the repo copy" >&2; exit 1; }
+echo "  inhibitor unit + udev rule match the repo: OK"
+systemctl is-enabled --quiet inhibit-sleep-on-ac.service \
+    || { echo "deploy: inhibit-sleep-on-ac.service is not enabled" >&2; exit 1; }
+echo "  inhibit-sleep-on-ac.service enabled: OK"
+if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
+    # Assert the OUTCOME logind holds, not that the unit is active: the 23 h
+    # sleep happened with the unit active. The inhibitor must be a block over
+    # the lid switch too.
+    wait_until ac_inhibitor_held \
+        || { echo "deploy: on AC, but logind holds no ac-power block inhibitor over" >&2
+             echo "deploy: sleep:idle:handle-lid-switch -- the machine CAN sleep" >&2; exit 1; }
+    echo "  on AC: logind holds the ac-power block inhibitor over sleep:idle:handle-lid-switch: OK"
+else
+    # On battery the machine SHOULD be able to sleep. udev stops the unit on
+    # unplug, but a unit left active (a missed event, a manual start) would
+    # keep the block -- ExecCondition only runs at start. Stop it, then assert
+    # the outcome here too.
+    systemctl stop inhibit-sleep-on-ac.service
+    if ! wait_until eval '! any_ac_inhibitor'; then
+        echo "deploy: on battery, but logind still holds an ac-power inhibitor" >&2; exit 1
+    fi
+    echo "  on battery: no ac-power inhibitor held (udev starts it when AC returns): OK"
+fi
+
+STAGE="check jellyfin sources"
+for f in "$SERVICE_SRC" "$TIMER_SRC" "$FAILED_SRC" "$SCRIPT_SRC" "$CONF_EXAMPLE"; do
+    [[ -e "$f" ]] || { echo "deploy: expected file missing: $f (is $REPO up to date?)" >&2; exit 1; }
+done
 
 STAGE="stop timer for the duration of the install"
 # On a re-run (script, config and units already deployed and the timer
