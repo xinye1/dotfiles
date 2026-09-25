@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Keep rotated copies of herdr's session.json. PLAYBOOK §9.30.
+
+herdr restores every workspace, tab, pane and Claude conversation from one file,
+`~/.config/herdr/session.json`, and one reported failure (herdr issue 4320, on 0.9.0)
+rewrote it as a valid session with nothing in it. herdr 0.9.1 keeps copies of
+sessions it cannot *load*; nothing keeps a copy of one that loads fine and is
+empty. This does, on a systemd timer (herdr-session-backup.timer):
+
+- a copy is taken only when the content changed since the last copy;
+- a session with no workspaces is never copied, so the wipe cannot rotate the
+  good copies out — it is reported and skipped;
+- the newest KEEP copies are kept.
+
+Restore: stop herdr (`herdr server stop` — this ends every pane process), copy
+the chosen file over session.json, start herdr.
+"""
+import json
+import os
+import shutil
+import sys
+from datetime import datetime
+from pathlib import Path
+
+KEEP = 48
+
+
+def main():
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    source = config / "herdr" / "session.json"
+    dest = state / "herdr-backup"
+
+    try:
+        raw = source.read_bytes()
+    except FileNotFoundError:
+        return 0  # herdr not used on this machine yet
+    try:
+        workspaces = json.loads(raw).get("workspaces")
+    except (ValueError, AttributeError):
+        print(f"herdr-session-backup: {source} is not a JSON object; skipped",
+              file=sys.stderr)
+        return 1
+    if not workspaces:
+        print(f"herdr-session-backup: {source} has no workspaces; skipped so "
+              "the existing copies survive", file=sys.stderr)
+        return 1
+
+    dest.mkdir(parents=True, exist_ok=True)
+    copies = sorted(dest.glob("session-*.json"))
+    if copies and copies[-1].read_bytes() == raw:
+        return 0
+
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    target = dest / f"session-{stamp}.json"
+    tmp = target.with_suffix(".tmp")
+    tmp.write_bytes(raw)
+    tmp.replace(target)
+    print(f"herdr-session-backup: {len(workspaces)} workspace(s) -> {target}")
+
+    for old in sorted(dest.glob("session-*.json"))[:-KEEP]:
+        old.unlink()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

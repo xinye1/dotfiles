@@ -1,0 +1,75 @@
+# herdr — terminal workspace manager for the Claude Code panes. PLAYBOOK §9.30.
+#
+# Every key here must appear in `herdr --default-config` of the INSTALLED
+# binary. An unknown key is ignored with a one-line diagnostic, not an error, so
+# a key copied from herdr.dev (which documents the newest release) can silently
+# do nothing. `sh tests/check_consumers.sh` asks herdr itself.
+#
+# herdr's own settings screen rewrites this file IN PLACE (std::fs::write), so
+# through the stow symlink its edits land in the repo: after touching settings,
+# `git status`, then commit or revert. PLAYBOOK §5.2.
+
+onboarding = false
+
+[theme]
+# `terminal` draws with the host terminal's ANSI colours, which kitty renders
+# from palettes.toml — so a `theme` switch recolours herdr with no template and
+# no hex here. Switching by `name = "nord"/"gruvbox"` would make every palette
+# switch a repo change instead.
+name = "terminal"
+auto_switch = false
+
+[theme.custom]
+# The terminal theme's surface1 is ANSI 8 (bright black), and herdr draws text
+# on it: copy-mode search matches and release-note code blocks. Under gruvbox
+# that is fg on #928374 = 2.68:1, under the 4.5:1 floor (§9.28). ANSI 0 is the
+# only named colour that clears it in both palettes (nord 7.45:1, gruvbox
+# 8.45:1). The cost is surface1's other job, separators and tree lines, which
+# drop to ~1.25:1 against bg — chrome, where §3.1 allows near-invisible.
+surface1 = "black"
+
+[keys]
+# The prefix stays ctrl+b, tmux's. tmux here only runs detached background jobs
+# that nobody attaches to, so the two never compete for the key (§9.30).
+#
+# ctrl+alt is the one modifier family herdr's docs call "almost untouched
+# everywhere", and sway binds none of it here. The prefix forms stay as well.
+focus_pane_left = ["prefix+h", "ctrl+alt+h"]
+focus_pane_down = ["prefix+j", "ctrl+alt+j"]
+focus_pane_up = ["prefix+k", "ctrl+alt+k"]
+focus_pane_right = ["prefix+l", "ctrl+alt+l"]
+# Unset by default. tmux's `last-pane` is prefix+; — same muscle memory.
+last_pane = "prefix+semicolon"
+# Walk the agents rather than the panes: with one Claude per pane, this is
+# "next agent that might want me".
+previous_agent = "prefix+comma"
+next_agent = "prefix+period"
+# Claude Code makes its own worktrees under <repo>/.claude/worktrees; this
+# adopts one as a herdr workspace instead of herdr creating a second copy.
+open_worktree = "prefix+alt+o"
+
+# Popups run from the focused pane's working directory. prefix+g is taken
+# (goto), hence the alt layer.
+[[keys.command]]
+key = "prefix+alt+y"
+type = "popup"
+command = "yazi"
+width = "85%"
+height = "85%"
+
+[ui]
+show_agent_labels_on_pane_borders = true
+agent_panel_sort = "spaces"
+
+[ui.toast]
+# In-app toasts only. Desktop notifications come from the `attention` plugin
+# (local-plugins/attention), which sends just "blocked", labelled, at critical
+# urgency, and withdraws it when the agent moves on. "system" would double them.
+delivery = "herdr"
+
+[ui.sidebar.agents.rows_by_agent]
+# Claude Code keeps its terminal title set to a summary of the current task;
+# show that instead of the word "claude". Plain token strings only: a typo
+# inside a styled `{ token = … }` table fails the WHOLE config parse, unlike
+# every other unknown key (config/sidebar.rs, deny_unknown_fields).
+claude = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"]]

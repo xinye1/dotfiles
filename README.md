@@ -71,8 +71,9 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bash` | `~/.bashrc`, `~/.config/dircolors` |
 | `vim` | `~/.vimrc`, `~/.vim/colorscheme.gen.vim` |
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
-| `bin` | `~/.local/bin/theme` — the palette renderer; `walls-sync` — the lock screen's wallpaper cache |
+| `bin` | `~/.local/bin/theme` — the palette renderer; `walls-sync` — the lock screen's wallpaper cache; `herdr-session-backup` |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
+| `herdr` | `~/.config/herdr/config.toml`, `local-plugins/attention/` — the agent multiplexer and its blocked-agent alerts |
 | `foot` | `~/.config/foot/foot.ini` — standalone fallback, still themed |
 | `kitty` | `~/.config/kitty/kitty.conf` — **the default terminal**; a port of `foot` |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |

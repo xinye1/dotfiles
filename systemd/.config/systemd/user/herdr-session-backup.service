@@ -1,0 +1,6 @@
+[Unit]
+Description=herdr: copy session.json when it changed (skips an emptied session)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/herdr-session-backup

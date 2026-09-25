@@ -204,9 +204,16 @@ fi
 # What this does NOT catch: a status-format whose `align=` groups are wrong.
 # tmux accepts that silently too, and the only way to see it is to attach a
 # client and look at the bar. See the note on `list=on` in tmux.conf.
+#
+# The server is started as a herdr pane would start it — with herdr's pane
+# identity in its environment — because that is how tmux runs on this machine
+# (agents' background jobs), and tmux copies it into every later session unless
+# the config removes it (§9.30).
 if have tmux; then
     sock=dotfiles-check-$$
-    out=$(tmux -L "$sock" -f "$HOME/.config/tmux/tmux.conf" \
+    out=$(HERDR_ENV=1 HERDR_PANE_ID=check:p1 HERDR_TAB_ID=check:t1 \
+          HERDR_WORKSPACE_ID=check HERDR_SOCKET_PATH=/nonexistent \
+          tmux -L "$sock" -f "$HOME/.config/tmux/tmux.conf" \
               new-session -d -s check 2>&1)
     if [ -n "$out" ]; then
         no "tmux accepts its config" "$(printf '%s' "$out" | head -2)"
@@ -219,23 +226,104 @@ if have tmux; then
                    "an empty fg=/bg= means colors.gen.conf is missing a @thm_ role" ;;
             *)  ok "tmux accepts its config and resolves every colour" ;;
         esac
+        leaked=$(tmux -L "$sock" show-environment -g 2>/dev/null | grep '^HERDR' || true)
+        [ -z "$leaked" ] \
+          && ok "tmux drops herdr's pane identity from its global environment" \
+          || no "tmux drops herdr's pane identity from its global environment" "$leaked"
     fi
     tmux -L "$sock" kill-server 2>/dev/null
 fi
 
+# --- herdr ---
+# herdr ignores an unknown config key with a one-line diagnostic and carries on,
+# so "it started" proves nothing; `server reload-config` returns those
+# diagnostics as JSON, and that is the question asked here. The server is a
+# throwaway: its own config dir, state dir and socket, every HERDR_* variable
+# of the calling shell dropped (this suite may well run inside a herdr pane),
+# and it is stopped by the PID started here — never by name, never with
+# `herdr server stop`, either of which could reach the live one (§9.30).
+#
+# The socket lives directly under /tmp: a Unix socket path is capped near 108
+# bytes, and a scratch dir under a long $TMPDIR overflows it. The live plugin
+# is linked too, since herdr refuses a manifest it cannot use (a missing
+# min_herdr_version, an unknown platform) at link time.
+#
+# A missing ~/.config/herdr/config.toml (herdr installed but not stowed, or
+# stowed onto a machine that has not run `theme`/`stow herdr` yet) is a FAIL,
+# not a skip: `have herdr` is true, so this can actually check something, and
+# starting a throwaway server would just be checking herdr's own default
+# config rather than answering anything about this repo's.
+if have herdr; then
+    if [ ! -f "$HOME/.config/herdr/config.toml" ]; then
+        no "herdr accepts its config" "no ~/.config/herdr/config.toml — run \`stow herdr\`"
+    else
+        hd=$(mktemp -d /tmp/herdr-check.XXXXXX)
+        mkdir -p "$hd/config/herdr" "$hd/state"
+        cp "$HOME/.config/herdr/config.toml" "$hd/config/herdr/config.toml"
+        hq() {
+            env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+                XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
+                HERDR_SOCKET_PATH="$hd/s" herdr "$@"
+        }
+        # Not through hq: backgrounding a function forks a subshell, and $!
+        # would be that subshell rather than the server. env execs herdr in
+        # place.
+        env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+            XDG_CONFIG_HOME="$hd/config" XDG_STATE_HOME="$hd/state" \
+            HERDR_SOCKET_PATH="$hd/s" herdr server >/dev/null 2>&1 </dev/null &
+        hpid=$!
+        i=0
+        while [ ! -S "$hd/s" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+        if [ ! -S "$hd/s" ]; then
+            no "herdr accepts its config" "throwaway server did not come up"
+        else
+            out=$(hq server reload-config 2>&1)
+            case $out in
+                *'"diagnostics":[]'*'"status":"applied"'*)
+                    ok "herdr accepts its config (no ignored keys)" ;;
+                *)  no "herdr accepts its config (no ignored keys)" "$out" ;;
+            esac
+            out=$(hq plugin link "$HOME/.config/herdr/local-plugins/attention" 2>&1 \
+                  && hq plugin list 2>&1)
+            case $out in
+                *'local.attention (Attention) enabled'*warning*|*error*)
+                    no "herdr links the attention plugin cleanly" "$out" ;;
+                *'local.attention (Attention) enabled'*)
+                    ok "herdr links the attention plugin cleanly" ;;
+                *)  no "herdr links the attention plugin cleanly" "$out" ;;
+            esac
+        fi
+        kill "$hpid" 2>/dev/null
+        wait "$hpid" 2>/dev/null
+        rm -rf "$hd"
+    fi
+else
+    sk "herdr accepts its config" "herdr is not installed"
+fi
+
 # --- yazi ---
-# `yazi --debug` is a real validator, and a better one than most consumers here
-# have: it parses init.lua, yazi.toml, keymap.toml and theme.toml and exits 1
-# with the offending line and a caret under the token. Measured against a
-# scratch $YAZI_CONFIG_HOME, it rejects malformed TOML, an unknown [section],
-# a bad hex (`Failed to parse Colors`) and an empty value.
+# `ya env` is a real validator, and a better one than most consumers here have:
+# it loads yazi.toml, keymap.toml and theme.toml and exits 1 on any of them it
+# cannot parse. Measured against a scratch $YAZI_CONFIG_HOME on yazi 26.9.1, it
+# rejects malformed TOML in theme.toml or yazi.toml and a bad colour value.
 #
-# `</dev/null` is not decoration. On a parse failure yazi prints "Press <Enter>
-# to continue with preset settings..." and WAITS -- interactively it then starts
-# in preset colours, which is the degradation this check exists to notice.
-# Closing stdin turns that prompt into the non-zero exit.
+# Until yazi 26.9 this was `yazi --debug`. 26.9 dropped that flag (`ya env`
+# prints the same report) -- and the old line did not fail, it HUNG, in a real
+# terminal only: yazi now touches the terminal before it parses its arguments,
+# `timeout` runs its child outside the terminal's foreground process group, so
+# the kernel stopped yazi (state `T`) the moment it did, and a stopped process
+# never acts on timeout's SIGTERM. From a shell with no terminal it failed with
+# "Inappropriate ioctl for device" instead, which is why nothing caught it.
 #
-# What --debug does NOT catch, and the reason theme.toml.tmpl carries a header
+# Hence the wrapper. `script` gives `ya` a pseudo-terminal of its own, so the
+# check runs identically from a terminal, a pane or an agent's shell and never
+# touches the caller's terminal (its stdin and stdout are not one). Inside it,
+# `--foreground` keeps `ya` in the foreground of that terminal, so it cannot be
+# stopped; the outer `timeout -s KILL` is the backstop that ends the whole thing
+# whatever `ya` does. The report goes to a file because `script` mixes the
+# terminal's traffic into its own output.
+#
+# What this does NOT catch, and the reason theme.toml.tmpl carries a header
 # about where its keys came from: an unknown KEY inside a known section is
 # ignored in silence, with no warning even here. Same shape as an undefined GTK
 # @name or an empty tmux `fg=`.
@@ -243,30 +331,42 @@ fi
 # Hence the second assertion, which is the sharper one. yazi exits 0 with no
 # theme.toml at all, quietly using its preset colours -- exactly what a fresh
 # clone that has not run `theme`, or an unfolded `yazi` package that has not
-# been `stow -R`'d after a new file, would produce. The debug output names each
+# been `stow -R`'d after a new file, would produce. The report names each
 # config path and either its size or the errno, so asking whether the theme
 # actually loaded is a question with a real answer.
-if have yazi; then
-    if out=$(timeout 20 yazi --debug </dev/null 2>&1); then
-        # Captured, not piped straight into `case`. An absent line used to fall
-        # through the empty result to `*)` -> ok, so the sharper of the two
-        # assertions -- the one that catches yazi sitting quietly on preset
-        # colours -- would have gone green forever the day a yazi release
-        # renamed or reformatted its `Theme :` row. A check that can no longer
-        # see its subject reports that, rather than success.
-        themeline=$(printf '%s\n' "$out" | grep -E '^ +Theme +:' || true)
-        case "$themeline" in
-            "") no "yazi loaded its rendered theme" \
-                   "no 'Theme :' row in \`yazi --debug\` output — this check can no longer see whether the theme loaded; re-derive it from the current output" ;;
-            *"No such file"*|*error*)
-                no "yazi loaded its rendered theme" \
-                   "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
-            *)  ok "yazi accepts its config and loaded its rendered theme" ;;
-        esac
-    else
-        no "yazi accepts its config" \
-           "$(printf '%s\n' "$out" | grep -v '^ *$' | tail -3 | head -2)"
-    fi
+if ! have ya; then
+    sk "yazi accepts its config" "\`ya\` is not installed"
+elif ! have script; then
+    sk "yazi accepts its config" "\`script\` (util-linux) is not installed; \`ya env\` needs a terminal"
+else
+    yo=$(mktemp)
+    timeout -s KILL 30 script -qfec \
+        "timeout --foreground -k 2 20 ya env </dev/null >'$yo' 2>&1; echo \"exit=\$?\" >>'$yo'" \
+        /dev/null </dev/null >/dev/null 2>&1
+    out=$(cat "$yo"); rm -f "$yo"
+    case "$out" in
+        *exit=0*)
+            # Captured, not piped straight into `case`. An absent line used to
+            # fall through the empty result to `*)` -> ok, so the sharper of the
+            # two assertions -- the one that catches yazi sitting quietly on
+            # preset colours -- would have gone green forever the day a yazi
+            # release renamed or reformatted its `Theme :` row. A check that can
+            # no longer see its subject reports that, rather than success.
+            themeline=$(printf '%s\n' "$out" | grep -E '^ +Theme +:' || true)
+            case "$themeline" in
+                "") no "yazi loaded its rendered theme" \
+                       "no 'Theme :' row in \`ya env\` output — this check can no longer see whether the theme loaded; re-derive it from the current output" ;;
+                *"No such file"*|*error*)
+                    no "yazi loaded its rendered theme" \
+                       "yazi is running on PRESET colours: run \`theme\`, then \`stow -R yazi\`" ;;
+                *)  ok "yazi accepts its config and loaded its rendered theme" ;;
+            esac ;;
+        "")
+            no "yazi accepts its config" "\`ya env\` produced no output within 30s (killed)" ;;
+        *)
+            no "yazi accepts its config" \
+               "$(printf '%s\n' "$out" | grep -v -e '^ *$' -e '^exit=' | tail -3 | head -2)" ;;
+    esac
 fi
 
 # --- vim ---

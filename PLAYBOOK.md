@@ -396,6 +396,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
 | `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future themed file — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
+| `herdr` | **No** | `~/.config/herdr` is herdr's runtime directory as much as its config: the live API socket (`herdr.sock`), the client socket, logs, `session.json` (every workspace, pane and Claude conversation to restore), `plugins.json` and the `plugins/` state tree are all written there. Folding would put live sockets and session state in the repo. Unfolded, stow links `config.toml` as a file and `local-plugins/` as a folded subdirectory, which is safe because herdr never writes into it — its own plugin state goes to `plugins/`, which is why the source directory is *not* called that. **herdr rewrites `config.toml` in place** from its settings screen (`std::fs::write`, not `rename()`), so unlike htop (§9.16) the symlink survives and the edit lands in the repo: after touching herdr's settings, `git status`, then commit or revert. `setup.sh` pre-creates the directory. See §9.30. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
 | `bash` | **Neither — no directory to fold** | Owns two loose files, `~/.bashrc` and `~/.config/dircolors`, and no directory of its own. `$HOME` and `~/.config` always exist, so stow has nothing to fold and always links file by file. Consequence: **a new file added to this package is silently absent until `stow -R bash`**, the same as an unfolded package, and it can never become folded by accident. |
 | `starship` | **Neither — no directory to fold** | Owns one loose file, `~/.config/starship.toml`. Same as `bash`: no directory, nothing to fold, `stow -R starship` needed for any file added later. |
@@ -748,7 +749,7 @@ file called `zz-local` is a clean way to override anything without editing the t
 ### 9.7 The dead waybar keyboard-layout signal
 
 `custom/keyboard-layout` in the waybar config declares `"signal": 1`, meaning it refreshes on
-`SIGRTMIN+1`. **Nothing ever sends that signal** — the only `pkill -RTMIN+1 waybar` in the repo is
+`SIGRTMIN+1`. **Nothing ever sends that signal** — the only `pkill -RTMIN+1 -x waybar` in the repo is
 inside a commented-out layout-toggle example in `config.d/input`. The module still updates on its
 30-second `interval`, so this is latent rather than broken. If you ever enable layout switching,
 uncomment that example and the module becomes instant.
@@ -1017,9 +1018,13 @@ exit code is dominated by the latter.
 
 ### 9.22 yazi ignores an unknown theme key in silence
 
-No error, no warning, not even in `--debug`. It is strict about everything else: `yazi --debug
-</dev/null` exits 1 with a caret under a bad hex, a bad value, malformed TOML or an unknown
-`[section]`, which makes it a better validator than most consumers here. But a *key* misspelt
+No error, no warning, not even in `ya env`. It is strict about everything else: `ya env` exits 1
+on a bad colour value, malformed TOML or an unknown `[section]` (re-measured on 26.9.1), which makes
+it a better validator than most consumers here. Before 26.9 the same report was `yazi --debug
+</dev/null`; 26.9 removed that flag, and because yazi now touches the terminal before it parses its
+arguments, the old check *hung* in a real terminal (stopped by the kernel under `timeout`) rather
+than failing. `check_consumers.sh` now runs `ya env` inside a `script` pseudo-terminal, so it behaves
+the same from a terminal, a herdr pane or an agent's shell. But a *key* misspelt
 inside a known section is dropped without a word, and the schema does move (`[manager]` was
 renamed `[mgr]`). So the keys in `theme.toml.tmpl` are copied from the preset embedded in the
 installed binary, not from documentation — re-derive them the same way after an upgrade:
@@ -1439,6 +1444,138 @@ pgrep -x waybar | while read -r p; do        # every bar's parent is the supervi
 done
 tail "${XDG_STATE_HOME:-$HOME/.local/state}/waybar/run.log"
 ```
+
+### 9.30 herdr: the agent multiplexer, its alerts, and what tmux is still for
+
+[herdr](https://herdr.dev) runs every Claude Code session on this machine: workspaces → tabs →
+panes, with each pane's agent classified `idle` / `working` / `blocked` / `done`. The research
+behind this setup, with sources and a fact-check, is
+`docs/specs/2026-09-23-herdr-agent-setup-research.md`. What lives here:
+
+| Piece | File | Job |
+|---|---|---|
+| config | `herdr/.config/herdr/config.toml` | theme, keys, sidebar rows, toast delivery |
+| attention plugin | `herdr/.config/herdr/local-plugins/attention/` | critical notification while an agent is blocked, withdrawn when it moves on; pokes waybar |
+| waybar module | `waybar/.config/waybar/scripts/herdr_blocked.py` (`custom/herdr`) | dim count working, else amber count *done* (finished unseen — an answer is waiting), else red count *blocked* when any are; hidden only when herdr is not running; click goes to the first blocked, else the first done |
+| session backup | `bin/.local/bin/herdr-session-backup` + `systemd/…/herdr-session-backup.{service,timer}` | hourly copy of `session.json` when it changed |
+| tmux guard | `tmux/.config/tmux/tmux.conf` (`set-environment -gu HERDR_*`) | stop a tmux server inheriting one herdr pane's identity |
+
+**The web documents a newer herdr than the one installed.** herdr.dev's docs default to the latest
+release; the authority for what *this* binary accepts is `herdr --default-config`. An unknown key is
+ignored with a one-line diagnostic, not an error — so a key copied from the website can do nothing
+in silence. The one exception runs the other way: a typo inside a *styled* sidebar token
+(`{ token = …, fg = … }`) is `deny_unknown_fields` and fails the whole parse. `check_consumers.sh`
+asks herdr itself: it starts a throwaway server and reads the JSON from `server reload-config`,
+which lists every ignored key.
+
+**herdr writes its own config.** Its settings screen (theme, sound, toast delivery, border labels,
+panel sort) rewrites `config.toml` in place, so through the stow symlink those edits appear in
+`git status`. Commit what you meant, revert what you didn't — the same drill as nwg-look (§9.1),
+minus the clobbering.
+
+**Colour: `name = "terminal"`, plus one override.** The terminal theme draws with the host
+terminal's ANSI colours, which kitty renders from `palettes.toml`, so a `theme` switch recolours
+herdr with no template and no hex in this file. The two alternatives both break a convention:
+`[theme.custom]` rendered from roles would put `config.toml` on the hardcoded-path render list
+(§2.3) *and* lose herdr's own in-place edits at the next render; switching `name = "nord"/"gruvbox"`
+would make every palette switch a repo change. Measured before choosing (§9.28): the terminal
+theme's `surface1` is ANSI 8, and herdr draws text on it (copy-mode search matches, release-note
+code blocks) — fg on gruvbox's ANSI 8 is 2.68:1. `surface1 = "black"` (ANSI 0, a *named* colour, so
+no hex) is the only one of the sixteen that clears 4.5:1 in both palettes (7.45 / 8.45). Its price
+is separators and tree lines at ~1.25:1, which is chrome.
+
+**Agent state comes from the screen, on purpose.** The official Claude integration
+(`herdr integration install claude`) reports only *which conversation* a pane holds, for restore.
+herdr's authors moved Claude off hook-reported state because hooks "can miss permission approval
+results, escape interrupts". Do not add a `pane report-agent` Claude hook to "fix" a misreading —
+it would override the screen and can stick (e.g. `working` after an Esc). Screen detection has open
+bugs in both directions (herdr #3090, #3414, #3467, #4376, #3993), so nothing here gates on state
+alone: the alert withdraws itself, and the waybar count is recomputed from `herdr agent list`
+rather than tracked.
+The module is always visible while herdr runs — a dim working count (`@dim`: text meant to be
+read quietly) — because one that appears only on `blocked` looks exactly like one that is broken.
+
+**Three states, one priority order.** `custom/herdr` picks one number and class per agent status,
+blocked outranking done outranking working: any `blocked` agent (a decision is needed, including a
+multiple-choice question dialog — Claude Code's are already reported as `blocked`) shows that count
+in `@critical`; else any `done` agent shows that count `waiting` in `@warning`; else the plain
+`working` count shows `quiet` in `@dim`. `done` means an agent finished its turn *while you weren't
+looking at that tab* — it is a lower bound on "there's an answer waiting for you", not an exact one,
+because it never appears at all if you were watching when the turn finished (straight to `idle`
+instead), and it clears to `idle` — dropping out of the count — the moment you *view* the tab again,
+whether or not you actually typed an answer; herdr marks a tab seen as a whole, not per message. The
+tooltip lists every non-empty status, including `idle` under "seen, not answered yet", since herdr
+gives no way to tell an idle agent that was answered from one that was only glanced at and left.
+Click focuses the first blocked agent, else the first done one. Signal 9 from the attention plugin
+keeps blocked/working/done transitions instant, but viewing a pane emits no
+`pane.agent_status_changed` event — the done → idle move happens client-side with nothing to poke
+the bar — so the config's 5 s interval, not the signal, is what clears a stale "waiting".
+
+**The attention plugin.** herdr runs `attention.py` on every `pane.agent_status_changed`, for every
+pane, with the event in `HERDR_PLUGIN_EVENT_JSON` (fields under `data`) and cwd = the plugin's
+directory. On `blocked` it sends `notify-send --app-name=herdr --urgency=critical`, keyed per pane
+so a re-block replaces rather than stacks; on any other status it `makoctl dismiss`es that pane's
+notification. It skips the notification only when the pane is herdr's focused pane **and** the
+sway-focused window is the terminal hosting a herdr client (a `herdr` process descended from that
+window's pid) — focused inside herdr but looking at another window still notifies. Every event
+also sends `pkill -RTMIN+9 -x waybar`. It is *linked*, not installed:
+`herdr plugin link ~/.config/herdr/local-plugins/attention` (setup.sh does it; idempotent, needs no
+running server). `min_herdr_version` is mandatory — link refuses a manifest without it. Because it
+replaces herdr's own desktop notifications, `ui.toast.delivery = "herdr"` keeps herdr's toasts
+in-app instead of doubling them (and herdr ≤ 0.8.2's `"system"` delivery sent them unlabelled, as
+"Notify Send").
+
+**`-x waybar` is load-bearing — and the claude widget shipped without it.** `pkill -RTMIN+8 waybar`
+is a *pattern*: it also matches the supervisor, whose comm is `waybar_run.sh` (it is exec'd, not
+run via `bash`). bash has no trap for real-time signals and dies of one — measured: exit 170 — and
+the bar goes with it through pdeathsig (§9.29), with nothing to restart it until the next
+`swaymsg reload`. The claude widget's on-click did exactly this until 2026-09-24. `theme_test.sh`
+now asserts every `pkill -RTMIN` in the repo, comments included, names `-x waybar`.
+
+**What tmux is still for.** Interactively, nothing: herdr covers detach/attach, named sessions,
+SSH, scripting, and restores layout and Claude conversations after a reboot. Its gaps on 0.8.0 are
+a status bar (0.8.2+), tpm plugins, regex scrollback search and paste buffers. But the agents here
+run long **background jobs** in detached tmux sessions (`tmux new-session -d -s eodhd-…`), and
+that is the right tool: the tmux server double-forks away from the herdr pane, so the job survives
+a herdr restart — including the upgrade — where a job in a herdr pane would die. Nobody attaches to
+those sessions, so the shared `ctrl+b` prefix never collides; attaching one *inside* a herdr pane
+needs `ctrl+b ctrl+b`. Two rules follow:
+
+- **Never run an agent inside tmux inside herdr.** herdr sees `tmux` as the pane process and stops
+  detecting the agent.
+- **A tmux server started from a herdr pane inherits that pane's identity.** tmux copies its
+  starting environment into the *global* environment, so every later session carried
+  `HERDR_ENV=1` and `HERDR_PANE_ID=wK:p2` (found live on 2026-09-24): `herdr` then refuses to launch
+  there as "nested", and anything herdr-aware inside believes it *is* pane `wK:p2`. herdr #2134
+  was closed unfixed. `tmux.conf` unsets the five `HERDR_*` variables at load;
+  `check_consumers.sh` starts a server with them set and asserts they are gone. An already-running
+  server keeps them until `tmux set-environment -gu <name>` or a restart.
+
+**Session backups.** One failure (herdr #4320, on 0.9.0, fixed only on the preview channel so far)
+rewrote `session.json` as a valid session with nothing in it. herdr 0.9.1 keeps copies of sessions
+it cannot *load*; nothing keeps one that loads fine and is empty. `herdr-session-backup` (hourly,
+`herdr-session-backup.timer`) copies `session.json` to `~/.local/state/herdr-backup/` when it
+changed, keeps 48, and **refuses to copy a session with no workspaces** (exit 1, visible in
+`systemctl --user status`) so a wipe cannot rotate the good copies out. Restore: from a terminal
+*outside* herdr, `herdr server stop` (this ends every pane process), copy the chosen file over
+`~/.config/herdr/session.json`, run `herdr`.
+
+**Upgrading herdr.** 0.9.1 only *adds* config keys over 0.8.0, so this config carries over
+unchanged. Do it from a terminal outside herdr: `systemctl --user start herdr-session-backup`,
+`herdr server stop`, `herdr update`, `herdr`. Not `herdr update --handoff`: live handoff is still
+experimental and has lost agents' scrollback (herdr #3864). Resume brings each Claude pane back to
+its conversation — except a pane where `/clear` or `/resume` ran, which can come back to the *old*
+one (herdr #1653, reproduced with the v7 hook installed here).
+
+**Testing without touching the live herdr.** Every `herdr` command inherits `HERDR_SOCKET_PATH`
+from the pane it runs in, so from inside herdr a test reaches the live session unless it overrides
+it. A test server needs its own `XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `HERDR_SOCKET_PATH`, with
+`HERDR_ENV`/`HERDR_PANE_ID`/`HERDR_TAB_ID`/`HERDR_WORKSPACE_ID` unset; the socket path must be short
+(a Unix socket is capped near 108 bytes — put it directly under `/tmp`). Start it as
+`env … herdr server &` so `$!` is the server itself, and stop it by that PID. Never `herdr server
+stop` or `pkill herdr` from a test, and never `setsid` it: setsid forks, `$!` is then the wrong
+process, and the server you thought you stopped keeps running with *your* PATH — which is how a
+stubbed test once sent a real notification.
 
 ## 10. Troubleshooting
 

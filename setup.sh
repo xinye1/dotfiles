@@ -62,9 +62,12 @@ fi
 # that directory exactly as its siblings' toggles write theirs. It happens to be
 # a real directory on this machine, which masked the gap — a fresh clone would
 # have folded it.
+#
+# ~/.config/herdr is herdr's runtime directory as much as its config: the live
+# API socket, logs, session.json and the plugin registry all land there.
 for dir in "$HOME/.local/bin" "$HOME/.vim" "$HOME/.claude" "$HOME/.icons" \
            "$HOME/.config/gtk-3.0" "$HOME/.config/xsettingsd" \
-           "$HOME/.config/gtk-4.0" "$HOME/.config/yazi"; do
+           "$HOME/.config/gtk-4.0" "$HOME/.config/yazi" "$HOME/.config/herdr"; do
     if [ -L "$dir" ]; then
         printf 'setup: %s is already a symlink — stow folded it on an earlier run.\n' "$dir" >&2
         printf 'setup: unfold it first: stow -D <pkg>; mkdir %s; stow <pkg>  (PLAYBOOK §5.2)\n' "$dir" >&2
@@ -121,6 +124,16 @@ fi
 stow $pkgs
 printf '  stowed:%s\n' "$pkgs"
 
+# --- herdr plugin ----------------------------------------------------------
+# herdr is not a system package (its own installer puts it in ~/.local/bin), so
+# on a fresh machine it may not exist yet; then this waits for the next run.
+# Linking only writes herdr's plugin registry, needs no running server, and is
+# idempotent (PLAYBOOK §9.30).
+if command -v herdr >/dev/null 2>&1; then
+    herdr plugin link "$HOME/.config/herdr/local-plugins/attention" >/dev/null \
+        && echo '  linked herdr plugin: local.attention'
+fi
+
 # --- verify -----------------------------------------------------------------
 sh tests/theme_test.sh
 
@@ -131,5 +144,7 @@ setup:   - GTK themes                nordic-theme (AUR), Colloid-…-Gruvbox (§
 setup:   - vim plugins               three git clones (§8)
 setup:   - papirus folder tint       sudo papirus-folders … (§8), or just `theme`
 setup:   - default web browser       env -u BROWSER xdg-settings set … (§8)
+setup:   - herdr                     its installer, then re-run this (§9.30)
+setup:   - herdr session backups     systemctl --user enable --now herdr-session-backup.timer
 setup: When the desktop is up: sh tests/check_consumers.sh
 EOF

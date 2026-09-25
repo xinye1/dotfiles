@@ -76,6 +76,7 @@
 /* Every modules */
 #mode,
 #custom-network,
+#custom-herdr,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -122,6 +123,7 @@
 #mode,
 #window,
 #custom-network,
+#custom-herdr,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -200,6 +202,15 @@
 #custom-network.disconnected {
     color: @critical;
 }
+
+/* herdr: a working count read quietly (@dim: text, not chrome — §3.1), amber
+   for agents *done* but not yet viewed (waiting on you), and the blocked
+   count as the loudest alert. None of `quiet`/`waiting`/`blocked` is a stock
+   GTK class, unlike `warning` itself (§9.27) — the background firewall above
+   is what actually guards this rule, not the class name. */
+#custom-herdr.quiet     { color: @dim; }
+#custom-herdr.waiting   { color: @warning; }
+#custom-herdr.blocked   { color: @critical; }
 
 #custom-claude          { color: @fg; }
 #custom-claude.warning  { color: @warning; }

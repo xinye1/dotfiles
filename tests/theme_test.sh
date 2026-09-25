@@ -211,6 +211,22 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
 # decrement a counter -- claude_usage_test.py already prints its own failures.
 python3 "$REPO/tests/claude_usage_test.py" >/dev/null
 
+# herdr's attention plugin, the waybar custom/herdr module and the session
+# backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.
+python3 "$REPO/tests/herdr_test.py" 2>/dev/null
+
+# A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
+# waybar` is a pattern, and it also matches the supervisor, whose comm is
+# waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar
+# follows it through pdeathsig (§9.29). The claude widget's on-click shipped
+# exactly that. Asserted over every tracked file, commented examples included:
+# an example is what gets uncommented.
+unanchored=$(git -C "$REPO" grep -n -e 'pkill -RTMIN' -- ':!*.md' ':!tests/theme_test.sh' \
+    | grep -v -e '-x waybar' || true)
+[ -z "$unanchored" ] \
+  && ok "every RT signal to waybar names the bar exactly (-x)" \
+  || no "every RT signal to waybar names the bar exactly (-x): $unanchored"
+
 # Every colour file an application includes must be one a template produces.
 # This is the assertion that would have caught a repointing being reverted: the
 # include still named `colors.css`, no template produced it any more, and
