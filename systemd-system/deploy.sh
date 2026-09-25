@@ -126,6 +126,22 @@ if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
 fi
 
 STAGE="verify: sleep inhibitor"
+# The unit is Type=simple: `systemctl start` returns once systemd-inhibit is
+# forked, before it has registered its lock with logind over D-Bus (and a
+# stop likewise returns before logind drops it). Poll for up to 5 s rather
+# than judge one instant.
+ac_inhibitor_held() {
+    systemd-inhibit --list --no-legend --no-pager \
+        | grep -E '^ac-power[[:space:]].*sleep:idle:handle-lid-switch[[:space:]].*[[:space:]]block$' >/dev/null
+}
+any_ac_inhibitor() {
+    systemd-inhibit --list --no-legend --no-pager | grep -E '^ac-power[[:space:]]' >/dev/null
+}
+wait_until() {   # $1 = predicate command; true once it holds, false after ~5 s
+    local _
+    for _ in {1..20}; do "$@" && return 0; sleep 0.25; done
+    return 1
+}
 cmp -s "$INHIBIT_UNIT_SRC" "$INHIBIT_UNIT" \
     || { echo "deploy: $INHIBIT_UNIT does not match the repo copy" >&2; exit 1; }
 cmp -s "$INHIBIT_RULE_SRC" "$INHIBIT_RULE" \
@@ -138,8 +154,7 @@ if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
     # Assert the OUTCOME logind holds, not that the unit is active: the 23 h
     # sleep happened with the unit active. The inhibitor must be a block over
     # the lid switch too.
-    systemd-inhibit --list --no-legend --no-pager \
-        | grep -E '^ac-power[[:space:]].*sleep:idle:handle-lid-switch[[:space:]].*[[:space:]]block$' >/dev/null \
+    wait_until ac_inhibitor_held \
         || { echo "deploy: on AC, but logind holds no ac-power block inhibitor over" >&2
              echo "deploy: sleep:idle:handle-lid-switch -- the machine CAN sleep" >&2; exit 1; }
     echo "  on AC: logind holds the ac-power block inhibitor over sleep:idle:handle-lid-switch: OK"
@@ -149,7 +164,7 @@ else
     # keep the block -- ExecCondition only runs at start. Stop it, then assert
     # the outcome here too.
     systemctl stop inhibit-sleep-on-ac.service
-    if systemd-inhibit --list --no-legend --no-pager | grep -E '^ac-power[[:space:]]' >/dev/null; then
+    if ! wait_until eval '! any_ac_inhibitor'; then
         echo "deploy: on battery, but logind still holds an ac-power inhibitor" >&2; exit 1
     fi
     echo "  on battery: no ac-power inhibitor held (udev starts it when AC returns): OK"
