@@ -402,7 +402,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `starship` | **Neither — no directory to fold** | Owns one loose file, `~/.config/starship.toml`. Same as `bash`: no directory, nothing to fold, `stow -R starship` needed for any file added later. |
 
 **`systemd-system/` is not in this table because it is not stow-managed at all.** It mirrors the
-root filesystem (`/etc/systemd/system`, `/usr/local/bin`, …), not `$HOME`, and `.stowrc` pins
+root filesystem (`/etc/systemd/system`, `/etc/udev/rules.d`, `/usr/local/bin`), not `$HOME`, and `.stowrc` pins
 `--target=~` for every package in this repo — stowing it would exit 0 while linking to
 `~/etc/systemd/system`, satisfying no one (same failure mode as §6.4's `/etc/greetd/config.toml`,
 a whole tree instead of one file). `setup.sh` excludes it from the automatic package loop by name.
@@ -413,8 +413,20 @@ here rather than in the stow-managed, user-writable `bin` package: a root servic
 user-writable script or config is a straight line from "anything running as the login user" to
 root.
 
+It holds two things. **`inhibit-sleep-on-ac.service`** plus **`99-inhibit-sleep-on-ac.rules`** keep
+the machine awake while it is plugged in — it is a server on AC (tp2's nightly jobs, Jellyfin, the
+family site). The udev rule starts and stops the unit on plug/unplug; the unit holds a logind
+*block* inhibitor over `sleep:idle:handle-lid-switch`. The lid switch is its own inhibitor class:
+the unit once covered only `sleep:idle`, and the box slept 23 hours through a nightly with the unit
+`active` throughout (trading-platform-v2 `docs/runbooks/automation-nightly-watchdogs.md`). Until
+2026-09-25 these two files lived only in `/etc`, edited by hand, so a reinstall would have lost
+them silently. The other is the **jellyfin-state-dump** timer.
+
 **`systemd-system/deploy.sh` is the one procedure for deploying this tree** — run it, don't
-hand-copy the individual files. It installs the script and config *before* the units (so an abort
+hand-copy the individual files. It installs the sleep inhibitor first, so nothing Jellyfin-related
+can fail before it, and verifies the *outcome*: logind must actually hold the `ac-power` block over
+the lid switch while on AC, not just report the unit active. For Jellyfin it installs the script
+and config *before* the units (so an abort
 partway through never leaves the previous, working state half-overwritten), extracts the ntfy
 topic from `~/.config/tp-backup/config` by parsing text rather than sourcing it (root must not
 execute a file the login user can write, applied to the deploy step itself, not just the runtime
