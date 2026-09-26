@@ -1105,6 +1105,10 @@ file to undo it. The decisions worth keeping:
   from the floor; that was a misreading of what "reset" was for and was reverted the same day
   (#37 → the PR after it). The scan and the chart rendering are byte-identical to before the
   feature, and `ResetFloorKeepsHistoryTest` plus a `MainTest` end-to-end case pin that down.
+  A cache built under #37 keeps its floor-cut `days` *and* its advanced scan offsets, so it never
+  recovers the lost history on its own; there is deliberately no migration for it, since the only
+  such cache was this machine's and it was rebuilt on the spot. If one ever turns up, the fix is
+  the ordinary one — delete `~/.cache/claude-usage/state.json` and the next tick rescans.
 - **Outside the cache**, because the paragraph above promises the cache is safe to delete, and a
   floor kept in it would put the markers back on the plain window the moment somebody did. `theme`
   keeps its palette in the same state directory for the same reason. main() reads it fresh on
