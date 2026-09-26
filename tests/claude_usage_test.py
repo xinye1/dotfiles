@@ -1075,6 +1075,242 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Fable 5", tip)                         # in-window model appears
         self.assertNotIn("Sonnet 5", tip)                     # out-of-window model hidden
 
+    def test_headings_say_seven_days_when_there_is_no_floor(self):
+        tip = cu.render(self.fresh_state(), cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("(7d)", tip)
+        self.assertNotIn("since", tip)
+
+    def test_headings_name_the_floor_when_it_is_inside_the_window(self):
+        # "(7d)" would now be a lie: the charts hold less than seven days.
+        since = datetime(2026, 8, 21, 9, 5, tzinfo=timezone.utc).timestamp()
+        tip = cu.render(self.fresh_state(charts_since=since),
+                        cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertNotIn("(7d)", tip)
+        self.assertEqual(tip.count("(since Fri 09:05)"), 2)  # both headings
+
+    def test_a_floor_from_today_drops_the_weekday(self):
+        since = datetime(2026, 8, 22, 9, 5, tzinfo=timezone.utc).timestamp()
+        tip = cu.render(self.fresh_state(charts_since=since),
+                        cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertEqual(tip.count("(since 09:05)"), 2)
+        self.assertNotIn("since Sat", tip)
+
+    def test_the_floor_is_shown_in_the_local_zone(self):
+        self.addCleanup(set_tz, os.environ.get("TZ"))
+        set_tz("Etc/GMT-2")  # UTC+2 all year: no DST edge to trip over
+        since = datetime(2026, 8, 21, 9, 5, tzinfo=timezone.utc).timestamp()
+        tip = cu.render(self.fresh_state(charts_since=since),
+                        cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("(since Fri 11:05)", tip)
+
+    def test_a_floor_older_than_the_window_is_not_mentioned(self):
+        # Once the floor rolls out of the 7 local days on show, the charts are
+        # a true 7 days again and the heading must go back to saying so.
+        since = (NOW - timedelta(days=10)).timestamp()
+        tip = cu.render(self.fresh_state(charts_since=since),
+                        cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("(7d)", tip)
+        self.assertNotIn("since", tip)
+
+    def test_empty_charts_after_a_reset_still_show_their_heading(self):
+        # Straight after `--reset-charts` there is nothing to plot. Dropping
+        # the section would read as "the widget lost my data"; the heading
+        # with its floor is what says the emptiness is on purpose.
+        st = self.fresh_state(charts_since=NOW.timestamp(), days={})
+        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertIn("TOKENS BY DAY", tip)
+        self.assertIn("(since 12:00)", tip)
+        self.assertNotIn("TOKENS BY MODEL", tip)  # no model has any tokens
+
+    def test_no_floor_and_no_data_still_shows_no_chart(self):
+        tip = cu.render(self.fresh_state(days={}), cu.FALLBACK_THEME, NOW)["tooltip"]
+        self.assertNotIn("TOKENS BY", tip)
+
+
+class ChartsSinceTest(unittest.TestCase):
+    """The user-set floor under the token charts (`--reset-charts`).
+
+    A floor is an INPUT to the totals in state.json, not a filter over them:
+    `days` is already summed per local day and cannot be cut at an arbitrary
+    instant afterwards. So changing it throws away everything derived from the
+    logs and lets the ordinary scan rebuild it under the new rule.
+    """
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.path = Path(self.td.name) / "state" / "claude-usage" / "charts-since"
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def test_missing_file_means_no_floor(self):
+        self.assertIsNone(cu.read_charts_since(self.path))
+
+    def test_write_round_trips_and_creates_the_directory(self):
+        cu.write_charts_since(self.path, NOW)
+        self.assertEqual(cu.read_charts_since(self.path), NOW.timestamp())
+
+    def test_write_replaces_a_previous_floor(self):
+        cu.write_charts_since(self.path, NOW)
+        later = NOW + timedelta(hours=1)
+        cu.write_charts_since(self.path, later)
+        self.assertEqual(cu.read_charts_since(self.path), later.timestamp())
+
+    def test_write_leaves_no_temp_file_behind(self):
+        cu.write_charts_since(self.path, NOW)
+        self.assertEqual([p.name for p in self.path.parent.iterdir()],
+                         ["charts-since"])
+
+    def test_unreadable_content_means_no_floor_and_says_so(self):
+        # Fail open: a mangled floor must not blank or crash the widget, but a
+        # silently ignored one would leave the charts un-reset with no reason.
+        self.path.parent.mkdir(parents=True)
+        for junk in ("yesterday", "[]", "12:00", "\x00\xff"):
+            with self.subTest(junk=junk):
+                self.path.write_text(junk)
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    self.assertIsNone(cu.read_charts_since(self.path))
+                self.assertIn("charts-since", err.getvalue())
+
+    def test_undecodable_bytes_mean_no_floor_and_say_so(self):
+        # Not the same path as the text cases above: read_text() raises
+        # UnicodeDecodeError before any parsing happens.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_bytes(b"\xff\xfe\x00")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertIsNone(cu.read_charts_since(self.path))
+        self.assertIn("charts-since", err.getvalue())
+
+    def test_an_empty_file_means_no_floor_quietly(self):
+        # An empty file is what a user gets from `: > charts-since` (or from
+        # `touch`): a deliberate "no floor", not a fault worth a stderr line.
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text("\n")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertIsNone(cu.read_charts_since(self.path))
+        self.assertEqual(err.getvalue(), "")
+
+    def test_naive_timestamp_read_as_utc_whatever_the_local_zone(self):
+        self.addCleanup(set_tz, os.environ.get("TZ"))
+        set_tz("America/New_York")
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text("2026-08-22T12:00:00")
+        self.assertEqual(cu.read_charts_since(self.path), NOW.timestamp())
+
+    def test_apply_is_a_no_op_while_the_floor_is_unchanged(self):
+        st = {"charts_since": 5.0, "days": {"d": {"m": 1}},
+              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
+        cu.apply_charts_since(st, 5.0)
+        self.assertEqual(st, {"charts_since": 5.0, "days": {"d": {"m": 1}},
+                              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}})
+
+    def test_no_floor_on_either_side_is_a_no_op(self):
+        # A state.json from before this feature has no `charts_since` key at
+        # all; upgrading must not cost it a full rescan.
+        st = {"days": {"d": {"m": 1}}, "files": {"f": {}}, "seen": {"k": 1.0}}
+        cu.apply_charts_since(st, None)
+        self.assertEqual(st["days"], {"d": {"m": 1}})
+        self.assertEqual(st["files"], {"f": {}})
+        self.assertEqual(st["seen"], {"k": 1.0})
+
+    def test_a_new_floor_drops_everything_derived_from_the_logs(self):
+        st = {"charts_since": None, "days": {"d": {"m": 1}},
+              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
+        cu.apply_charts_since(st, 7.0)
+        self.assertEqual((st["days"], st["files"], st["seen"]), ({}, {}, {}))
+        self.assertEqual(st["charts_since"], 7.0)
+
+    def test_removing_the_floor_rebuilds_too(self):
+        st = {"charts_since": 7.0, "days": {"d": {"m": 1}},
+              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
+        cu.apply_charts_since(st, None)
+        self.assertEqual((st["days"], st["files"], st["seen"]), ({}, {}, {}))
+        self.assertIsNone(st["charts_since"])
+
+    def test_apply_leaves_the_limits_alone(self):
+        # Only the log-derived half of state.json is invalidated; the fetched
+        # limits and their TTL bookkeeping have nothing to do with the floor.
+        st = {"limits": LIMITS, "limits_fetched_at": 9.0, "creds_meta": {"a": 1}}
+        cu.apply_charts_since(st, 7.0)
+        self.assertEqual(st["limits"], LIMITS)
+        self.assertEqual(st["limits_fetched_at"], 9.0)
+        self.assertEqual(st["creds_meta"], {"a": 1})
+
+
+class ChartsSinceScanTest(unittest.TestCase):
+    """scan_jsonl honouring `st["charts_since"]`."""
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.proj = Path(self.td.name) / "projects" / "p1"
+        self.proj.mkdir(parents=True)
+        self.now = NOW.timestamp()
+        self.f = self.proj / "a.jsonl"
+        self.pre = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
+        self.post = usage_line("2026-08-22T11:00:00.000Z", "claude-fable-5", "m2", "r2")
+        self.floor = datetime(2026, 8, 22, 10, 30, tzinfo=timezone.utc).timestamp()
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def scan(self, st):
+        cu.scan_jsonl(Path(self.td.name) / "projects", st, self.now)
+        return st
+
+    def test_lines_before_the_floor_are_not_counted(self):
+        self.f.write_text(self.pre + self.post)
+        st = self.scan({"charts_since": self.floor})
+        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 100})
+
+    def test_a_line_exactly_at_the_floor_is_counted(self):
+        # `ts < floor` is the skip, so the reset instant itself belongs to the
+        # new count. A test that only used lines well clear of the floor would
+        # pass with either `<` or `<=`.
+        self.f.write_text(self.pre)
+        st = self.scan({"charts_since": datetime(
+            2026, 8, 22, 10, 0, tzinfo=timezone.utc).timestamp()})
+        self.assertEqual(st["days"].get("2026-08-22"), {"claude-fable-5": 100})
+
+    def test_a_line_just_before_the_floor_is_not(self):
+        self.f.write_text(self.pre)
+        st = self.scan({"charts_since": datetime(
+            2026, 8, 22, 10, 0, 0, 1, tzinfo=timezone.utc).timestamp()})
+        self.assertNotIn("2026-08-22", st["days"])
+
+    def test_pre_floor_lines_are_still_remembered_for_dedup(self):
+        # `seen` is what stops a rewritten or rescanned file counting a line
+        # twice; the floor only decides whether a line is COUNTED.
+        self.f.write_text(self.pre + self.post)
+        st = self.scan({"charts_since": self.floor})
+        self.assertIn("m1|r1", st["seen"])
+        self.assertIn("m2|r2", st["seen"])
+
+    def test_a_floor_older_than_the_window_changes_nothing(self):
+        self.f.write_text(self.pre + self.post)
+        st = self.scan({"charts_since": self.now - 30 * 86400})
+        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
+
+    def test_a_rescan_from_byte_zero_never_resurrects_pre_floor_tokens(self):
+        self.f.write_text(self.pre + self.post)
+        st = self.scan({"charts_since": self.floor})
+        # Shrinking the file resets its offset to 0 (see scan_jsonl).
+        self.f.write_text(usage_line("2026-08-22T10:10:00.000Z",
+                                     "claude-fable-5", "m3", "r3"))
+        self.scan(st)
+        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 100})
+
+    def test_lowering_then_removing_the_floor_restores_the_history(self):
+        self.f.write_text(self.pre + self.post)
+        st = self.scan({})
+        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
+        cu.apply_charts_since(st, self.floor)
+        self.assertEqual(self.scan(st)["days"]["2026-08-22"],
+                         {"claude-fable-5": 100})
+        cu.apply_charts_since(st, None)
+        self.assertEqual(self.scan(st)["days"]["2026-08-22"],
+                         {"claude-fable-5": 200})
+
 
 class MainTest(unittest.TestCase):
     def test_end_to_end_against_fake_home(self):
@@ -1088,7 +1324,8 @@ class MainTest(unittest.TestCase):
             (claude / "s.jsonl").write_text(
                 usage_line(NOW.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                            "claude-fable-5", "m1", "r1"))
-            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache")}
+            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache"),
+                   "XDG_STATE_HOME": str(home / ".local" / "state")}
             buf = io.StringIO()
             with mock.patch.dict(os.environ, env), \
                  mock.patch.object(cu.urllib.request, "urlopen",
@@ -1119,7 +1356,8 @@ class MainTest(unittest.TestCase):
             cache = home / ".cache" / "claude-usage"
             cache.mkdir(parents=True)
             (cache / "state.json").write_text("[]")
-            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache")}
+            env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache"),
+                   "XDG_STATE_HOME": str(home / ".local" / "state")}
             buf = io.StringIO()
             with mock.patch.dict(os.environ, env), \
                  mock.patch.object(cu.urllib.request, "urlopen",
@@ -1131,6 +1369,105 @@ class MainTest(unittest.TestCase):
                 cu.main([], now=NOW)
             out = jsonlib.loads(buf.getvalue())
             self.assertEqual(out["text"], f"{cu.ICON}\n44\n41\n70")
+
+    def fake_home(self, td):
+        """A throwaway HOME with credentials and one session log; returns
+        (home, env, session_log) — env pins every dir the widget resolves."""
+        home = Path(td)
+        proj = home / ".claude" / "projects" / "p"
+        proj.mkdir(parents=True)
+        (home / ".claude" / ".credentials.json").write_text(jsonlib.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 2e12}}))
+        env = {"HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache"),
+               "XDG_STATE_HOME": str(home / ".local" / "state")}
+        return home, env, proj / "s.jsonl"
+
+    def run_main(self, env, argv, now):
+        buf = io.StringIO()
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(cu.urllib.request, "urlopen",
+                               fake_urlopen({"limits": LIMITS})), \
+             contextlib.redirect_stdout(buf):
+            cu.main(argv, now=now)
+        return buf.getvalue()
+
+    def state_of(self, home):
+        return jsonlib.loads(
+            (home / ".cache" / "claude-usage" / "state.json").read_text())
+
+    def test_reset_charts_records_the_floor_and_prints_no_widget_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            home, env, _log = self.fake_home(td)
+            out = self.run_main(env, ["--reset-charts"], NOW)
+            floor = home / ".local" / "state" / "claude-usage" / "charts-since"
+            self.assertEqual(cu.read_charts_since(floor), NOW.timestamp())
+            # This mode is run by hand in a terminal, not by waybar: a line of
+            # bar JSON there would be noise. It says what it did instead.
+            with self.assertRaises(ValueError):
+                jsonlib.loads(out)
+            self.assertIn("12:00", out)
+
+    def test_reset_charts_blanks_the_charts_then_counts_only_new_usage(self):
+        with tempfile.TemporaryDirectory() as td:
+            home, env, log = self.fake_home(td)
+            log.write_text(usage_line("2026-08-22T10:00:00.000Z",
+                                      "claude-fable-5", "m1", "r1"))
+            self.run_main(env, [], NOW)
+            self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
+                             {"claude-fable-5": 100})
+            self.run_main(env, ["--reset-charts"], NOW)
+            self.assertEqual(self.state_of(home)["days"], {})
+            later = NOW + timedelta(minutes=30)
+            with log.open("a") as fh:
+                fh.write(usage_line("2026-08-22T12:30:00.000Z",
+                                    "claude-fable-5", "m2", "r2"))
+            out = jsonlib.loads(self.run_main(env, [], later))
+            self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
+                             {"claude-fable-5": 100})  # m2 only, never m1
+            self.assertIn("(since 12:00)", out["tooltip"])
+
+    def test_the_floor_survives_wiping_the_cache(self):
+        # The point of keeping it out of ~/.cache: PLAYBOOK §9.23 says that
+        # directory is safe to delete, and a floor inside it would come back
+        # as the full 7 days the moment somebody did.
+        import shutil
+        with tempfile.TemporaryDirectory() as td:
+            home, env, log = self.fake_home(td)
+            log.write_text(
+                usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
+                + usage_line("2026-08-22T12:30:00.000Z", "claude-fable-5", "m2", "r2"))
+            self.run_main(env, ["--reset-charts"], NOW)
+            shutil.rmtree(home / ".cache")
+            self.run_main(env, [], NOW + timedelta(hours=1))
+            self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
+                             {"claude-fable-5": 100})
+
+    def test_the_floor_directory_defaults_under_home_without_xdg_state_home(self):
+        # Unset and empty are the same thing to the XDG spec, and to the
+        # `theme` script here; a get() default alone would honour the empty
+        # string and put the floor in the current directory.
+        for value in (None, ""):
+            with self.subTest(xdg_state_home=value), \
+                 tempfile.TemporaryDirectory() as td:
+                home, env, _log = self.fake_home(td)
+                if value is None:
+                    del env["XDG_STATE_HOME"]
+                else:
+                    env["XDG_STATE_HOME"] = value
+                # chdir into the throwaway dir: the bug this catches writes a
+                # RELATIVE path, which would otherwise land in the checkout.
+                with mock.patch.dict(os.environ), contextlib.chdir(td):
+                    if value is None:
+                        os.environ.pop("XDG_STATE_HOME", None)
+                    self.run_main(env, ["--reset-charts"], NOW)
+                self.assertTrue((home / ".local" / "state" / "claude-usage"
+                                 / "charts-since").is_file())
+
+    def test_an_ordinary_run_never_writes_a_floor(self):
+        with tempfile.TemporaryDirectory() as td:
+            home, env, _log = self.fake_home(td)
+            self.run_main(env, [], NOW)
+            self.assertFalse((home / ".local").exists())
 
 
 if __name__ == "__main__":
