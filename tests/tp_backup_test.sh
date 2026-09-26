@@ -349,6 +349,17 @@ then ok "substrate refuses an empty .cache_ws2"
 else bad "substrate refuses an empty .cache_ws2 (exit $rc)"; fi
 echo x > "$WS2_CACHE/frame.parquet"   # restore, in case anything runs after this block
 
+# ── substrate refuses a CACHEDIR.TAG inside any source ──────────────────────
+# --exclude-caches would otherwise skip that subtree and still exit 0.
+mkdir -p "$WS2_CACHE/sub"
+printf 'Signature: 8a477f597d28d172789f06886806bc55\n' > "$WS2_CACHE/sub/CACHEDIR.TAG"
+run_tier substrate; rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'CACHEDIR.TAG' "$SANDBOX/tier.out" && [ ! -s "$RESTIC_LOG" ]
+then ok "substrate refuses a source holding a CACHEDIR.TAG, before restic runs"
+else bad "substrate refuses a source holding a CACHEDIR.TAG (exit $rc)"; fi
+rm -rf "$WS2_CACHE/sub"
+run_tier substrate; rc=$?; check "substrate runs clean again once the tag is gone" "$rc" "0"
+
 # ── git-capture must refuse Sharadar-marked / Sharadar-root paths ───────────
 H5="$SANDBOX/home5"
 mkdir -p "$H5/repos" "$H5/data/sharadar"

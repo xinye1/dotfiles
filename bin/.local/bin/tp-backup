@@ -338,18 +338,37 @@ cmd_substrate() {
     n_ws2=$(find "$WS2_CACHE" -type f -printf . 2>/dev/null | wc -c)
     (( n_ws2 > 0 )) || die "substrate source $WS2_CACHE is present but empty — refusing to snapshot a vacuous state"
 
+    local -a srcs=(
+        "$V/midsmall_edge_search/.cache_snapshots"
+        "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f"
+        "$V/midsmall_edge_search/.cache"
+        "$V/holistic_ml_trading/results"
+        "$S/midsmall_edge_search/.cache_midsmall"
+        "$S/midsmall_edge_search/.cache"
+        "$S/midsmall_edge_search/bronze"
+        "$S/holistic_ml_trading/results"
+        "$S/holistic_ml_trading/.cache_holistic"
+        "$WS2_CACHE"
+    )
+
+    # LICENCE_EXCLUDES carries --exclude-caches, which makes restic skip the
+    # CONTENTS of any directory holding a valid CACHEDIR.TAG while still
+    # exiting 0. None of these sources carried one on 2026-09-26, so a tag
+    # appearing inside one later would silently hollow out this tier's
+    # snapshot -- a green run that backed up nothing there. Refuse instead: a
+    # tag here is either a tool's cache that should not be in a substrate
+    # source, or a Sharadar extract root that must not be under one at all,
+    # and both need a human (CodeRabbit finding on dotfiles PR 35).
+    local src tag
+    for src in "${srcs[@]}"; do
+        [[ -d "$src" ]] || continue
+        tag="$(find "$src" -name CACHEDIR.TAG -print -quit 2>/dev/null)"
+        [[ -z "$tag" ]] || die "substrate source $src contains a CACHEDIR.TAG ($tag) -- --exclude-caches would silently drop that subtree; refusing"
+    done
+
     restic_ro backup --tag substrate --tag weekly \
         "${LICENCE_EXCLUDES[@]}" \
-        "$V/midsmall_edge_search/.cache_snapshots" \
-        "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f" \
-        "$V/midsmall_edge_search/.cache" \
-        "$V/holistic_ml_trading/results" \
-        "$S/midsmall_edge_search/.cache_midsmall" \
-        "$S/midsmall_edge_search/.cache" \
-        "$S/midsmall_edge_search/bronze" \
-        "$S/holistic_ml_trading/results" \
-        "$S/holistic_ml_trading/.cache_holistic" \
-        "$WS2_CACHE"
+        "${srcs[@]}"
     stamp substrate
     exec {lockfd}>&-
 }
