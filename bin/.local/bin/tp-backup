@@ -23,6 +23,12 @@
 #     outage stayed invisible for a day.
 #   * "Nothing to capture" is success. "Capture failed" is an alert. They are
 #     never conflated (finding F11).
+#   * Raw Sharadar data (trading-platform-v2 issue 752, Personal Use licence)
+#     must never enter a snapshot -- this repository is APPEND-ONLY, so there
+#     is no way to take it back out once written. LICENCE_EXCLUDES below is
+#     spliced into every `restic_ro backup` call, which itself refuses to run
+#     without it; git_capture() separately refuses any untracked file under
+#     $HOME/data/sharadar or a `.sharadar-licence-extract`-marked directory.
 #
 # `-E` is load-bearing, not decoration. Without it bash does NOT inherit the ERR
 # trap into shell functions ("The ERR trap is normally not inherited in such
@@ -44,6 +50,13 @@ LOCKDIR="$STATE/locks"
 # shellcheck disable=SC1090
 source "$CONF"
 mkdir -p "$STATE" "$LOCKDIR" "$STATE/git-capture"
+
+# Resolved once, used by both restic_ro()'s LICENCE_EXCLUDES (below) and
+# git_capture()'s own refusal to tar a path under here (issue 752). Falls back
+# to the literal path if it does not exist yet -- readlink -f on a missing leaf
+# still normalises the existing prefix, and the comparison only needs a stable
+# absolute path, not an existing one.
+TPB_SHARADAR_ROOT="$(readlink -f "$HOME/data/sharadar" 2>/dev/null || printf '%s' "$HOME/data/sharadar")"
 
 # ── the SSD cold-storage leg ────────────────────────────────────────────────
 # Read AFTER the config so either may be overridden there. 30 days: this leg is
@@ -75,7 +88,37 @@ trap 'die "unexpected error at line $LINENO"' ERR
 # ── restic plumbing ─────────────────────────────────────────────────────────
 SSH_BASE="ssh -p ${TPB_SSH_PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=30"
 
+# ── Sharadar licence: raw vendor data must never enter the backup repo ──────
+# Personal Use licence: within 30 days of cancelling, ALL raw Sharadar data
+# (downloads, bulk files, caches, extracts) must be deleted. This repository is
+# APPEND-ONLY (server returns 403 on Remove, proved 2026-08-25) and this box has
+# no maintenance key to prune it, so raw Sharadar data must never be written
+# into a snapshot in the first place -- there is no way to take it back out.
+# Every WS2 extract root carries the `.sharadar-licence-extract` marker and a
+# CACHEDIR.TAG (trading-platform-v2 issue 752). One array, spliced into every
+# `restic_ro backup` call below, so a future tier only has to add
+# "${LICENCE_EXCLUDES[@]}" once. `_assert_licence_excludes` is the belt to that
+# brace: it refuses (loudly, via die()) to run any `restic_ro backup` whose
+# argv does not carry every entry, so an edit that drops it from an existing
+# call -- or a new call that forgets it -- fails the run instead of silently
+# writing raw vendor data into a repository that cannot be pruned.
+LICENCE_EXCLUDES=(
+    --exclude "$HOME/data/sharadar"
+    --exclude-if-present .sharadar-licence-extract
+    --exclude-caches
+)
+
+_assert_licence_excludes() {
+    local want arg found
+    for want in "${LICENCE_EXCLUDES[@]}"; do
+        found=0
+        for arg in "$@"; do [[ "$arg" == "$want" ]] && { found=1; break; }; done
+        (( found )) || die "restic_ro backup call is missing Sharadar licence exclude '$want' — refusing to run (issue 752)"
+    done
+}
+
 restic_ro() {   # append-only key: backup, check, list. Cannot delete.
+    [[ "${1:-}" == "backup" ]] && _assert_licence_excludes "$@"
     env -u SSH_AUTH_SOCK "$TPB_RESTIC" \
         -o rclone.program="$SSH_BASE -i $TPB_KEY_BACKUP $TPB_HOST" \
         -o rclone.args="forced-by-authorized-keys" \
@@ -90,9 +133,20 @@ restic_rw() {   # maintenance key: prune/forget. Needs the agent (passphrase).
 
 stamp() { date +%s > "$STATE/last-success-$1"; }
 
+# $1 = absolute path to test; $2.. = marker (extract-root) directories, each an
+# absolute path. Pure bash prefix tests, no per-file forks -- called once per
+# candidate path, and there can be thousands in a large tree.
+_under_marker() {
+    local p="$1" md; shift
+    for md in "$@"; do
+        [[ "$p" == "$md" || "$p" == "$md"/* ]] && return 0
+    done
+    return 1
+}
+
 # ── Tier 2: work in flight, per WORKING TREE not per repo (finding R8) ──────
 git_capture() {
-    local out="$STATE/git-capture" repo tree name n_unpushed dirty
+    local out="$STATE/git-capture" repo tree name n_unpushed dirty tainted_any=0
     rm -rf "${out:?}/current"; mkdir -p "$out/current"
 
     for repo in "$HOME"/repos/*/; do
@@ -127,7 +181,60 @@ git_capture() {
                 continue
             fi
 
-            git -C "$tree" status --porcelain=v1 > "$d/status.txt"
+            # Sharadar licence (issue 752), tracked/staged/unpushed half: find every
+            # extract-root marker directory under this tree BEFORE writing anything
+            # that could carry tracked file CONTENT (status.txt lists paths;
+            # staged.patch / uncommitted.patch / unpushed.bundle carry the bytes
+            # themselves). restic's excludes cannot see inside a patch or bundle, so
+            # this has to happen here, not at the LICENCE_EXCLUDES layer. Empty in
+            # the overwhelmingly common case -- fast path, behaviour unchanged.
+            # `-prune` on `.git` keeps this out of the object store; `-printf '%h\0'`
+            # yields the marker file's OWN directory (the extract root), null-
+            # delimited so a path holding a space or newline cannot merge with its
+            # neighbour.
+            local -a marker_dirs=()
+            local _mdir
+            while IFS= read -r -d '' _mdir; do marker_dirs+=("$_mdir"); done \
+                < <(find "$tree" -name .git -prune -o -name .sharadar-licence-extract -printf '%h\0' 2>/dev/null)
+
+            local tainted_n=0
+            if (( ${#marker_dirs[@]} > 0 )); then
+                # Candidate paths are everything that could show up INSIDE one of
+                # the artefacts below: every tracked path (any of them could be
+                # modified and land in uncommitted.patch), every path an unpushed
+                # commit touched (unpushed.bundle), and -- for a tree with no HEAD
+                # yet -- whatever is staged (staged.patch). One process substitution
+                # for the lot; the taint test itself is pure bash, no per-file forks.
+                local -a _candidates=()
+                local _cpath
+                while IFS= read -r -d '' _cpath; do _candidates+=("$_cpath"); done < <(
+                    { git -C "$tree" ls-files --cached -z
+                      git -C "$tree" log --all --not --remotes --name-only --format= -z
+                      git -C "$tree" diff --cached --name-only -z
+                    } 2>/dev/null)
+
+                local -A _seen=()
+                local _rel _abs
+                for _rel in "${_candidates[@]}"; do
+                    [[ -n "$_rel" ]] || continue
+                    [[ -n "${_seen[$_rel]+x}" ]] && continue
+                    _seen[$_rel]=1
+                    _abs="$tree/$_rel"
+                    _under_marker "$_abs" "${marker_dirs[@]}" && tainted_n=$(( tainted_n + 1 ))
+                done
+            fi
+
+            if (( tainted_n > 0 )); then
+                tainted_any=1
+                # Count only, never paths or contents (same discipline as the
+                # untracked-file skip below) -- this is a human-must-look event, not
+                # a routine skip, so it is loud on stderr as well.
+                printf 'withheld: %d tainted path(s) under a Sharadar licence marker -- no patch/bundle captured for this tree\n' \
+                    "$tainted_n" > "$d/LICENCE_WITHHELD"
+                echo "tp-backup: git-capture: WITHHELD $tainted_n tainted path(s) in $tree under a Sharadar licence marker -- no patch/bundle captured for this tree (issue 752)" >&2
+            else
+                git -C "$tree" status --porcelain=v1 > "$d/status.txt"
+            fi
             git -C "$tree" rev-parse --abbrev-ref HEAD > "$d/branch.txt" 2>/dev/null || echo "DETACHED" > "$d/branch.txt"
 
             # A tree with no initial commit has no HEAD: `git log` and `git diff HEAD`
@@ -135,7 +242,9 @@ git_capture() {
             # the vault snapshot. Handle it as a state, not an error.
             if ! git -C "$tree" rev-parse --verify -q HEAD >/dev/null; then
                 echo "NO_COMMITS" > "$d/log.txt"
-                git -C "$tree" diff --cached > "$d/staged.patch" || true
+                if (( tainted_n == 0 )); then
+                    git -C "$tree" diff --cached > "$d/staged.patch" || true
+                fi
                 : > "$d/uncommitted.none"; : > "$d/unpushed.none"
                 continue
             fi
@@ -146,20 +255,57 @@ git_capture() {
             # conflation this capture exists to avoid. Fail loudly instead.
             n_unpushed=$(git -C "$tree" rev-list --count --all --not --remotes 2>/dev/null) \
                 || die "git rev-list failed in $tree — cannot tell unpushed work from none"
-            if [[ "$n_unpushed" -gt 0 ]]; then
+            if (( tainted_n > 0 )); then
+                : # withheld above; no unpushed.bundle / unpushed.none for this tree
+            elif [[ "$n_unpushed" -gt 0 ]]; then
                 git -C "$tree" bundle create "$d/unpushed.bundle" --all --not --remotes >/dev/null 2>&1 \
                     || die "git bundle failed in $tree ($n_unpushed unpushed commits)"
             else
                 echo "clean: no commits absent from remotes" > "$d/unpushed.none"
             fi
 
-            git -C "$tree" diff HEAD > "$d/uncommitted.patch"
-            [[ -s "$d/uncommitted.patch" ]] || { rm -f "$d/uncommitted.patch"; echo none > "$d/uncommitted.none"; }
+            if (( tainted_n == 0 )); then
+                git -C "$tree" diff HEAD > "$d/uncommitted.patch"
+                [[ -s "$d/uncommitted.patch" ]] || { rm -f "$d/uncommitted.patch"; echo none > "$d/uncommitted.none"; }
+            fi
 
-            # Do NOT pipe through `head`: it closes the pipe early, git takes SIGPIPE,
-            # and `pipefail` then aborts the whole daily run. Count bytes instead.
-            if (( $(git -C "$tree" ls-files --others --exclude-standard -z | wc -c) > 0 )); then
-                (cd "$tree" && git ls-files --others --exclude-standard -z \
+            # Sharadar licence (issue 752), untracked half: refuse to tar any
+            # untracked file under $HOME/data/sharadar or under a directory carrying
+            # the `.sharadar-licence-extract` marker, even though the WS2-side guard
+            # (assert_extract_root) is supposed to make either impossible from the
+            # WS2 side already -- this does not rely on that alone. SKIP with a
+            # logged count, not a fail: one contaminated worktree must not cost the
+            # vault snapshot for every other repo (same "capture failure must not
+            # kill the vault" reasoning as the MISSING_WORKTREE case above), and the
+            # count (never the paths or contents) is what a human needs to notice
+            # something was withheld. marker_dirs (found above) is reused here
+            # instead of a per-file `dirname` walk; the `readlink -f` check against
+            # $TPB_SHARADAR_ROOT stays -- unlike a tracked/staged path, an untracked
+            # entry can be a symlink pointing OUTSIDE this tree straight into the
+            # Sharadar root, which no marker directory under $tree would catch.
+            local skip_n=0 rel abs skip
+            local -a keep=()
+            while IFS= read -r -d '' rel; do
+                abs="$tree/$rel"
+                skip=0
+                case "$(readlink -f "$abs" 2>/dev/null || printf '%s' "$abs")" in
+                    "$TPB_SHARADAR_ROOT"/*|"$TPB_SHARADAR_ROOT") skip=1 ;;
+                esac
+                if (( ! skip )) && _under_marker "$abs" "${marker_dirs[@]}"; then
+                    skip=1
+                fi
+                # NOT `(( skip_n++ ))`: when skip_n is 0 the post-increment's VALUE
+                # is 0, and `((...))` treats a zero result as failure -- exit 1,
+                # caught by the ERR trap under `-E`, die() on the very first skip.
+                if (( skip )); then skip_n=$(( skip_n + 1 )); else keep+=("$rel"); fi
+            done < <(git -C "$tree" ls-files --others --exclude-standard -z)
+
+            if (( skip_n > 0 )); then
+                echo "tp-backup: git-capture: skipped $skip_n untracked file(s) under a Sharadar licence path in $tree (never captured)" >&2
+            fi
+
+            if (( ${#keep[@]} > 0 )); then
+                (cd "$tree" && printf '%s\0' "${keep[@]}" \
                     | tar --null -T - -czf "$d/untracked.tar.gz" 2>/dev/null) \
                     || die "untracked capture failed in $tree"
             else
@@ -169,6 +315,18 @@ git_capture() {
     done
     echo "$(date -Is)" > "$out/current/CAPTURED_AT"
     stamp git-capture
+
+    # Licensed content under git (tracked, staged or in an unpushed commit) is a
+    # human-must-look event, unlike an untracked file, which is merely skipped --
+    # so this run must fail the tier even though every tree finished and got its
+    # own CAPTURED_AT. `trap - ERR` first: this `return` is a DELIBERATE non-zero
+    # exit, not the unguarded failure `-E` exists to catch, and cmd_daily's
+    # `__capture` child already handles a non-zero capture without a second,
+    # misleading die() alert on top of the per-tree message above.
+    if (( tainted_any )); then
+        trap - ERR
+        return 1
+    fi
 }
 
 # ── Tier 3: the vault ───────────────────────────────────────────────────────
@@ -195,6 +353,7 @@ cmd_daily() {
     local -a _envs=()
     local _e; for _e in "$HOME"/repos/*/.env; do [[ -e "$_e" ]] && _envs+=("$_e"); done
     restic_ro backup --tag vault --tag daily \
+        "${LICENCE_EXCLUDES[@]}" \
         --exclude "$HOME/.claude/plugins" \
         --exclude "$HOME/.claude/jobs" \
         --exclude "$HOME/.claude/file-history" \
@@ -243,16 +402,60 @@ cmd_substrate() {
     fi
     local V="$HOME/repos/trading-platform-v2/research"
     local S="$HOME/repos/tp2-signal-home/research"
-    restic_ro backup --tag substrate --tag weekly \
-        "$V/midsmall_edge_search/.cache_snapshots" \
-        "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f" \
-        "$V/midsmall_edge_search/.cache" \
-        "$V/holistic_ml_trading/results" \
-        "$S/midsmall_edge_search/.cache_midsmall" \
-        "$S/midsmall_edge_search/.cache" \
-        "$S/midsmall_edge_search/bronze" \
-        "$S/holistic_ml_trading/results" \
+
+    # WS2's EODHD-era edge-search cache (36 GB as of 2026-09-26). Confirmed by
+    # WS2 (issue 752) to hold no raw Sharadar data or extract, now or by design
+    # -- every Sharadar extract lives under $TPB_SHARADAR_ROOT instead, and
+    # LICENCE_EXCLUDES applies here too as defence in depth. It cannot be
+    # re-downloaded (the EODHD vendor relationship that produced it is retired),
+    # so it gets the same refusal cmd_media() gives its own irreplaceable
+    # source: missing or present-but-empty must DIE, never silently snapshot a
+    # vacuous state as a "success" (an ordinary `restic backup` on an empty
+    # directory exits 0 and records a real, if pointless, snapshot -- it is not
+    # this guard's job to rely on restic to notice that for us).
+    local WS2_CACHE="$V/ws2_edge/.cache_ws2"
+    [[ -d "$WS2_CACHE" ]] || die "substrate source $WS2_CACHE missing"
+    local n_ws2
+    n_ws2=$(find "$WS2_CACHE" -type f -printf . 2>/dev/null | wc -c)
+    (( n_ws2 > 0 )) || die "substrate source $WS2_CACHE is present but empty — refusing to snapshot a vacuous state"
+
+    local -a srcs=(
+        "$V/midsmall_edge_search/.cache_snapshots"
+        "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f"
+        "$V/midsmall_edge_search/.cache"
+        "$V/holistic_ml_trading/results"
+        "$S/midsmall_edge_search/.cache_midsmall"
+        "$S/midsmall_edge_search/.cache"
+        "$S/midsmall_edge_search/bronze"
+        "$S/holistic_ml_trading/results"
         "$S/holistic_ml_trading/.cache_holistic"
+        "$WS2_CACHE"
+    )
+
+    # LICENCE_EXCLUDES carries --exclude-caches (skips the CONTENTS of any
+    # directory holding a valid CACHEDIR.TAG) and --exclude-if-present
+    # .sharadar-licence-extract (skips the CONTENTS of any directory holding
+    # that marker) -- both while restic still exits 0. None of these sources
+    # carried either marker on 2026-09-26, so one appearing inside one later
+    # would silently hollow out this tier's snapshot -- a green run that
+    # backed up nothing there. A marker with NO CACHEDIR.TAG is just as
+    # dangerous as a tag: it still trips --exclude-if-present and empties the
+    # subtree in silence, and the old single-tag check would have missed it.
+    # Refuse on EITHER marker, before restic runs: a CACHEDIR.TAG here is a
+    # tool's cache that should not be in a substrate source, and a
+    # .sharadar-licence-extract marker is a Sharadar extract root that must
+    # not be under one at all -- both need a human (CodeRabbit finding on
+    # dotfiles PR 35).
+    local src tag
+    for src in "${srcs[@]}"; do
+        [[ -d "$src" ]] || continue
+        tag="$(find "$src" \( -name CACHEDIR.TAG -o -name .sharadar-licence-extract \) -print -quit 2>/dev/null)"
+        [[ -z "$tag" ]] || die "substrate source $src contains a CACHEDIR.TAG or .sharadar-licence-extract marker ($tag) -- --exclude-caches/--exclude-if-present would silently drop or empty that subtree; refusing"
+    done
+
+    restic_ro backup --tag substrate --tag weekly \
+        "${LICENCE_EXCLUDES[@]}" \
+        "${srcs[@]}"
     stamp substrate
     exec {lockfd}>&-
 }
@@ -287,7 +490,7 @@ cmd_media() {
     n=$(find "$SRC" -type f -printf . 2>/dev/null | wc -c)
     (( n > 0 )) || die "media source $SRC is mounted but empty — refusing to snapshot a vacuous state"
 
-    restic_ro backup --tag media --tag weekly "$SRC"
+    restic_ro backup --tag media --tag weekly "${LICENCE_EXCLUDES[@]}" "$SRC"
     stamp media
 }
 

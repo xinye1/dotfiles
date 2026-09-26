@@ -19,6 +19,27 @@ Create it from `config.example` in this directory, mode 600.
 `~/.config/tp-backup/restic-password` likewise: it is the only thing that can decrypt the
 backups, it lives in Bitwarden, and losing it is unrecoverable.
 
+## Sharadar licence: raw vendor data never enters this repository
+
+The Sharadar Personal Use licence requires deleting ALL raw Sharadar data (downloads, bulk
+files, caches, extracts) within 30 days of cancelling. This repository is reached with an
+APPEND-ONLY key and this box holds no maintenance key to prune it (trading-platform-v2 issue
+752), so raw Sharadar data must never be written into a snapshot in the first place — there is
+no way to take it back out afterwards. Every `restic_ro backup` call in `tp-backup` (vault/daily,
+substrate, media) carries a shared `LICENCE_EXCLUDES` array — `--exclude $HOME/data/sharadar`,
+`--exclude-if-present .sharadar-licence-extract`, `--exclude-caches` — and `restic_ro` itself
+refuses (loudly) to run a `backup` invocation that does not carry it, so a future tier cannot
+forget it. `git_capture` (the tier-2 untracked-file tar) separately refuses any file under
+`$HOME/data/sharadar` or under a directory carrying the `.sharadar-licence-extract` marker,
+logging a skip count rather than the paths. See `tests/tp_backup_test.sh`.
+
+The weekly substrate tier (`tp-backup substrate`) also now includes
+`$HOME/repos/trading-platform-v2/research/ws2_edge/.cache_ws2` (an EODHD-era edge-search cache,
+confirmed by WS2 to hold no raw Sharadar data — issue 752 — and irreplaceable since the vendor
+relationship that produced it is retired). It gets the same missing/empty refusal as the media
+tier's source: present-but-empty must fail loudly rather than record a vacuous snapshot as a
+success.
+
 # herdr-session-backup
 
 Hourly copy of herdr's `~/.config/herdr/session.json` into `~/.local/state/herdr-backup/` when it
