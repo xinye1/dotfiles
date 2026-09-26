@@ -69,8 +69,9 @@ triggers, not the full story: read the named section before working in its area.
   -RTMIN` to waybar needs `-x`, or it also kills the supervisor (§9.29, §9.30).
 - waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
   lives in `~/.cache/claude-usage/` (safe to delete) (§9.23). The one exception is the floor set by
-  `claude_usage.py --limits-reset` after an early limits reset (it restarts the token charts and
-  the pace markers): it lives in `$XDG_STATE_HOME/claude-usage/`, so deleting the cache cannot undo it.
+  `claude_usage.py --limits-reset` after an early limits reset (it restarts the pace markers
+  only — the token charts keep their history): it lives in `$XDG_STATE_HOME/claude-usage/`, so
+  deleting the cache cannot undo it.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
   that does not happen. Its wallpapers are pre-synced by `walls-sync` into
   `~/Pictures/walls/<palette>/` — palette name *is* the directory name — and every failure falls

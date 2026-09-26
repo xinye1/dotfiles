@@ -248,10 +248,11 @@ def read_reset_floor(path):
     empty one (`: > limits-reset-at` is a legitimate way to remove it), and
     content that is not an ISO timestamp. The last is the only one worth a
     stderr line, because the alternative is a `--limits-reset` that silently
-    did nothing; but it must still fail open — a mangled floor un-resets the
-    charts and pace markers, it does not blank or crash the widget. A bare timestamp is UTC, as
-    in countdown(), and for the same reason: the writer here always emits an
-    offset, so a bare one means somebody edited it by hand.
+    did nothing; but it must still fail open — a mangled floor puts the pace
+    markers back on their plain windows, it does not blank or crash the widget.
+    A bare timestamp is UTC, as in countdown(), and for the same reason: the
+    writer here always emits an offset, so a bare one means somebody edited it
+    by hand.
     """
     try:
         text = Path(path).read_text().strip()
@@ -283,30 +284,12 @@ def write_reset_floor(path, now):
     tmp.replace(path)
 
 
-def apply_reset_floor(st, since):
-    """Bring state.json in line with the floor on disk.
-
-    The floor is an INPUT to the token totals, not a filter over them: `days`
-    is already summed per local day and cannot be cut at an arbitrary instant
-    afterwards. So when the floor differs from the one the totals were built
-    under — raised by a reset, lowered, or removed — everything derived from
-    the logs is dropped and the ordinary scan rebuilds it under the new rule,
-    exactly as after a cache wipe. That is also what makes removing the file
-    an undo: the history is still in ~/.claude, and comes straight back.
-    The fetched limits are not derived from the logs and are left alone.
-    """
-    if st.get("reset_floor") == since:
-        return
-    st["reset_floor"] = since
-    st["days"], st["files"], st["seen"] = {}, {}, {}
-
-
 _TS_RE = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
 _USAGE_KEYS = ("input_tokens", "output_tokens",
                "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
-def _scan_file(path, offset, count_from, cutoff_iso, seen, days):
+def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
     with open(path, "rb") as f:
         f.seek(offset)
         for raw in f:
@@ -358,7 +341,7 @@ def _scan_file(path, offset, count_from, cutoff_iso, seen, days):
                 if key in seen:
                     continue
                 seen[key] = ts_epoch
-                if ts_epoch < count_from:
+                if ts_epoch < cutoff_epoch:
                     continue
                 day = dt.astimezone().date().isoformat()
                 per_day = days.setdefault(day, {})
@@ -376,14 +359,6 @@ def scan_jsonl(projects_dir, st, now_epoch):
     seen = st.setdefault("seen", {})
     days = st.setdefault("days", {})
     alive = set()
-    # The user's floor (`--limits-reset`) only raises the edge a line must
-    # clear to be COUNTED. `cutoff_epoch` stays the window edge for everything
-    # else — the mtime skip, the `seen` prune below — because a line older than
-    # the floor still has to be remembered: a file rewritten from byte 0 would
-    # otherwise re-present it, and nothing but `seen` says it was already met.
-    since = st.get("reset_floor")
-    count_from = (max(cutoff_epoch, since) if isinstance(since, (int, float))
-                  else cutoff_epoch)
     for root, _dirs, names in os.walk(projects_dir):
         for name in names:
             if not name.endswith(".jsonl"):
@@ -420,7 +395,7 @@ def scan_jsonl(projects_dir, st, now_epoch):
             # so the byte offset survives to be resumed once the file is
             # readable again rather than rescanning it from zero.
             try:
-                offset = _scan_file(path, offset, count_from, cutoff_iso,
+                offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso,
                                     seen, days)
             except OSError as e:
                 print(f"claude_usage: {path}: {e}", file=sys.stderr)
@@ -571,27 +546,6 @@ def _pct_color(pct, theme):  # pct is the rounded, displayed integer
     return theme["indicator"]
 
 
-def floor_note(since, window):
-    """`since Fri 09:05` (or `since 09:05` for today) while the user's chart
-    floor is inside the 7 local days on show, else None.
-
-    Once the floor has rolled out of the window the charts are a true seven
-    days again and the heading has to go back to saying "(7d)" — hence None
-    rather than a stale date. It is also None for anything that is not a
-    plausible epoch: this reads state.json, which can hold whatever the last
-    writer or a hand edit left, and render() must not raise (see countdown()).
-    """
-    if not isinstance(since, (int, float)):
-        return None
-    try:
-        dt = datetime.fromtimestamp(since).astimezone()
-    except (OverflowError, OSError, ValueError):
-        return None
-    if dt.date() < window[0]:
-        return None
-    return "since " + dt.strftime("%H:%M" if dt.date() == window[-1] else "%a %H:%M")
-
-
 def render(st, theme, now):
     limits = st.get("limits") or []
     err = st.get("limits_error")
@@ -662,17 +616,12 @@ def render(st, theme, now):
         lines += ["", f'<span color="{dim}">no limit data yet</span>']
 
     days = st.get("days") or {}
-    today = now.astimezone().date()
-    window = [today - timedelta(days=i) for i in range(6, -1, -1)]
-    note = floor_note(st.get("reset_floor"), window)
-    # A reset leaves `days` empty until the first new tokens land. The section
-    # is kept for it: with the heading gone, the tooltip would read as though
-    # the widget had lost the data rather than been told to start over.
-    if days or note:
+    if days:
+        today = now.astimezone().date()
+        window = [today - timedelta(days=i) for i in range(6, -1, -1)]
         totals = {d: sum((days.get(d.isoformat()) or {}).values()) for d in window}
         peak = max(totals.values()) or 1
-        lines += ["", f'<span color="{sect}"><b>TOKENS BY DAY</b></span>'
-                      + (f' <span color="{dim}">({note})</span>' if note else "")]
+        lines += ["", f'<span color="{sect}"><b>TOKENS BY DAY</b></span>']
         for d in window:
             name = "Today" if d == today else d.strftime("%a")
             pad = " " * (5 - len(name))  # pad on the raw name: tags have no width
@@ -691,7 +640,7 @@ def render(st, theme, now):
                 by_model[model] = by_model.get(model, 0) + n
         if by_model:
             lines += ["", f'<span color="{sect}"><b>TOKENS BY MODEL</b></span>'
-                          f' <span color="{dim}">({note or "7d"})</span>']
+                          f' <span color="{dim}">(7d)</span>']
             mpeak = max(by_model.values()) or 1
             mwidth = max(len(model_display(m)) for m in by_model)
             for model, n in sorted(by_model.items(), key=lambda kv: -kv[1]):
@@ -723,7 +672,7 @@ def main(argv=None, now=None):
     argv = argv if argv is not None else sys.argv[1:]
     force = "--refresh" in argv
     # A hand-run mode, never one waybar passes: the limits were reset early,
-    # so the token charts and the pace markers start again from now.
+    # so the pace markers start their windows again from now.
     reset = "--limits-reset" in argv
     home = Path(os.environ.get("HOME", str(Path.home())))
     cache_dir = Path(os.environ.get("XDG_CACHE_HOME",
@@ -768,7 +717,10 @@ def main(argv=None, now=None):
         # not happen has to say so on the terminal that asked for it.
         if reset:
             write_reset_floor(floor_path, now)
-        apply_reset_floor(st, read_reset_floor(floor_path))
+        # Read fresh every run: the file is the only copy that matters, and
+        # render() takes it from here to the pace markers. The charts never
+        # see it — usage before an early reset is still usage.
+        st["reset_floor"] = read_reset_floor(floor_path)
         refresh_limits(st, home / ".claude" / ".credentials.json",
                        force, now.timestamp())
         scan_jsonl(home / ".claude" / "projects", st, now.timestamp())
@@ -779,8 +731,7 @@ def main(argv=None, now=None):
         tmp.replace(state_path)
     if reset:
         when = now.astimezone().strftime("%a %d %b %H:%M")
-        print(f"claude_usage: token charts and pace markers now start "
-              f"from {when}; "
+        print(f"claude_usage: pace markers now start from {when}; "
               f"delete {floor_path} to undo")
     else:
         print(json.dumps(out))

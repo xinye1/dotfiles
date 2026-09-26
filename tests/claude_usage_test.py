@@ -1155,52 +1155,21 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Fable 5", tip)                         # in-window model appears
         self.assertNotIn("Sonnet 5", tip)                     # out-of-window model hidden
 
-    def test_headings_say_seven_days_when_there_is_no_floor(self):
-        tip = cu.render(self.fresh_state(), cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertIn("(7d)", tip)
-        self.assertNotIn("since", tip)
+    def test_a_floor_never_changes_the_chart_headings(self):
+        for since in (None, NOW.timestamp(),
+                      (NOW - timedelta(days=1)).timestamp()):
+            with self.subTest(since=since):
+                tip = cu.render(self.fresh_state(reset_floor=since),
+                                cu.FALLBACK_THEME, NOW)["tooltip"]
+                self.assertIn("(7d)", tip)
+                self.assertNotIn("since", tip)
 
-    def test_headings_name_the_floor_when_it_is_inside_the_window(self):
-        # "(7d)" would now be a lie: the charts hold less than seven days.
-        since = datetime(2026, 8, 21, 9, 5, tzinfo=timezone.utc).timestamp()
-        tip = cu.render(self.fresh_state(reset_floor=since),
+    def test_a_floor_with_no_usage_shows_no_chart(self):
+        # No special empty-chart state: with nothing counted there is nothing
+        # to draw, floor or not.
+        tip = cu.render(self.fresh_state(reset_floor=NOW.timestamp(), days={}),
                         cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertNotIn("(7d)", tip)
-        self.assertEqual(tip.count("(since Fri 09:05)"), 2)  # both headings
-
-    def test_a_floor_from_today_drops_the_weekday(self):
-        since = datetime(2026, 8, 22, 9, 5, tzinfo=timezone.utc).timestamp()
-        tip = cu.render(self.fresh_state(reset_floor=since),
-                        cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertEqual(tip.count("(since 09:05)"), 2)
-        self.assertNotIn("since Sat", tip)
-
-    def test_the_floor_is_shown_in_the_local_zone(self):
-        self.addCleanup(set_tz, os.environ.get("TZ"))
-        set_tz("Etc/GMT-2")  # UTC+2 all year: no DST edge to trip over
-        since = datetime(2026, 8, 21, 9, 5, tzinfo=timezone.utc).timestamp()
-        tip = cu.render(self.fresh_state(reset_floor=since),
-                        cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertIn("(since Fri 11:05)", tip)
-
-    def test_a_floor_older_than_the_window_is_not_mentioned(self):
-        # Once the floor rolls out of the 7 local days on show, the charts are
-        # a true 7 days again and the heading must go back to saying so.
-        since = (NOW - timedelta(days=10)).timestamp()
-        tip = cu.render(self.fresh_state(reset_floor=since),
-                        cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertIn("(7d)", tip)
-        self.assertNotIn("since", tip)
-
-    def test_empty_charts_after_a_reset_still_show_their_heading(self):
-        # Straight after `--limits-reset` there is nothing to plot. Dropping
-        # the section would read as "the widget lost my data"; the heading
-        # with its floor is what says the emptiness is on purpose.
-        st = self.fresh_state(reset_floor=NOW.timestamp(), days={})
-        tip = cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"]
-        self.assertIn("TOKENS BY DAY", tip)
-        self.assertIn("(since 12:00)", tip)
-        self.assertNotIn("TOKENS BY MODEL", tip)  # no model has any tokens
+        self.assertNotIn("TOKENS BY", tip)
 
     def test_no_floor_and_no_data_still_shows_no_chart(self):
         tip = cu.render(self.fresh_state(days={}), cu.FALLBACK_THEME, NOW)["tooltip"]
@@ -1208,13 +1177,8 @@ class RenderTest(unittest.TestCase):
 
 
 class ResetFloorTest(unittest.TestCase):
-    """The user-set floor under the token charts (`--limits-reset`).
-
-    A floor is an INPUT to the totals in state.json, not a filter over them:
-    `days` is already summed per local day and cannot be cut at an arbitrary
-    instant afterwards. So changing it throws away everything derived from the
-    logs and lets the ordinary scan rebuild it under the new rule.
-    """
+    """Reading and writing the `--limits-reset` floor file. What the floor
+    DOES — move the pace markers' window start — is PaceFloorTest's."""
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.path = Path(self.td.name) / "state" / "claude-usage" / "limits-reset-at"
@@ -1279,117 +1243,21 @@ class ResetFloorTest(unittest.TestCase):
         self.path.write_text("2026-08-22T12:00:00")
         self.assertEqual(cu.read_reset_floor(self.path), NOW.timestamp())
 
-    def test_apply_is_a_no_op_while_the_floor_is_unchanged(self):
-        st = {"reset_floor": 5.0, "days": {"d": {"m": 1}},
-              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
-        cu.apply_reset_floor(st, 5.0)
-        self.assertEqual(st, {"reset_floor": 5.0, "days": {"d": {"m": 1}},
-                              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}})
-
-    def test_no_floor_on_either_side_is_a_no_op(self):
-        # A state.json from before this feature has no `reset_floor` key at
-        # all; upgrading must not cost it a full rescan.
-        st = {"days": {"d": {"m": 1}}, "files": {"f": {}}, "seen": {"k": 1.0}}
-        cu.apply_reset_floor(st, None)
-        self.assertEqual(st["days"], {"d": {"m": 1}})
-        self.assertEqual(st["files"], {"f": {}})
-        self.assertEqual(st["seen"], {"k": 1.0})
-
-    def test_a_new_floor_drops_everything_derived_from_the_logs(self):
-        st = {"reset_floor": None, "days": {"d": {"m": 1}},
-              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
-        cu.apply_reset_floor(st, 7.0)
-        self.assertEqual((st["days"], st["files"], st["seen"]), ({}, {}, {}))
-        self.assertEqual(st["reset_floor"], 7.0)
-
-    def test_removing_the_floor_rebuilds_too(self):
-        st = {"reset_floor": 7.0, "days": {"d": {"m": 1}},
-              "files": {"f": {"offset": 1}}, "seen": {"k": 1.0}}
-        cu.apply_reset_floor(st, None)
-        self.assertEqual((st["days"], st["files"], st["seen"]), ({}, {}, {}))
-        self.assertIsNone(st["reset_floor"])
-
-    def test_apply_leaves_the_limits_alone(self):
-        # Only the log-derived half of state.json is invalidated; the fetched
-        # limits and their TTL bookkeeping have nothing to do with the floor.
-        st = {"limits": LIMITS, "limits_fetched_at": 9.0, "creds_meta": {"a": 1}}
-        cu.apply_reset_floor(st, 7.0)
-        self.assertEqual(st["limits"], LIMITS)
-        self.assertEqual(st["limits_fetched_at"], 9.0)
-        self.assertEqual(st["creds_meta"], {"a": 1})
-
-
-class ResetFloorScanTest(unittest.TestCase):
-    """scan_jsonl honouring `st["reset_floor"]`."""
-    def setUp(self):
-        self.td = tempfile.TemporaryDirectory()
-        self.proj = Path(self.td.name) / "projects" / "p1"
-        self.proj.mkdir(parents=True)
-        self.now = NOW.timestamp()
-        self.f = self.proj / "a.jsonl"
-        self.pre = usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
-        self.post = usage_line("2026-08-22T11:00:00.000Z", "claude-fable-5", "m2", "r2")
-        self.floor = datetime(2026, 8, 22, 10, 30, tzinfo=timezone.utc).timestamp()
-
-    def tearDown(self):
-        self.td.cleanup()
-
-    def scan(self, st):
-        cu.scan_jsonl(Path(self.td.name) / "projects", st, self.now)
-        return st
-
-    def test_lines_before_the_floor_are_not_counted(self):
-        self.f.write_text(self.pre + self.post)
-        st = self.scan({"reset_floor": self.floor})
-        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 100})
-
-    def test_a_line_exactly_at_the_floor_is_counted(self):
-        # `ts < floor` is the skip, so the reset instant itself belongs to the
-        # new count. A test that only used lines well clear of the floor would
-        # pass with either `<` or `<=`.
-        self.f.write_text(self.pre)
-        st = self.scan({"reset_floor": datetime(
-            2026, 8, 22, 10, 0, tzinfo=timezone.utc).timestamp()})
-        self.assertEqual(st["days"].get("2026-08-22"), {"claude-fable-5": 100})
-
-    def test_a_line_just_before_the_floor_is_not(self):
-        self.f.write_text(self.pre)
-        st = self.scan({"reset_floor": datetime(
-            2026, 8, 22, 10, 0, 0, 1, tzinfo=timezone.utc).timestamp()})
-        self.assertNotIn("2026-08-22", st["days"])
-
-    def test_pre_floor_lines_are_still_remembered_for_dedup(self):
-        # `seen` is what stops a rewritten or rescanned file counting a line
-        # twice; the floor only decides whether a line is COUNTED.
-        self.f.write_text(self.pre + self.post)
-        st = self.scan({"reset_floor": self.floor})
-        self.assertIn("m1|r1", st["seen"])
-        self.assertIn("m2|r2", st["seen"])
-
-    def test_a_floor_older_than_the_window_changes_nothing(self):
-        self.f.write_text(self.pre + self.post)
-        st = self.scan({"reset_floor": self.now - 30 * 86400})
-        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
-
-    def test_a_rescan_from_byte_zero_never_resurrects_pre_floor_tokens(self):
-        self.f.write_text(self.pre + self.post)
-        st = self.scan({"reset_floor": self.floor})
-        # Shrinking the file resets its offset to 0 (see scan_jsonl).
-        self.f.write_text(usage_line("2026-08-22T10:10:00.000Z",
-                                     "claude-fable-5", "m3", "r3"))
-        self.scan(st)
-        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 100})
-
-    def test_lowering_then_removing_the_floor_restores_the_history(self):
-        self.f.write_text(self.pre + self.post)
-        st = self.scan({})
-        self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
-        cu.apply_reset_floor(st, self.floor)
-        self.assertEqual(self.scan(st)["days"]["2026-08-22"],
-                         {"claude-fable-5": 100})
-        cu.apply_reset_floor(st, None)
-        self.assertEqual(self.scan(st)["days"]["2026-08-22"],
-                         {"claude-fable-5": 200})
+class ResetFloorKeepsHistoryTest(unittest.TestCase):
+    """The floor is for the pace markers only. Usage from before an early
+    reset is still usage — the charts are a record of what was spent, not a
+    budget — so the scan must count it whatever the floor says."""
+    def test_scan_counts_lines_from_before_the_floor(self):
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td) / "projects" / "p1"
+            proj.mkdir(parents=True)
+            (proj / "a.jsonl").write_text(
+                usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
+                + usage_line("2026-08-22T11:00:00.000Z", "claude-fable-5", "m2", "r2"))
+            st = {"reset_floor": datetime(
+                2026, 8, 22, 10, 30, tzinfo=timezone.utc).timestamp()}
+            cu.scan_jsonl(Path(td) / "projects", st, NOW.timestamp())
+            self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
 
 
 class MainTest(unittest.TestCase):
@@ -1487,40 +1355,41 @@ class MainTest(unittest.TestCase):
                 jsonlib.loads(out)
             self.assertIn("12:00", out)
 
-    def test_limits_reset_blanks_the_charts_then_counts_only_new_usage(self):
+    @staticmethod
+    def weekly_mark(tooltip):
+        """Cell index of the pace marker on the Weekly row."""
+        row = next(l for l in tooltip.split("\n") if l.startswith("Weekly"))
+        bar = re.search(r'<span color="[^"]+">(.*)</span>  <b>', row).group(1)
+        return re.sub(r"<[^>]+>", "", bar).index(cu.PACE_MARK)
+
+    def test_limits_reset_moves_the_pace_marker_and_keeps_the_history(self):
         with tempfile.TemporaryDirectory() as td:
             home, env, log = self.fake_home(td)
             log.write_text(usage_line("2026-08-22T10:00:00.000Z",
                                       "claude-fable-5", "m1", "r1"))
-            self.run_main(env, [], NOW)
-            self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
-                             {"claude-fable-5": 100})
+            before = jsonlib.loads(self.run_main(env, [], NOW))
+            self.assertEqual(self.weekly_mark(before["tooltip"]), 4)
             self.run_main(env, ["--limits-reset"], NOW)
-            self.assertEqual(self.state_of(home)["days"], {})
-            later = NOW + timedelta(minutes=30)
             with log.open("a") as fh:
                 fh.write(usage_line("2026-08-22T12:30:00.000Z",
                                     "claude-fable-5", "m2", "r2"))
-            out = jsonlib.loads(self.run_main(env, [], later))
+            after = jsonlib.loads(self.run_main(env, [], NOW + timedelta(minutes=30)))
+            self.assertEqual(self.weekly_mark(after["tooltip"]), 0)
             self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
-                             {"claude-fable-5": 100})  # m2 only, never m1
-            self.assertIn("(since 12:00)", out["tooltip"])
+                             {"claude-fable-5": 200})  # m1 AND m2
+            self.assertIn("(7d)", after["tooltip"])
 
     def test_the_floor_survives_wiping_the_cache(self):
         # The point of keeping it out of ~/.cache: PLAYBOOK §9.23 says that
-        # directory is safe to delete, and a floor inside it would come back
-        # as the full 7 days the moment somebody did.
+        # directory is safe to delete, and a floor inside it would put the
+        # pace markers back on the plain window the moment somebody did.
         import shutil
         with tempfile.TemporaryDirectory() as td:
-            home, env, log = self.fake_home(td)
-            log.write_text(
-                usage_line("2026-08-22T10:00:00.000Z", "claude-fable-5", "m1", "r1")
-                + usage_line("2026-08-22T12:30:00.000Z", "claude-fable-5", "m2", "r2"))
+            home, env, _log = self.fake_home(td)
             self.run_main(env, ["--limits-reset"], NOW)
             shutil.rmtree(home / ".cache")
-            self.run_main(env, [], NOW + timedelta(hours=1))
-            self.assertEqual(self.state_of(home)["days"]["2026-08-22"],
-                             {"claude-fable-5": 100})
+            out = jsonlib.loads(self.run_main(env, [], NOW + timedelta(minutes=1)))
+            self.assertEqual(self.weekly_mark(out["tooltip"]), 0)
 
     def test_the_floor_directory_defaults_under_home_without_xdg_state_home(self):
         # Unset and empty are the same thing to the XDG spec, and to the
