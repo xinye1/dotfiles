@@ -2,7 +2,10 @@
 """Claude Code usage widget for waybar: limits, reset countdowns, token charts.
 
 Design: docs/specs/2026-08-22-claude-usage-widget-design.md. Read-only on
-~/.claude; all state in ~/.cache/claude-usage/. Stdlib only.
+~/.claude; all state in ~/.cache/claude-usage/, except the one thing that is
+the user's rather than derived: `--limits-reset` records when the limits were reset
+early, in $XDG_STATE_HOME/claude-usage/limits-reset-at (PLAYBOOK §9.23). Stdlib
+only.
 """
 import fcntl
 import hashlib
@@ -238,12 +241,72 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         st["limits_error"] = None
 
 
+def read_reset_floor(path):
+    """Epoch seconds of the user's reset floor, or None for "no floor".
+
+    Every way of not having one is None: a missing file (the normal case), an
+    empty one (`: > limits-reset-at` is a legitimate way to remove it), and
+    content that is not an ISO timestamp. The last is the only one worth a
+    stderr line, because the alternative is a `--limits-reset` that silently
+    did nothing; but it must still fail open — a mangled floor un-resets the
+    charts and pace markers, it does not blank or crash the widget. A bare timestamp is UTC, as
+    in countdown(), and for the same reason: the writer here always emits an
+    offset, so a bare one means somebody edited it by hand.
+    """
+    try:
+        text = Path(path).read_text().strip()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"claude_usage: {path}: {e}", file=sys.stderr)
+        return None
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (ValueError, OverflowError):
+        print(f"claude_usage: {path}: not an ISO timestamp: {text[:40]!r}",
+              file=sys.stderr)
+        return None
+
+
+def write_reset_floor(path, now):
+    """Record `now` as the reset floor. tmp + rename, like state.json, so a
+    reader never sees half a timestamp."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(now.astimezone(timezone.utc).isoformat() + "\n")
+    tmp.replace(path)
+
+
+def apply_reset_floor(st, since):
+    """Bring state.json in line with the floor on disk.
+
+    The floor is an INPUT to the token totals, not a filter over them: `days`
+    is already summed per local day and cannot be cut at an arbitrary instant
+    afterwards. So when the floor differs from the one the totals were built
+    under — raised by a reset, lowered, or removed — everything derived from
+    the logs is dropped and the ordinary scan rebuilds it under the new rule,
+    exactly as after a cache wipe. That is also what makes removing the file
+    an undo: the history is still in ~/.claude, and comes straight back.
+    The fetched limits are not derived from the logs and are left alone.
+    """
+    if st.get("reset_floor") == since:
+        return
+    st["reset_floor"] = since
+    st["days"], st["files"], st["seen"] = {}, {}, {}
+
+
 _TS_RE = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
 _USAGE_KEYS = ("input_tokens", "output_tokens",
                "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
-def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
+def _scan_file(path, offset, count_from, cutoff_iso, seen, days):
     with open(path, "rb") as f:
         f.seek(offset)
         for raw in f:
@@ -295,7 +358,7 @@ def _scan_file(path, offset, cutoff_epoch, cutoff_iso, seen, days):
                 if key in seen:
                     continue
                 seen[key] = ts_epoch
-                if ts_epoch < cutoff_epoch:
+                if ts_epoch < count_from:
                     continue
                 day = dt.astimezone().date().isoformat()
                 per_day = days.setdefault(day, {})
@@ -313,6 +376,14 @@ def scan_jsonl(projects_dir, st, now_epoch):
     seen = st.setdefault("seen", {})
     days = st.setdefault("days", {})
     alive = set()
+    # The user's floor (`--limits-reset`) only raises the edge a line must
+    # clear to be COUNTED. `cutoff_epoch` stays the window edge for everything
+    # else — the mtime skip, the `seen` prune below — because a line older than
+    # the floor still has to be remembered: a file rewritten from byte 0 would
+    # otherwise re-present it, and nothing but `seen` says it was already met.
+    since = st.get("reset_floor")
+    count_from = (max(cutoff_epoch, since) if isinstance(since, (int, float))
+                  else cutoff_epoch)
     for root, _dirs, names in os.walk(projects_dir):
         for name in names:
             if not name.endswith(".jsonl"):
@@ -349,7 +420,7 @@ def scan_jsonl(projects_dir, st, now_epoch):
             # so the byte offset survives to be resumed once the file is
             # readable again rather than rescanning it from zero.
             try:
-                offset = _scan_file(path, offset, cutoff_epoch, cutoff_iso,
+                offset = _scan_file(path, offset, count_from, cutoff_iso,
                                     seen, days)
             except OSError as e:
                 print(f"claude_usage: {path}: {e}", file=sys.stderr)
@@ -397,7 +468,7 @@ def limit_label(l):
     return str(kind)
 
 
-def pace_mark(kind, resets_at, now):
+def pace_mark(kind, resets_at, now, floor=None):
     """Which bar cell the pace marker replaces: how far through its OWN window
     this limit is, as an index in 0..BAR_CELLS-1. None whenever that cannot be
     established, and None is the only fallback there is — a bar without a
@@ -410,6 +481,15 @@ def pace_mark(kind, resets_at, now):
     state.json can hand over a non-string entirely. `kind` gets an isinstance
     of its own because it is raw JSON too: a drift to a list or dict is
     unhashable and would raise straight out of the dict lookup below.
+
+    `floor` is the user's `--limits-reset` instant. An out-of-cycle reset zeroes
+    usage but leaves `resets_at` where it was, so the budget now has to last
+    from the floor to the end, and the window's START moves up to it: without
+    this, a reset 4d 7h before the end leaves the marker 39% along at 0% used.
+    Only the start moves — the end is still the payload's. A floor before the
+    plain start (the window has rolled over since) changes nothing, which is
+    what retires it without anyone deleting the file; one at or past the end
+    would give a window of no length, so it is ignored rather than divided by.
     """
     window = LIMIT_WINDOWS.get(kind) if isinstance(kind, str) else None
     if not window or not isinstance(resets_at, str):
@@ -418,8 +498,12 @@ def pace_mark(kind, resets_at, now):
         dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        elapsed = 1 - (dt - now).total_seconds() / window
-    except (ValueError, TypeError):
+        end = dt.timestamp()
+        start = end - window
+        if isinstance(floor, (int, float)) and start < floor < end:
+            start = floor
+        elapsed = (now.timestamp() - start) / (end - start)
+    except (ValueError, TypeError, OverflowError):
         return None
     # Clamp the fraction before scaling: a window already past its reset, or a
     # skewed clock, must still land on a real cell rather than off either end.
@@ -487,6 +571,27 @@ def _pct_color(pct, theme):  # pct is the rounded, displayed integer
     return theme["indicator"]
 
 
+def floor_note(since, window):
+    """`since Fri 09:05` (or `since 09:05` for today) while the user's chart
+    floor is inside the 7 local days on show, else None.
+
+    Once the floor has rolled out of the window the charts are a true seven
+    days again and the heading has to go back to saying "(7d)" — hence None
+    rather than a stale date. It is also None for anything that is not a
+    plausible epoch: this reads state.json, which can hold whatever the last
+    writer or a hand edit left, and render() must not raise (see countdown()).
+    """
+    if not isinstance(since, (int, float)):
+        return None
+    try:
+        dt = datetime.fromtimestamp(since).astimezone()
+    except (OverflowError, OSError, ValueError):
+        return None
+    if dt.date() < window[0]:
+        return None
+    return "since " + dt.strftime("%H:%M" if dt.date() == window[-1] else "%a %H:%M")
+
+
 def render(st, theme, now):
     limits = st.get("limits") or []
     err = st.get("limits_error")
@@ -537,7 +642,8 @@ def render(st, theme, now):
             # two competing verdicts inside one 16-cell bar, and it also has to
             # stay legible against both regions it can land in — the
             # threshold-coloured █ and the muted ░.
-            mark = pace_mark(l.get("kind"), l.get("resets_at"), now)
+            mark = pace_mark(l.get("kind"), l.get("resets_at"), now,
+                             st.get("reset_floor"))
             marked = marked or mark is not None
             fill = _pct_color(disp, theme)
             bar = (f'<span color="{fill}">'
@@ -556,12 +662,17 @@ def render(st, theme, now):
         lines += ["", f'<span color="{dim}">no limit data yet</span>']
 
     days = st.get("days") or {}
-    if days:
-        today = now.astimezone().date()
-        window = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    today = now.astimezone().date()
+    window = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    note = floor_note(st.get("reset_floor"), window)
+    # A reset leaves `days` empty until the first new tokens land. The section
+    # is kept for it: with the heading gone, the tooltip would read as though
+    # the widget had lost the data rather than been told to start over.
+    if days or note:
         totals = {d: sum((days.get(d.isoformat()) or {}).values()) for d in window}
         peak = max(totals.values()) or 1
-        lines += ["", f'<span color="{sect}"><b>TOKENS BY DAY</b></span>']
+        lines += ["", f'<span color="{sect}"><b>TOKENS BY DAY</b></span>'
+                      + (f' <span color="{dim}">({note})</span>' if note else "")]
         for d in window:
             name = "Today" if d == today else d.strftime("%a")
             pad = " " * (5 - len(name))  # pad on the raw name: tags have no width
@@ -580,7 +691,7 @@ def render(st, theme, now):
                 by_model[model] = by_model.get(model, 0) + n
         if by_model:
             lines += ["", f'<span color="{sect}"><b>TOKENS BY MODEL</b></span>'
-                          f' <span color="{dim}">(7d)</span>']
+                          f' <span color="{dim}">({note or "7d"})</span>']
             mpeak = max(by_model.values()) or 1
             mwidth = max(len(model_display(m)) for m in by_model)
             for model, n in sorted(by_model.items(), key=lambda kv: -kv[1]):
@@ -609,11 +720,21 @@ def render(st, theme, now):
 
 
 def main(argv=None, now=None):
-    force = "--refresh" in (argv if argv is not None else sys.argv[1:])
+    argv = argv if argv is not None else sys.argv[1:]
+    force = "--refresh" in argv
+    # A hand-run mode, never one waybar passes: the limits were reset early,
+    # so the token charts and the pace markers start again from now.
+    reset = "--limits-reset" in argv
     home = Path(os.environ.get("HOME", str(Path.home())))
     cache_dir = Path(os.environ.get("XDG_CACHE_HOME",
                                     home / ".cache")) / "claude-usage"
     cache_dir.mkdir(parents=True, exist_ok=True)
+    # The floor is the user's intent, not a cache: PLAYBOOK §9.23 promises the
+    # cache directory is safe to delete, and a floor kept in it would silently
+    # come back as the full seven days when somebody did. `or`, not a get()
+    # default, because the XDG spec reads an empty value as unset.
+    floor_path = Path(os.environ.get("XDG_STATE_HOME")
+                      or home / ".local" / "state") / "claude-usage" / "limits-reset-at"
     # Single writer: --refresh runs, signal re-execs, and interval runs must
     # not interleave read-modify-write (spec §2). Lock file, not state.json —
     # the atomic rename below would swap the locked inode out.
@@ -640,6 +761,14 @@ def main(argv=None, now=None):
         # that waited on the flock above should stamp itself with when it got
         # the lock, not when the process started.
         now = now if now is not None else datetime.now(timezone.utc)
+        # Under the lock and before the scan: the scan below must see the new
+        # floor, and a reset must not interleave with a tick mid-write. Read
+        # back rather than trusting `now`, so what the scan counts from is
+        # exactly what is on disk. A write that fails raises: a reset that did
+        # not happen has to say so on the terminal that asked for it.
+        if reset:
+            write_reset_floor(floor_path, now)
+        apply_reset_floor(st, read_reset_floor(floor_path))
         refresh_limits(st, home / ".claude" / ".credentials.json",
                        force, now.timestamp())
         scan_jsonl(home / ".claude" / "projects", st, now.timestamp())
@@ -648,7 +777,13 @@ def main(argv=None, now=None):
         tmp = state_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(st))
         tmp.replace(state_path)
-    print(json.dumps(out))
+    if reset:
+        when = now.astimezone().strftime("%a %d %b %H:%M")
+        print(f"claude_usage: token charts and pace markers now start "
+              f"from {when}; "
+              f"delete {floor_path} to undo")
+    else:
+        print(json.dumps(out))
 
 
 if __name__ == "__main__":
