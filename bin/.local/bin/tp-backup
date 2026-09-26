@@ -23,6 +23,12 @@
 #     outage stayed invisible for a day.
 #   * "Nothing to capture" is success. "Capture failed" is an alert. They are
 #     never conflated (finding F11).
+#   * Raw Sharadar data (trading-platform-v2 issue 752, Personal Use licence)
+#     must never enter a snapshot -- this repository is APPEND-ONLY, so there
+#     is no way to take it back out once written. LICENCE_EXCLUDES below is
+#     spliced into every `restic_ro backup` call, which itself refuses to run
+#     without it; git_capture() separately refuses any untracked file under
+#     $HOME/data/sharadar or a `.sharadar-licence-extract`-marked directory.
 #
 # `-E` is load-bearing, not decoration. Without it bash does NOT inherit the ERR
 # trap into shell functions ("The ERR trap is normally not inherited in such
@@ -44,6 +50,13 @@ LOCKDIR="$STATE/locks"
 # shellcheck disable=SC1090
 source "$CONF"
 mkdir -p "$STATE" "$LOCKDIR" "$STATE/git-capture"
+
+# Resolved once, used by both restic_ro()'s LICENCE_EXCLUDES (below) and
+# git_capture()'s own refusal to tar a path under here (issue 752). Falls back
+# to the literal path if it does not exist yet -- readlink -f on a missing leaf
+# still normalises the existing prefix, and the comparison only needs a stable
+# absolute path, not an existing one.
+TPB_SHARADAR_ROOT="$(readlink -f "$HOME/data/sharadar" 2>/dev/null || printf '%s' "$HOME/data/sharadar")"
 
 # ── the SSD cold-storage leg ────────────────────────────────────────────────
 # Read AFTER the config so either may be overridden there. 30 days: this leg is
@@ -75,7 +88,37 @@ trap 'die "unexpected error at line $LINENO"' ERR
 # ── restic plumbing ─────────────────────────────────────────────────────────
 SSH_BASE="ssh -p ${TPB_SSH_PORT} -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=30"
 
+# ── Sharadar licence: raw vendor data must never enter the backup repo ──────
+# Personal Use licence: within 30 days of cancelling, ALL raw Sharadar data
+# (downloads, bulk files, caches, extracts) must be deleted. This repository is
+# APPEND-ONLY (server returns 403 on Remove, proved 2026-08-25) and this box has
+# no maintenance key to prune it, so raw Sharadar data must never be written
+# into a snapshot in the first place -- there is no way to take it back out.
+# Every WS2 extract root carries the `.sharadar-licence-extract` marker and a
+# CACHEDIR.TAG (trading-platform-v2 issue 752). One array, spliced into every
+# `restic_ro backup` call below, so a future tier only has to add
+# "${LICENCE_EXCLUDES[@]}" once. `_assert_licence_excludes` is the belt to that
+# brace: it refuses (loudly, via die()) to run any `restic_ro backup` whose
+# argv does not carry every entry, so an edit that drops it from an existing
+# call -- or a new call that forgets it -- fails the run instead of silently
+# writing raw vendor data into a repository that cannot be pruned.
+LICENCE_EXCLUDES=(
+    --exclude "$HOME/data/sharadar"
+    --exclude-if-present .sharadar-licence-extract
+    --exclude-caches
+)
+
+_assert_licence_excludes() {
+    local want arg found
+    for want in "${LICENCE_EXCLUDES[@]}"; do
+        found=0
+        for arg in "$@"; do [[ "$arg" == "$want" ]] && { found=1; break; }; done
+        (( found )) || die "restic_ro backup call is missing Sharadar licence exclude '$want' — refusing to run (issue 752)"
+    done
+}
+
 restic_ro() {   # append-only key: backup, check, list. Cannot delete.
+    [[ "${1:-}" == "backup" ]] && _assert_licence_excludes "$@"
     env -u SSH_AUTH_SOCK "$TPB_RESTIC" \
         -o rclone.program="$SSH_BASE -i $TPB_KEY_BACKUP $TPB_HOST" \
         -o rclone.args="forced-by-authorized-keys" \
@@ -156,10 +199,44 @@ git_capture() {
             git -C "$tree" diff HEAD > "$d/uncommitted.patch"
             [[ -s "$d/uncommitted.patch" ]] || { rm -f "$d/uncommitted.patch"; echo none > "$d/uncommitted.none"; }
 
-            # Do NOT pipe through `head`: it closes the pipe early, git takes SIGPIPE,
-            # and `pipefail` then aborts the whole daily run. Count bytes instead.
-            if (( $(git -C "$tree" ls-files --others --exclude-standard -z | wc -c) > 0 )); then
-                (cd "$tree" && git ls-files --others --exclude-standard -z \
+            # Sharadar licence (issue 752): refuse to tar any untracked file under
+            # $HOME/data/sharadar or under a directory carrying the
+            # `.sharadar-licence-extract` marker, even though the WS2-side guard
+            # (assert_extract_root) is supposed to make either impossible from the
+            # WS2 side already -- this does not rely on that alone. SKIP with a
+            # logged count, not a fail: one contaminated worktree must not cost the
+            # vault snapshot for every other repo (same "capture failure must not
+            # kill the vault" reasoning as the MISSING_WORKTREE case above), and the
+            # count (never the paths or contents) is what a human needs to notice
+            # something was withheld.
+            local skip_n=0 rel abs skip md
+            local -a keep=()
+            while IFS= read -r -d '' rel; do
+                abs="$tree/$rel"
+                skip=0
+                case "$(readlink -f "$abs" 2>/dev/null || printf '%s' "$abs")" in
+                    "$TPB_SHARADAR_ROOT"/*|"$TPB_SHARADAR_ROOT") skip=1 ;;
+                esac
+                if (( ! skip )); then
+                    md="$(dirname "$abs")"
+                    while :; do
+                        [[ -e "$md/.sharadar-licence-extract" ]] && { skip=1; break; }
+                        [[ "$md" == "$tree" ]] && break
+                        md="$(dirname "$md")"
+                    done
+                fi
+                # NOT `(( skip_n++ ))`: when skip_n is 0 the post-increment's VALUE
+                # is 0, and `((...))` treats a zero result as failure -- exit 1,
+                # caught by the ERR trap under `-E`, die() on the very first skip.
+                if (( skip )); then skip_n=$(( skip_n + 1 )); else keep+=("$rel"); fi
+            done < <(git -C "$tree" ls-files --others --exclude-standard -z)
+
+            if (( skip_n > 0 )); then
+                echo "tp-backup: git-capture: skipped $skip_n untracked file(s) under a Sharadar licence path in $tree (never captured)" >&2
+            fi
+
+            if (( ${#keep[@]} > 0 )); then
+                (cd "$tree" && printf '%s\0' "${keep[@]}" \
                     | tar --null -T - -czf "$d/untracked.tar.gz" 2>/dev/null) \
                     || die "untracked capture failed in $tree"
             else
@@ -195,6 +272,7 @@ cmd_daily() {
     local -a _envs=()
     local _e; for _e in "$HOME"/repos/*/.env; do [[ -e "$_e" ]] && _envs+=("$_e"); done
     restic_ro backup --tag vault --tag daily \
+        "${LICENCE_EXCLUDES[@]}" \
         --exclude "$HOME/.claude/plugins" \
         --exclude "$HOME/.claude/jobs" \
         --exclude "$HOME/.claude/file-history" \
@@ -243,7 +321,25 @@ cmd_substrate() {
     fi
     local V="$HOME/repos/trading-platform-v2/research"
     local S="$HOME/repos/tp2-signal-home/research"
+
+    # WS2's EODHD-era edge-search cache (36 GB as of 2026-09-26). Confirmed by
+    # WS2 (issue 752) to hold no raw Sharadar data or extract, now or by design
+    # -- every Sharadar extract lives under $TPB_SHARADAR_ROOT instead, and
+    # LICENCE_EXCLUDES applies here too as defence in depth. It cannot be
+    # re-downloaded (the EODHD vendor relationship that produced it is retired),
+    # so it gets the same refusal cmd_media() gives its own irreplaceable
+    # source: missing or present-but-empty must DIE, never silently snapshot a
+    # vacuous state as a "success" (an ordinary `restic backup` on an empty
+    # directory exits 0 and records a real, if pointless, snapshot -- it is not
+    # this guard's job to rely on restic to notice that for us).
+    local WS2_CACHE="$V/ws2_edge/.cache_ws2"
+    [[ -d "$WS2_CACHE" ]] || die "substrate source $WS2_CACHE missing"
+    local n_ws2
+    n_ws2=$(find "$WS2_CACHE" -type f -printf . 2>/dev/null | wc -c)
+    (( n_ws2 > 0 )) || die "substrate source $WS2_CACHE is present but empty — refusing to snapshot a vacuous state"
+
     restic_ro backup --tag substrate --tag weekly \
+        "${LICENCE_EXCLUDES[@]}" \
         "$V/midsmall_edge_search/.cache_snapshots" \
         "$V/midsmall_edge_search/.cache_midsmall_sealed_ecc5481f" \
         "$V/midsmall_edge_search/.cache" \
@@ -252,7 +348,8 @@ cmd_substrate() {
         "$S/midsmall_edge_search/.cache" \
         "$S/midsmall_edge_search/bronze" \
         "$S/holistic_ml_trading/results" \
-        "$S/holistic_ml_trading/.cache_holistic"
+        "$S/holistic_ml_trading/.cache_holistic" \
+        "$WS2_CACHE"
     stamp substrate
     exec {lockfd}>&-
 }
@@ -287,7 +384,7 @@ cmd_media() {
     n=$(find "$SRC" -type f -printf . 2>/dev/null | wc -c)
     (( n > 0 )) || die "media source $SRC is mounted but empty — refusing to snapshot a vacuous state"
 
-    restic_ro backup --tag media --tag weekly "$SRC"
+    restic_ro backup --tag media --tag weekly "${LICENCE_EXCLUDES[@]}" "$SRC"
     stamp media
 }
 
