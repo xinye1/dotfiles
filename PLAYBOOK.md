@@ -1088,40 +1088,50 @@ missing or a role fails to parse, `FALLBACK_THEME` uses **Pango named colours on
 the same as anywhere else. All *derived* widget state — fetched limits, JSONL scan offsets, debounce
 timestamps — lives in `~/.cache/claude-usage/`; deleting it forces a full rebuild on the next run
 (fresh JSONL scan, fresh fetch, TTL ignored). The one thing that is the user's rather than
-derived, the chart floor below, deliberately does not.
+derived, the reset floor below, deliberately does not.
 
-**The token charts have a user-set floor, kept outside the cache.** The limit bars reset on their
-own — the API is their source — but TOKENS BY DAY / BY MODEL are counted from
-`~/.claude/projects/*.jsonl`, which a weekly reset does not touch, so they keep showing the old
-week. `claude_usage.py --reset-charts` (a hand-run mode; add `; pkill -RTMIN+8 -x waybar` to
-repaint at once, `-x` per §9.29) writes the current time to
-`$XDG_STATE_HOME/claude-usage/charts-since` (default `~/.local/state/`) and the charts count from
-that instant. Delete the file to undo it. Four decisions are worth keeping:
+**An out-of-cycle limits reset has a user-set floor, kept outside the cache.** When Anthropic
+resets the limits early (2026-09-26 was one), the percentages drop to 0 through the API, but two
+things in the tooltip don't follow. `resets_at` stays where it was, so the pace marker still starts
+its window seven days before that end — 4d 7h left read as 39% along at 0% used — when the budget
+now only has to last from the reset. And TOKENS BY DAY / BY MODEL are counted from
+`~/.claude/projects/*.jsonl`, which a reset does not touch, so they keep showing the old week.
+`claude_usage.py --limits-reset` (a hand-run mode; add `; pkill -RTMIN+8 -x waybar` to repaint at
+once, `-x` per §9.29) writes the current time to `$XDG_STATE_HOME/claude-usage/limits-reset-at`
+(default `~/.local/state/`). The charts then count from that instant, and each pace marker's window
+starts at `max(resets_at - window, floor)` — its end is still the payload's. Delete the file to
+undo it. The decisions worth keeping:
 
 - **Outside the cache**, because the paragraph above promises the cache is safe to delete, and a
   floor kept in it would come back as the full seven days the moment somebody did. `theme` keeps
   its palette in the same state directory for the same reason.
 - **The floor is an input to the totals, not a filter over them.** `days` is already summed per
   local day and cannot be cut at an arbitrary instant afterwards. So when the floor on disk differs
-  from the one state.json was built under (`charts_since`), `apply_charts_since` drops `days`,
+  from the one state.json was built under (`reset_floor`), `apply_reset_floor` drops `days`,
   `files` and `seen` and lets the ordinary scan rebuild them — the cache-wipe path, one full scan
   per reset, limits untouched. The same rule makes removing the file a true undo: the history never
   left `~/.claude`.
 - **It raises only the edge a line must clear to be *counted*.** The mtime skip and the `seen`
   prune stay on the eight-day window, because a line older than the floor must still be
   remembered — a file rewritten from byte 0 would otherwise re-present it.
-- **It is manual, not "reset whenever a weekly window resets".** Detecting a reset means watching
-  for one and remembering when — the persistent state `LIMIT_WINDOWS` declines to keep — and the
-  charts' window (seven local days) is not the limits' window anyway.
+- **For pace, the floor retires itself.** It only moves a window's start *later*, and only while
+  it falls inside that window: once the window rolls over, its plain start passes the floor and
+  the marker is back on seven days (or five hours) with nobody deleting anything. A floor at or
+  past `resets_at` would make a window of no length, so it is ignored. Session windows take the
+  same rule on their own scale.
+- **It is manual, not detected.** An early reset is visible only as a percentage falling while
+  `resets_at` stands still; detecting that means watching the payload and remembering what it
+  was — the persistent state `LIMIT_WINDOWS` declines to keep — for an event that happens rarely.
+  One command at the moment you notice is cheaper than a heuristic that can misfire on every tick.
 
 While the floor is inside the seven days on show both headings read `(since Fri 09:05)` instead of
 `(7d)`, which would now be false, and go back to `(7d)` once it has rolled out. A reset leaves
 `days` empty until new tokens arrive; the heading is kept for that state, since a vanished section
 reads as lost data. A garbled floor file fails open — the charts come back and stderr says why —
-rather than blanking the widget. `tests/claude_usage_test.py` covers it (`ChartsSinceTest`,
-`ChartsSinceScanTest`, the reset cases in `MainTest`), checked by mutation: 16 mutants of the
-comparison, the raise-vs-lower, the rebuild, the storage location and the headings each turn it
-red. Every `MainTest` environment pins `XDG_STATE_HOME`, or a real floor file on the machine
+rather than blanking the widget. `tests/claude_usage_test.py` covers it (`ResetFloorTest`,
+`ResetFloorScanTest`, `PaceFloorTest`, the reset cases in `MainTest`), checked by mutation: 22
+mutants — the counting comparison, the raise-vs-lower, the rebuild, the storage location, the
+headings, the pace window's start-not-end and its in-window bound — each turn it red. Every `MainTest` environment pins `XDG_STATE_HOME`, or a real floor file on the machine
 running the suite would leak into it.
 
 **One wall-clock read, and `main(now=…)` is the seam.** Every function in the widget already takes
