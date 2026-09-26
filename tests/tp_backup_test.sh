@@ -360,6 +360,20 @@ else bad "substrate refuses a source holding a CACHEDIR.TAG (exit $rc)"; fi
 rm -rf "$WS2_CACHE/sub"
 run_tier substrate; rc=$?; check "substrate runs clean again once the tag is gone" "$rc" "0"
 
+# ── substrate refuses a .sharadar-licence-extract marker with NO CACHEDIR.TAG ──
+# CodeRabbit finding 1 (dotfiles PR 35 re-review): --exclude-if-present would
+# otherwise silently EMPTY this subtree while restic still exits 0 -- the same
+# vacuous-success shape as the CACHEDIR.TAG case above, but the old check only
+# looked for a tag, so a marker with no tag slipped straight past it.
+mkdir -p "$WS2_CACHE/sub"
+: > "$WS2_CACHE/sub/.sharadar-licence-extract"
+run_tier substrate; rc=$?
+if [ "$rc" -ne 0 ] && grep -q '.sharadar-licence-extract' "$SANDBOX/tier.out" && [ ! -s "$RESTIC_LOG" ]
+then ok "substrate refuses a source holding a .sharadar-licence-extract marker with no tag, before restic runs"
+else bad "substrate refuses a source holding a .sharadar-licence-extract marker with no tag (exit $rc)"; fi
+rm -rf "$WS2_CACHE/sub"
+run_tier substrate; rc=$?; check "substrate runs clean again once the marker is gone" "$rc" "0"
+
 # ── git-capture must refuse Sharadar-marked / Sharadar-root paths ───────────
 H5="$SANDBOX/home5"
 mkdir -p "$H5/repos" "$H5/data/sharadar"
@@ -404,6 +418,112 @@ fi
 if grep -q 'skipped 3 untracked file' "$SANDBOX/capture5.out"
 then ok "git-capture logs the skip COUNT on stderr (3 files, no paths/contents)"
 else bad "git-capture logs the skip COUNT on stderr (3 files, no paths/contents)"; fi
+
+# ── git-capture withholds TRACKED/STAGED/UNPUSHED content under a marker ───
+# CodeRabbit finding 2 (dotfiles PR 35 re-review): restic's excludes cannot see
+# inside a patch or bundle, so licensed content that is tracked, staged, or in
+# an unpushed commit under a `.sharadar-licence-extract` directory would still
+# reach staged.patch / uncommitted.patch / unpushed.bundle even though the
+# untracked-file guard above already stops it for plain untracked files.
+#
+# epsilon carries a marker dir with all three shapes: (a) a file committed but
+# never pushed (no remote exists at all here, so EVERY commit is "unpushed"),
+# (b) a staged-but-uncommitted file, (c) an unstaged edit to a file that was
+# ALREADY tracked before the marker existed. zeta is a second, unrelated,
+# clean repo in the same run -- one withheld tree must not cost it.
+H6="$SANDBOX/home6"
+mkdir -p "$H6/repos"
+cp -r "$H4/.config" "$H6/.config"   # carries the restic-stub TPB_RESTIC already
+
+SENTINEL="SHARADAR_TEST_SENTINEL_do_not_capture_$$"
+
+$G init -q "$H6/repos/epsilon"
+mkdir -p "$H6/repos/epsilon/vault_extract"
+: > "$H6/repos/epsilon/vault_extract/.sharadar-licence-extract"
+echo "orig tracked content" > "$H6/repos/epsilon/vault_extract/tracked_file.txt"
+$G -C "$H6/repos/epsilon" add -A
+$G -C "$H6/repos/epsilon" commit -q -m "epsilon init: marker + tracked file"
+
+# (a) tracked, committed, unpushed.
+echo "$SENTINEL committed-unpushed" > "$H6/repos/epsilon/vault_extract/tracked_unpushed.txt"
+$G -C "$H6/repos/epsilon" add vault_extract/tracked_unpushed.txt
+$G -C "$H6/repos/epsilon" commit -q -m "epsilon: add tracked_unpushed"
+
+# (b) staged, uncommitted.
+echo "$SENTINEL staged" > "$H6/repos/epsilon/vault_extract/staged_file.txt"
+$G -C "$H6/repos/epsilon" add vault_extract/staged_file.txt
+
+# (c) unstaged modification to an already-tracked file under the marker dir.
+echo "$SENTINEL unstaged-mod" >> "$H6/repos/epsilon/vault_extract/tracked_file.txt"
+
+$G init -q "$H6/repos/zeta"
+$G -C "$H6/repos/zeta" commit -q --allow-empty -m "zeta init"
+echo "zeta tracked" > "$H6/repos/zeta/tracked_after.txt"
+$G -C "$H6/repos/zeta" add tracked_after.txt
+$G -C "$H6/repos/zeta" commit -q -m "zeta: add tracked_after"
+echo "zeta local edit, no licensed content here" >> "$H6/repos/zeta/tracked_after.txt"   # uncommitted
+
+env HOME="$H6" XDG_STATE_HOME="$H6/.local/state" \
+    TPB_CONF="$H6/.config/tp-backup/config" \
+    "$TPB_BIN" __capture >"$SANDBOX/capture6.out" 2>&1
+rc=$?
+check "git-capture exits non-zero when licensed content is tracked/staged/unpushed" "$rc" "1"
+
+CUR6="$H6/.local/state/tp-backup/git-capture/current"
+
+# 4 distinct paths under vault_extract/: the marker file itself, tracked_file.txt
+# (modified unstaged), tracked_unpushed.txt (committed, unpushed), staged_file.txt
+# (staged). Every tracked path under the marker counts, not just modified ones --
+# uncommitted.patch is a diff of the WHOLE tree, so any of them is a risk surface.
+if grep -qE '^withheld: 4 tainted' "$CUR6/epsilon/LICENCE_WITHHELD" 2>/dev/null
+then ok "LICENCE_WITHHELD records the right count (4: marker file + 2 tracked + 1 staged)"
+else bad "LICENCE_WITHHELD records the right count (4: marker file + 2 tracked + 1 staged)"; fi
+
+for f in staged.patch uncommitted.patch unpushed.bundle status.txt; do
+    if [ ! -e "$CUR6/epsilon/$f" ]
+    then ok "epsilon: no $f captured for the withheld tree"
+    else bad "epsilon: no $f captured for the withheld tree (present)"; fi
+done
+
+if grep -q "WITHHELD 4 tainted" "$SANDBOX/capture6.out" && grep -qF "$H6/repos/epsilon" "$SANDBOX/capture6.out"
+then ok "loud stderr line names both the tree and the count"
+else bad "loud stderr line names both the tree and the count"; fi
+
+if [ -f "$CUR6/zeta/uncommitted.patch" ] && [ -f "$CUR6/zeta/unpushed.bundle" ]
+then ok "clean tree in the same run is still captured normally (one withheld tree did not cost it)"
+else bad "clean tree in the same run is still captured normally"; fi
+
+# The sentinel must never appear ANYWHERE under the capture output, in any repo,
+# in any file -- text or binary. grep with no -a still matches inside a binary
+# file (it just suppresses printing the line), so this also covers a bundle's
+# packed content without needing to unpack it.
+if grep -RqF -- "$SENTINEL" "$CUR6" 2>/dev/null
+then bad "sentinel leaked into the capture output somewhere (must never happen)"
+else ok "sentinel never appears anywhere under the capture output dir"; fi
+
+# ── cmd_daily still snapshots the vault when git-capture withholds content ──
+: > "$RESTIC_LOG"
+env HOME="$H6" XDG_STATE_HOME="$H6/.local/state" \
+    TPB_CONF="$H6/.config/tp-backup/config" \
+    TPB_TEST_RESTIC_LOG="$RESTIC_LOG" \
+    PATH="$STUBBIN:$PATH" \
+    "$TPB_BIN" daily >"$SANDBOX/daily6.out" 2>&1
+drc=$?
+
+if [ "$drc" -ne 0 ]; then ok "daily: a withheld tree still fails the overall run"
+else bad "daily: a withheld tree still fails the overall run (exit $drc)"; fi
+
+if [ -f "$H6/.local/state/tp-backup/last-success-vault" ]
+then ok "daily: vault snapshot stamped despite the withheld tree"
+else bad "daily: vault snapshot stamped despite the withheld tree (no vault stamp)"; fi
+
+if [ -s "$RESTIC_LOG" ]
+then ok "daily: restic backup was actually invoked (vault snapshot really taken)"
+else bad "daily: restic backup was actually invoked (vault snapshot really taken)"; fi
+
+if grep -q 'git capture failed' "$SANDBOX/daily6.out"
+then ok "daily: failure message attributes it to the git capture, not the vault"
+else bad "daily: failure message attributes it to the git capture, not the vault"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
