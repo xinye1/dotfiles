@@ -68,7 +68,9 @@ triggers, not the full story: read the named section before working in its area.
   Claude hook that reports agent *state* — herdr reads it from the screen on purpose. Any `pkill
   -RTMIN` to waybar needs `-x`, or it also kills the supervisor (§9.29, §9.30).
 - waybar's claude widget treats `~/.claude` as **read-only** — never add token refresh; state/cache
-  lives in `~/.cache/claude-usage/` (safe to delete) (§9.23).
+  lives in `~/.cache/claude-usage/` (safe to delete) (§9.23). The one exception is the token-chart
+  floor set by `claude_usage.py --reset-charts`: it lives in `$XDG_STATE_HOME/claude-usage/`,
+  precisely so that deleting the cache cannot undo it.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
   that does not happen. Its wallpapers are pre-synced by `walls-sync` into
   `~/Pictures/walls/<palette>/` — palette name *is* the directory name — and every failure falls

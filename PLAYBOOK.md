@@ -1085,9 +1085,44 @@ the script on every click, racing the `--refresh` already in flight — and insi
 the signal-8 re-exec a single writer regardless of which one wins the race. If `theme.gen.env` is
 missing or a role fails to parse, `FALLBACK_THEME` uses **Pango named colours only** (`black`,
 `gray`, `yellow`, …) — `check_hex.py` scans this file too, and a hex literal here would fail it
-the same as anywhere else. All widget state — fetched limits, JSONL scan offsets, debounce
+the same as anywhere else. All *derived* widget state — fetched limits, JSONL scan offsets, debounce
 timestamps — lives in `~/.cache/claude-usage/`; deleting it forces a full rebuild on the next run
-(fresh JSONL scan, fresh fetch, TTL ignored).
+(fresh JSONL scan, fresh fetch, TTL ignored). The one thing that is the user's rather than
+derived, the chart floor below, deliberately does not.
+
+**The token charts have a user-set floor, kept outside the cache.** The limit bars reset on their
+own — the API is their source — but TOKENS BY DAY / BY MODEL are counted from
+`~/.claude/projects/*.jsonl`, which a weekly reset does not touch, so they keep showing the old
+week. `claude_usage.py --reset-charts` (a hand-run mode; add `; pkill -RTMIN+8 -x waybar` to
+repaint at once, `-x` per §9.29) writes the current time to
+`$XDG_STATE_HOME/claude-usage/charts-since` (default `~/.local/state/`) and the charts count from
+that instant. Delete the file to undo it. Four decisions are worth keeping:
+
+- **Outside the cache**, because the paragraph above promises the cache is safe to delete, and a
+  floor kept in it would come back as the full seven days the moment somebody did. `theme` keeps
+  its palette in the same state directory for the same reason.
+- **The floor is an input to the totals, not a filter over them.** `days` is already summed per
+  local day and cannot be cut at an arbitrary instant afterwards. So when the floor on disk differs
+  from the one state.json was built under (`charts_since`), `apply_charts_since` drops `days`,
+  `files` and `seen` and lets the ordinary scan rebuild them — the cache-wipe path, one full scan
+  per reset, limits untouched. The same rule makes removing the file a true undo: the history never
+  left `~/.claude`.
+- **It raises only the edge a line must clear to be *counted*.** The mtime skip and the `seen`
+  prune stay on the eight-day window, because a line older than the floor must still be
+  remembered — a file rewritten from byte 0 would otherwise re-present it.
+- **It is manual, not "reset whenever a weekly window resets".** Detecting a reset means watching
+  for one and remembering when — the persistent state `LIMIT_WINDOWS` declines to keep — and the
+  charts' window (seven local days) is not the limits' window anyway.
+
+While the floor is inside the seven days on show both headings read `(since Fri 09:05)` instead of
+`(7d)`, which would now be false, and go back to `(7d)` once it has rolled out. A reset leaves
+`days` empty until new tokens arrive; the heading is kept for that state, since a vanished section
+reads as lost data. A garbled floor file fails open — the charts come back and stderr says why —
+rather than blanking the widget. `tests/claude_usage_test.py` covers it (`ChartsSinceTest`,
+`ChartsSinceScanTest`, the reset cases in `MainTest`), checked by mutation: 16 mutants of the
+comparison, the raise-vs-lower, the rebuild, the storage location and the headings each turn it
+red. Every `MainTest` environment pins `XDG_STATE_HOME`, or a real floor file on the machine
+running the suite would leak into it.
 
 **One wall-clock read, and `main(now=…)` is the seam.** Every function in the widget already takes
 `now` as an argument — `render(st, theme, now)`, `scan_jsonl(…, now_epoch)`, `refresh_limits(…,
