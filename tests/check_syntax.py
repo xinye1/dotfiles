@@ -29,8 +29,6 @@ DEFAULT = "#"
 
 def marker_for(path):
     name = path.name
-    if name.startswith(".gtkrc"):
-        return "#"
     for suffix, mark in COMMENT.items():
         if name.endswith(suffix):
             return mark

@@ -35,8 +35,7 @@ border-size=2
 border-radius=10,0,0,10
 
 # Was /usr/share/icons/Arc-X-D, a directory that does not exist on this system —
-# notification icons were silently falling back. Papirus-Dark ships theme-tinted
-# folders once `papirus-folders -C nordic -t Papirus-Dark` has been run.
+# notification icons were silently falling back.
 icon-path=/usr/share/icons/Papirus-Dark
 max-icon-size=70
 icon-border-radius=3

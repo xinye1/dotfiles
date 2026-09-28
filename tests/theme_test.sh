@@ -58,7 +58,7 @@ stubs=$(grep -oE '(shutil\.which|run_ok|subprocess\.run)\(\[?"[a-z0-9_.-]+"' \
 # A floor, not the list. The derivation may only ever ADD to this; if it ever
 # matches nothing -- `theme` rewritten, a call spelled another way -- that has
 # to be loud here rather than silent on the user's desktop.
-for required in swaymsg sway makoctl papirus-folders kitty; do
+for required in swaymsg sway makoctl kitty; do
     printf '%s\n' $stubs | grep -qx "$required" || {
         printf 'theme_test: no "%s" found in bin/.local/bin/theme by the stub\n' "$required" >&2
         printf 'theme_test: derivation, so it would not be stubbed and the real\n' >&2
@@ -106,12 +106,12 @@ fi
 out=$(theme --list | tr '\n' ' ' | sed 's/ *$//')
 check "--list names both palettes" "$out" "gruvbox nord"
 
-if theme --no-icons no-such-palette >/dev/null 2>&1; then
+if theme no-such-palette >/dev/null 2>&1; then
     no "unknown palette exits non-zero"
 else
     ok "unknown palette exits non-zero"
 fi
-out=$(theme --no-icons no-such-palette || true)
+out=$(theme no-such-palette || true)
 case $out in
     *gruvbox*nord*) ok "unknown palette names the valid ones" ;;
     *)              no "unknown palette names the valid ones" "$out" ;;
@@ -119,36 +119,36 @@ esac
 
 # --- rendering --------------------------------------------------------------
 for p in nord gruvbox; do
-    if theme --no-icons "$p" >/dev/null 2>&1; then
+    if theme "$p" >/dev/null 2>&1; then
         ok "renders $p"
     else
-        no "renders $p" "$(theme --no-icons "$p")"
+        no "renders $p" "$(theme "$p")"
     fi
 done
 
 # Every placeholder in every template must resolve in every palette. `theme`
 # dies naming the role when one does not, so a clean run over both is the test.
-missing=$(theme --no-icons nord; theme --no-icons gruvbox)
+missing=$(theme nord; theme gruvbox)
 case $missing in
     *"no such role"*) no "every placeholder resolves in both palettes" "$missing" ;;
     *)                ok "every placeholder resolves in both palettes" ;;
 esac
 
 # The checksums below are driven off the TEMPLATE list, never off a glob of the
-# outputs. `-name '*.gen*'` was the glob, and it structurally cannot match the
-# seven rendered files that carry no marker -- gtk-{3,4}.0/gtk.css,
-# gtk-{3,4}.0/settings.ini, xsettingsd.conf, .gtkrc-2.0, yazi/theme.toml --
-# because they are read at hardcoded paths and cannot be renamed (§2.3). Seven
-# of nineteen escaped both checks below, and they are precisely the ones whose
-# failure modes are silent: an undefined GTK @name renders black with no error
-# (§9.10), a dropped yazi key is ignored without a warning (§9.22).
+# outputs. `-name '*.gen*'` was the glob, and it structurally cannot match a
+# rendered file that carries no marker because it is read at a hardcoded path
+# and cannot be renamed (§2.3) -- yazi/theme.toml today, and until the move to
+# plain Adwaita six GTK files besides. Seven of nineteen once escaped both
+# checks below, and they were precisely the ones whose failure modes are
+# silent: an undefined GTK @name renders black with no error (§9.10), a
+# dropped yazi key is ignored without a warning (§9.22).
 #
 # Every `*.tmpl` renders to itself with the suffix stripped, so the templates
 # ARE the list of outputs, and no naming convention can leave one out.
 rendered_files() { find "$SANDBOX" -name '*.tmpl' -type f | sed 's/\.tmpl$//' | sort; }
 rendered_sum()   { rendered_files | tr '\n' '\0' | xargs -0 cat | md5sum; }
 
-theme --no-icons gruvbox >/dev/null
+theme gruvbox >/dev/null
 
 # ...which is only true while every template has actually produced its output.
 # A missing one would otherwise drop silently out of both checksums and take
@@ -159,13 +159,13 @@ check "every template renders an output the checksums cover" "$got" "$want"
 
 # Deterministic: rendering twice must produce identical bytes.
 sum1=$(rendered_sum)
-theme --no-icons gruvbox >/dev/null
+theme gruvbox >/dev/null
 sum2=$(rendered_sum)
 check "rendering is deterministic" "$sum1" "$sum2"
 
 # Switching and switching back must return the original bytes.
-theme --no-icons nord >/dev/null
-theme --no-icons gruvbox >/dev/null
+theme nord >/dev/null
+theme gruvbox >/dev/null
 sum3=$(rendered_sum)
 check "switching round-trips" "$sum3" "$sum1"
 
@@ -196,7 +196,7 @@ p = broken / "palettes.toml"
 text = p.read_text().replace('indicator = ', 'indicator_renamed = ', 1)
 p.write_text(text)
 r = subprocess.run([sys.executable, str(broken / "bin/.local/bin/theme"),
-                    "--no-icons", "nord"], capture_output=True)
+                    "nord"], capture_output=True)
 sys.exit(r.returncode)
 PY
 
@@ -306,9 +306,9 @@ fi
   git init -q . 2>/dev/null
   git add -A >/dev/null 2>&1
   git -c user.email=t@t -c user.name=t commit -qm init >/dev/null 2>&1
-  python3 bin/.local/bin/theme --no-icons gruvbox >/dev/null 2>&1
+  python3 bin/.local/bin/theme gruvbox >/dev/null 2>&1
   before=$(git status --porcelain | sort | md5sum)
-  python3 bin/.local/bin/theme --no-icons nord >/dev/null 2>&1
+  python3 bin/.local/bin/theme nord >/dev/null 2>&1
   after=$(git status --porcelain | sort | md5sum)
   [ "$before" = "$after" ]
 ) && ok "switching leaves git status untouched" \

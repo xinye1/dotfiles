@@ -20,9 +20,15 @@ That is the class of bug worth a guard, not the one instance. Reading style.css
 for the missing `background-color` would only ever re-check the fix; the actual
 question is what GTK *paints*, which is answered by rendering. So each module is
 built offscreen -- a widget of that name inside a `#waybar` parent, the shape
-waybar builds -- once bare and once per style class, under every GTK theme
-palettes.toml names. A class that changes the painted background is a class the
-theme is styling through us.
+waybar builds -- once bare and once per style class, under the GTK theme the
+tracked gtk-3.0/settings.ini names. A class that changes the painted background
+is a class the theme is styling through us.
+
+The desktop has since moved to plain Adwaita for every palette (PLAYBOOK §2.2),
+so there is one theme to render under rather than one per palette, and it is
+read from the settings file waybar itself is themed by, not from palettes.toml.
+Adwaita scopes the infobar classes today; the guard stays because the next GTK
+release, or the next theme, need not.
 
 Deliberately wider than the classes waybar emits today: the whole stock set is
 tested, because the next collision will be a class name nobody looked up.
@@ -30,7 +36,7 @@ tested, because the next collision will be a class name nobody looked up.
 Two things are outside the net, both on purpose:
 
   * `#workspaces button` is a real GtkButton and takes a background from the
-    GTK theme under *both* palettes, as it always has. Overriding that is a
+    GTK theme, as it always has. Overriding that is a
     look change, not a fix -- and CSS has no way to say "the theme's button
     background, minus the infobar rules", so the fix would have to invent a
     colour. Left alone, and so left untested.
@@ -39,14 +45,14 @@ Two things are outside the net, both on purpose:
     comparison sees the static value; without it the sampled colour depends on
     when the frame was grabbed.
 
-Needs a display and the GTK themes installed, hence check_consumers.sh rather
+Needs a display and the GTK theme installed, hence check_consumers.sh rather
 than the sandboxed theme_test.sh. Exits 77 when it cannot run at all, which
 that script reports as a skip -- a check that cannot see its subject must say
 so rather than pass.
 """
+import configparser
 import re
 import sys
-import tomllib
 from collections import Counter
 from pathlib import Path
 
@@ -63,18 +69,26 @@ EXEMPT_IDS = {"workspaces"}
 SKIP_EXIT = 77
 
 
+# Compiled into libgtk-3 as resources, so no directory on disk names them.
+BUILTIN_THEMES = {"Adwaita", "HighContrast", "HighContrastInverse"}
+
+
 def theme_names(repo):
-    """Every gtk_theme_name in palettes.toml, palette name -> theme name."""
-    with open(repo / "palettes.toml", "rb") as fh:
-        table = tomllib.load(fh)
-    return {name: p["gtk_theme_name"] for name, p in table.items()
-            if isinstance(p, dict) and "gtk_theme_name" in p}
+    """The GTK theme the tracked settings.ini names, as {label: theme name}.
+
+    A dict rather than a string so a second theme -- should the desktop ever
+    carry per-palette ones again -- is one more entry, not a rewrite.
+    """
+    ini = configparser.ConfigParser(interpolation=None)
+    ini.read(repo / "gtk/.config/gtk-3.0/settings.ini")
+    name = ini.get("Settings", "gtk-theme-name", fallback=None)
+    return {"settings.ini": name} if name else {}
 
 
 def theme_installed(name):
-    return any((Path(d).expanduser() / name).is_dir()
-               for d in ("~/.themes", "~/.local/share/themes",
-                         "/usr/share/themes"))
+    return name in BUILTIN_THEMES or any(
+        (Path(d).expanduser() / name).is_dir()
+        for d in ("~/.themes", "~/.local/share/themes", "/usr/share/themes"))
 
 
 def uncommented(style_css):
@@ -188,8 +202,14 @@ def main(repo, style_path, config_path):
               file=sys.stderr)
         return SKIP_EXIT
 
+    themes = theme_names(repo)
+    if not themes:
+        print(f"no gtk-theme-name in {repo}/gtk/.config/gtk-3.0/settings.ini "
+              f"— this check can no longer see which theme to render under",
+              file=sys.stderr)
+        return SKIP_EXIT
     bad, checked = [], 0
-    for palette, theme in sorted(theme_names(repo).items()):
+    for palette, theme in sorted(themes.items()):
         if not theme_installed(theme):
             print(f"{palette}: GTK theme {theme!r} is not installed — the "
                   f"render below would silently be Adwaita's", file=sys.stderr)
@@ -208,8 +228,8 @@ def main(repo, style_path, config_path):
                         f"style.css")
     for line in bad:
         print(line, file=sys.stderr)
-    print(f"{checked} module/class renders across "
-          f"{len(theme_names(repo))} GTK themes")
+    print(f"{checked} module/class renders under "
+          f"{', '.join(sorted(themes.values()))}")
     return 1 if bad else 0
 
 

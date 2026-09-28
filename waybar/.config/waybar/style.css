@@ -104,21 +104,23 @@
  * file had only ever given a *colour* to.
  *
  * It stayed invisible for as long as the palette it was written under did.
- * Colloid, gruvbox's GTK theme, only ever scopes the class (`infobar.warning`,
+ * Colloid, gruvbox's GTK theme, only ever scoped the class (`infobar.warning`,
  * `entry.warning`), so nothing leaked; the first switch to nord lit it up. The
- * lesson is the general one — a module inherits from whatever GTK theme the
- * palette happens to name, and that theme is not ours.
+ * lesson is the general one — a module inherits from whatever GTK theme is
+ * installed, and that theme is not ours. The desktop now runs plain Adwaita
+ * for both palettes, which scopes the class too; that is today's theme being
+ * polite, not a reason to delete this rule.
  *
  * So the paint is declared rather than inherited: a module is text on the
  * bar's own background until a rule below says otherwise (`#mode` does, and
  * wins by coming later at equal specificity). `border` and `box-shadow` are
- * here because Nordic's infobar rules supply those too.
+ * here because Nordic's infobar rules supplied those too.
  *
  * Not `#waybar *`, which would catch this and more: `#workspaces button` takes
- * a background from the GTK theme under *both* palettes and always has, so
- * flattening it is a look change rather than a fix. tests/check_waybar_paint.py
- * holds this line for every GTK theme palettes.toml names — including the
- * classes waybar does not emit today. */
+ * a background from the GTK theme and always has, so flattening it is a look
+ * change rather than a fix. tests/check_waybar_paint.py holds this line under
+ * the GTK theme gtk-3.0/settings.ini names — including the classes waybar
+ * does not emit today. */
 #custom-launcher,
 #mode,
 #window,

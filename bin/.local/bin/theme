@@ -4,7 +4,6 @@
     theme              re-apply the current palette
     theme <name>       switch to <name>
     theme --list       list the palettes
-    theme --no-icons   skip papirus-folders (it needs sudo; use in scripts)
 
 Every colour in the desktop comes from palettes.toml. Each `*.tmpl` in the repo
 is rendered against the chosen palette and written beside itself with `.tmpl`
@@ -171,8 +170,8 @@ def reload_desktop(home):
     Returns False if sway's config is invalid, so the caller can still exit
     non-zero — but only after every OTHER consumer has had its reload.
 
-    Nothing in here aborts, deliberately. By the time this runs, all nineteen
-    files and the state file are already written, so giving up early cannot
+    Nothing in here aborts, deliberately. By the time this runs, every
+    rendered file and the state file are already written, so giving up early cannot
     undo the switch; it only skips the consumers further down. An invalid sway
     config used to die() on the spot, which left mako and every open kitty
     window on the OLD palette for a reason that had nothing to do with either
@@ -222,29 +221,12 @@ def reload_kitty():
         print("  kitty                                 reloaded (SIGUSR1)")
 
 
-def reload_icons(values):
-    """papirus-folders writes into /usr/share/icons — the one step needing root."""
-    wanted = values.get("papirus_folder")
-    if not wanted or not shutil.which("papirus-folders"):
-        return
-    listing = subprocess.run(["papirus-folders", "-l"], capture_output=True, text=True)
-    for line in listing.stdout.splitlines():
-        if line.strip().startswith(">") and line.split()[-1] == wanted:
-            return                            # already this colour
-    if not sys.stdin.isatty():
-        print("  papirus-folders needs sudo; skipped (not a terminal)")
-        return
-    subprocess.run(["sudo", "papirus-folders", "-C", wanted, "--theme", "Papirus-Dark"])
-
-
 def main(argv):
     root = repo_root()
     data = load_palettes(root)
-    want_icons, name = True, None
+    name = None
     for arg in argv:
-        if arg == "--no-icons":
-            want_icons = False
-        elif arg == "--list":
+        if arg == "--list":
             print("\n".join(sorted(data)))
             return 0
         elif arg.startswith("-"):
@@ -264,11 +246,9 @@ def main(argv):
 
     apply_theme(root, name, data)
     sway_valid = reload_desktop(Path(os.path.expanduser("~")))
-    if want_icons:
-        reload_icons(bindings(data[name], name))
     if not sway_valid:
         # Same exit code the die() inside reload_desktop() used to give, but
-        # raised here — after mako, kitty and the icons have had their turn —
+        # raised here — after mako and kitty have had their turn —
         # and saying which half of the switch landed, because "not reloading"
         # on its own reads as "nothing happened", and nothing is what did not
         # happen.

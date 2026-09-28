@@ -134,13 +134,14 @@ fi
 # --- waybar paint ---
 # Surviving startup is not the same as looking right. waybar's state classes are
 # bare GTK style classes, so `warning` collides with GtkInfoBar's stock one --
-# which the Nordic theme styles unscoped, painting an orange infobar fill behind
-# any module in a warning state. waybar started perfectly happily either way.
+# which the Nordic theme once styled unscoped, painting an orange infobar fill
+# behind any module in a warning state. waybar started perfectly happily either way.
 #
-# check_waybar_paint.py renders each module offscreen under every GTK theme
-# palettes.toml names, so it answers for the palette that is NOT switched on
-# too; that is the whole point, since this bug shipped green under gruvbox and
-# only appeared on the switch to nord months later.
+# check_waybar_paint.py renders each module offscreen under the GTK theme
+# gtk-3.0/settings.ini names. When each palette had its own GTK theme it
+# rendered under both, which was the whole point then: this bug shipped green
+# under gruvbox and only appeared on the switch to nord months later. Both
+# palettes now share plain Adwaita (§2.2), so there is one theme to ask.
 #
 # Only python3 is guarded here, and nothing else is. Every other block in this
 # file goes silent when its tool is absent, which is right for them -- no foot
@@ -391,31 +392,33 @@ if have nvim; then
     esac
 fi
 
-# --- GTK ---
-# No binary validates gtk.css, but an undefined @name renders as black with no
-# error, so the one thing worth asserting is that every @name is defined.
-#
-# Both files are called gtk.css, so the label carries the parent directory too:
-# `${css##*/}` alone printed "gtk.css" twice and a failure did not say which of
-# the two was broken.
-for css in "$HOME/.config/gtk-3.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css"; do
-    [ -f "$css" ] || continue
-    dir=${css%/*}
-    label=${dir##*/}/${css##*/}
-    if python3 - "$css" <<'PY'
+# --- waybar @colours ---
+# No binary validates GTK CSS, and an undefined @name renders as black with no
+# error (§9.10), so the one thing worth asserting is that every @name is
+# defined. waybar is the GTK CSS consumer left since the desktop's own gtk.css
+# overrides went with the move to plain Adwaita (§2.2): style.css names the
+# roles, colors.gen.css defines them, so the two are read as one sheet.
+# Comments are stripped first -- style.css documents itself in prose, and an
+# `@name` in a sentence is not a use.
+if [ -f "$HOME/.config/waybar/style.css" ]; then
+    if python3 - "$HOME/.config/waybar" <<'PY'
 import re, sys
-text = open(sys.argv[1]).read()
-defined = set(re.findall(r'@define-color\s+([\w-]+)', text))
-used = set(re.findall(r'@(?!define-color|import)([\w-]+)', text))
+from pathlib import Path
+d = Path(sys.argv[1])
+text = "".join((d / f).read_text() for f in ("colors.gen.css", "style.css")
+               if (d / f).is_file())
+text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+defined = set(re.findall(r"@define-color\s+([\w-]+)", text))
+used = set(re.findall(r"@(?!define-color|import|keyframes|media)([\w-]+)", text))
 missing = sorted(used - defined)
 if missing:
     print("undefined:", ", ".join(missing), file=sys.stderr)
-sys.exit(1 if missing else 0)
+sys.exit(1 if missing or not used else 0)
 PY
-    then ok "every @colour in $label is defined"
-    else no "every @colour in $label is defined"
+    then ok "every @colour in waybar's style.css is defined"
+    else no "every @colour in waybar's style.css is defined"
     fi
-done
+fi
 
 printf '\n%s  %d consumer checks%s\n\n' \
     "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))" \

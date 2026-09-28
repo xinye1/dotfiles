@@ -13,10 +13,12 @@ triggers, not the full story: read the named section before working in its area.
   with `[ -L ~/.config/<pkg> ]`, never `ls | grep` — the grep passes exactly when things are fine
   (§5.2, which also has each package's fold decision). Never fold a dir a tool writes into;
   `setup.sh` pre-creates the must-stay-unfolded targets on a fresh machine.
-- **nwg-look clobbers the `gtk` package** — it rewrites `settings.ini`, `.gtkrc-2.0`, xsettingsd
-  and replaces the libadwaita `gtk-4.0/gtk.css`. After ever opening it: `git status`, then
-  `stow -R gtk`. It is never needed at runtime — `settings.ini` is the source of truth and
-  `import-gsettings` pushes it on every reload (§9.1, §2.2).
+- **nwg-look clobbers the `gtk` package** — it rewrites the two `settings.ini` files and recreates
+  `.gtkrc-2.0`, xsettingsd and a `gtk-4.0/gtk.css` symlink this repo no longer carries. After ever
+  opening it: `git status`, delete what it created, `stow -R gtk`. It is never needed — the GTK
+  look is static Adwaita dark for both palettes, and `import-gsettings` pushes `settings.ini` on
+  every reload (§9.1, §2.2). There is no `Adwaita-dark` theme installed: naming it renders GTK3
+  *light*; dark comes from `Adwaita` plus `gtk-application-prefer-dark-theme=1`.
 - sway: `exec_always` starting a daemon needs `sh -c 'pkill -x <name>; exec <name>'` — the `pkill`
   or it leaks one process per reload, **and** the `sh -c` wrapper because an unquoted `;` on an
   exec line is split at startup (not at reload), so the daemon never starts at login while every
@@ -52,12 +54,12 @@ triggers, not the full story: read the named section before working in its area.
   was written under, unreadable in the other. Tooltips sit on the **GTK theme's** background, not
   `bg`, so measure against that (§3.1, §9.28).
 - **A waybar state class is a bare GTK class** — `warning` collides with GtkInfoBar's stock one,
-  which Nordic styles unscoped, so any module in that state paints an orange block. `style.css`
-  declares `background`/`border`/`box-shadow` on every module for this reason; never delete that
-  rule as "redundant". It renders correct under a GTK theme that scopes the class (gruvbox's
-  Colloid does) and breaks on the switch, so verify by rendering, not by reading —
-  `tests/check_waybar_paint.py`, via `check_consumers.sh`, does it under *both* palettes' GTK
-  themes (§9.27).
+  which the old Nordic theme styled unscoped, so any module in that state painted an orange block.
+  `style.css` declares `background`/`border`/`box-shadow` on every module for this reason; never
+  delete that rule as "redundant" — today's Adwaita scopes the class, which is exactly how the bug
+  hid under gruvbox's Colloid for months. Verify by rendering, not by reading —
+  `tests/check_waybar_paint.py`, via `check_consumers.sh`, renders under the theme
+  `gtk-3.0/settings.ini` names (§9.27).
 - **herdr** runs every Claude pane, and this session is probably inside one: a bare `herdr …`
   reaches the LIVE server through the inherited `HERDR_SOCKET_PATH`. Tests use their own
   `XDG_CONFIG_HOME`/`XDG_STATE_HOME`/short `HERDR_SOCKET_PATH` under `/tmp`, `HERDR_*` unset, and
@@ -188,7 +190,5 @@ startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you to
 - **`theme` must run before `stow` on a fresh clone** (`setup.sh` encodes the order) and after
   adding a themed file to an unfolded package (§3.3). Applying is idempotent; re-running repairs
   a deleted or edited artefact.
-- `theme` skips papirus-folders when stdin is not a tty (it needs `sudo`); `--no-icons` forces the
-  skip. Icon tint therefore only changes on an interactive run.
 - No binaries. The two wallpapers live in `~/Pictures/wallpapers`, and the lock screen's ~320 MB of
   them in `~/Pictures/walls/<palette>/`, not here.

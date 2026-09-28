@@ -31,10 +31,6 @@ warning = "#ebcb8b"
 success = "#a3be8c"
 desktop = "#272b33"
 
-# Not colours, but per-palette all the same.
-gtk_theme_name = "Nordic"
-papirus_folder = "nordic"
-
 # The 16-colour terminal ramp, shared by kitty and foot. Previously
 # duplicated across both, with a comment asking that they be kept in step
 # by hand; now they render from here.
@@ -75,10 +71,6 @@ critical = "#fb4934"
 warning = "#fe8019"
 success = "#b8bb26"
 desktop = "#1d2021"
-
-# Not colours, but per-palette all the same.
-gtk_theme_name = "Colloid-Yellow-Dark-Gruvbox"
-papirus_folder = "yellow"
 
 # The 16-colour terminal ramp, shared by kitty and foot. Previously
 # duplicated across both, with a comment asking that they be kept in step

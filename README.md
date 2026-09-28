@@ -8,7 +8,7 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
 sudo pacman -S --needed $(cat packages.txt)   # the desktop and every tool a config here invokes
-yay -S --needed $(cat packages-aur.txt)       # google-chrome, nordic-theme, papirus-folders
+yay -S --needed $(cat packages-aur.txt)       # google-chrome
 ./setup.sh gruvbox                  # or nord
 sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
 walls-sync                          # optional: the lock screen's wallpapers (~320 MB)
@@ -21,8 +21,8 @@ and stow would fold them — pulling every later plugin clone and installed bina
 dry run, so existing configs stop it *before* anything is linked — and the sandboxed tests.
 Re-running it is always safe; it manages nothing.
 
-Full desktop, including the steps `setup.sh` cannot do — system packages, GTK themes, vim plugin
-clones, the papirus tint: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
+Full desktop, including the steps `setup.sh` cannot do — system packages, vim plugin clones, the
+default browser: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
 
 ## The intention
 
@@ -41,24 +41,26 @@ themed by hand.
 bare `*.gen`, which is what mako's `colors.gen` is, because mako's `include=` names the file with
 no suffix at all — is a build artefact. Editing one is pointless: the next switch overwrites it.
 That is what lets `.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to
-be, and what makes "did switching dirty the tree?" a question with a permanent answer of no. Seven
-files cannot carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded
-name and take no include; those are listed one by one in `.gitignore`, next to the reason.
+be, and what makes "did switching dirty the tree?" a question with a permanent answer of no. One
+file cannot carry the marker, because yazi reads its theme at a hardcoded name and takes no include;
+it is listed in `.gitignore`, next to the reason.
 
 **Nothing is clever that could be obvious.** Stow does the linking; `setup.sh` only sequences the
 documented steps and would change nothing if you typed them from PLAYBOOK §8 instead. `theme`
 renders and reloads; it does not manage state beyond one word in
 `$XDG_STATE_HOME/theme/palette`. The one genuinely
-surprising rule — seven files that cannot carry the `.gen` marker — is written down in
-`.gitignore` next to the entries themselves, because a rule you have to remember is a rule that
-will be broken.
+surprising rule — a file that cannot carry the `.gen` marker — is written down in `.gitignore` next
+to the entry itself, because a rule you have to remember is a rule that will be broken.
 
 What this costs, stated plainly, because a reader deserves it up front:
 
 - You cannot theme one application differently from the rest without adding a role.
-- A palette switch is a render, not a symlink flip, so it writes 19 files rather than relinking 19.
+- GTK apps are not palette-tinted at all: they run plain Adwaita dark under both palettes, the
+  trade taken on 2026-09-28 for six fewer templates, two fewer theme installs and a switch that
+  never needs `sudo` (PLAYBOOK §2.2).
+- A palette switch is a render, not a symlink flip, so it rewrites every rendered file rather than relinking them.
 - `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
-  adding a themed file to `gtk`, `vim` or `yazi` — the unfolded packages that carry
+  adding a themed file to `vim` or `yazi` — the unfolded packages that carry
   templates. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
@@ -83,7 +85,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
 | `sway` | `~/.config/sway/` — `config`, `config.d/`, `scripts/` |
 | `kanshi` | `~/.config/kanshi/config` |
-| `gtk` | `~/.config/gtk-3.0/`, `gtk-4.0/`, `xsettingsd/`, `~/.gtkrc-2.0`, `~/.icons/` |
+| `gtk` | `~/.config/gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, `~/.icons/` — static, plain Adwaita dark |
 | `mako` | `~/.config/mako/config` |
 | `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
 | `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |

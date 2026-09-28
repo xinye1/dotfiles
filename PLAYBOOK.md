@@ -65,7 +65,15 @@ greetd
 
 ### 2.2 How GTK theming actually reaches applications
 
-There are five parallel mechanisms, and they do not agree with each other by default:
+**The GTK look is plain Adwaita in its dark variant, for both palettes** — Omarchy's choice, adopted
+on 2026-09-28. GTK apps are neutral grey rather than tinted to the palette; in exchange, nothing in
+this section changes on a switch, so the files below are tracked as they are rather than rendered.
+Until then each palette named its own GTK theme (Nordic, Colloid-Gruvbox), `gtk.css` overrides
+re-coloured libadwaita, and papirus-folders tinted the folder icons per palette — six templates, two
+out-of-repo theme installs and the one step of a switch that needed `sudo`, all for window chrome.
+Adwaita is compiled into GTK, so there is nothing to install.
+
+There are four parallel mechanisms, and they do not agree with each other by default:
 
 ```
 ~/.config/gtk-3.0/settings.ini ──┬──> GTK3 apps read this file directly
@@ -79,29 +87,20 @@ There are five parallel mechanisms, and they do not agree with each other by def
                                           ├─ font-name
                                           └─ color-scheme   ← added by us
 
-~/.gtkrc-2.0                    ────>  GTK2 apps (legacy; lxappearance-era)
 ~/.config/gtk-4.0/settings.ini  ────>  GTK4 apps
-~/.config/gtk-4.0/gtk.css       ────>  libadwaita apps  ← the one that matters
-~/.config/xsettingsd/           ────>  XSettings protocol, for XWayland clients
-                                       ← CONFIGURED BUT NOT INSTALLED (below)
+gsettings color-scheme          ────>  libadwaita apps  ← the one that matters
 ```
 
-**Four of those five are live; the xsettingsd one is not.** `xsettingsd` is not installed on this
-machine — there is no binary, nothing starts one, and nothing reads
-`~/.config/xsettingsd/xsettingsd.conf`. `theme` renders it with every switch and the result is
-inert. It is kept because it costs one template, and because the alternative is finding out at
-install time that the one mechanism carrying GTK settings to XWayland clients was never themed;
-`pacman -S xsettingsd` plus something to start it is what makes the arrow above real. Until then
-XWayland clients fall back to what `gtk-3.0/settings.ini` and Xft give them. Note this is *not* the
-same as the nwg-look `export-xsettingsd` toggle in §9.1 — that one writes the file, and would
-clobber the template's output whether or not the daemon exists.
+`~/.gtkrc-2.0` and `~/.config/xsettingsd/` are no longer carried. gtk2 is not installed and
+`xsettingsd` never was, so both files were rendered on every switch for readers that did not exist;
+XWayland clients fall back to what `gtk-3.0/settings.ini` and Xft give them.
 
-**The critical thing to understand:** *libadwaita apps ignore `gtk-theme-name` completely.*
-Installing the Nordic GTK theme does nothing for them. They read named colours
-(`@window_bg_color`, `@accent_bg_color`, …) and decide light vs dark from the gsettings
-`color-scheme` key. That is why this repo carries a hand-written
-`gtk/.config/gtk-4.0/gtk.css` redefining those colours, and why `import-gsettings` was extended
-to set `color-scheme`.
+**The critical thing to understand:** *libadwaita apps ignore `gtk-theme-name` completely.* They
+decide light vs dark from the gsettings `color-scheme` key alone, which is why `import-gsettings`
+was extended to set it. There is also no `Adwaita-dark` theme to name — that directory comes from
+`gnome-themes-extra`, which is not installed, and GTK3 given the name renders *light*. Dark GTK3
+comes from `gtk-theme-name=Adwaita` plus `gtk-application-prefer-dark-theme=1`, which is what
+`settings.ini` says.
 
 ### 2.3 Where the palette lives
 
@@ -126,13 +125,11 @@ That is what makes switching a re-render rather than a reconfiguration.
 **Rendered files are build artefacts.** They match `*.gen.*` — or a bare `*.gen`, which is what
 mako's `colors.gen` is, since its `include=` names the file with no suffix; `.gitignore` carries
 both globs for that reason. Git ignores them, and editing one is pointless because the next switch
-overwrites it. Seven files are the exception and cannot carry the
-marker, because the application reads them at a hardcoded path and takes no include: GTK and
-xsettingsd account for six — `gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`,
-`xsettingsd/xsettingsd.conf` and `.gtkrc-2.0` — and yazi's `theme.toml` for the seventh.
-Those seven are listed individually in `.gitignore`. That list is structural — it can only change if
-an application with a hardcoded config filename joins the desktop, which is exactly what happened
-when yazi arrived on 2026-08-16.
+overwrites it. One file is the exception and cannot carry the marker, because yazi reads its
+`theme.toml` at a hardcoded path and takes no include; it is listed individually in `.gitignore`.
+That list is structural — it can only change if an application with a hardcoded config filename
+joins the desktop, which is exactly what happened when yazi arrived on 2026-08-16. It was seven
+entries until the six GTK files stopped being rendered (§2.2).
 
 (The pre-render scheme this replaced is described in
 `docs/archive/2026-08-17-stock-deviations.md`.)
@@ -170,7 +167,7 @@ isolation.
 | `dim` | secondary *text* that still has to be read: tooltip subtitles, reset countdowns, chart labels, footers (§9.28) |
 | `fg` | body text everywhere |
 | `fg_bright` | focused window title, active text |
-| **`accent`** | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
+| **`accent`** | sway focused border, waybar focused workspace, fuzzel border |
 | `accent2` | focused-inactive border, calendar weekdays, waybar mode |
 | `indicator` | sway split indicator — where the next window will open |
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
@@ -192,9 +189,6 @@ added for text, give it a measured floor in this table or it will drift the same
 is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
 hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
 
-Two per-palette values are not colours and still have to be chosen per palette: `gtk_theme_name`
-and `papirus_folder`. They live in the same table.
-
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
 role colours; the other eight are not, and are shared by kitty and foot. They used to be
 duplicated across the terminals with a comment asking that they be kept in step by hand.
@@ -213,23 +207,11 @@ scheme with a `#242933` background and warm yellow/green accents. **Nord** is `#
 blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml` and
 `nord_light.toml` — three of those are wrong for this setup.
 
-**Two exceptions where "Nordic" is nonetheless correct**, and both will look like mistakes later:
-
-- The **GTK theme** is genuinely named `Nordic` (AUR `nordic-theme`). It implements Nord. There is
-  no GTK theme called "Nord".
-- **papirus-folders** calls its Nord folder colour `nordic`, and rejects `nord` outright with
-  *"Unable to find 'nord' color"*. The icons really are Nord — `folder-nordic.svg` is drawn in
-  `#5E81AC` (nord10), `#81A1C1` (nord9) and `#ECEFF4` (nord6). Use `-C nordic`.
-
-**The parallel gruvbox trap: papirus-folders has no gruvbox colour at all.** `papirus-folders -l`
-lists 25 names and gruvbox is not among them, so `papirus_folder = "yellow"` in `palettes.toml` is a
-*stand-in*, chosen because gruvbox's signature accent is its yellow. It is the one place in the
-setup where the Gruvbox theme is approximated rather than matched. Do not "fix" it by inventing a
-hex — papirus-folders only accepts names from its own list.
-
-**The GTK themes are asymmetric too.** Nord's is `Nordic` in `/usr/share/themes` from the AUR;
-Gruvbox's is `Colloid-Yellow-Dark-Gruvbox` in **`~/.themes`**, installed by hand (§4.2, §8). Both
-names are `gtk_theme_name` in `palettes.toml`, so nothing else needs to know where they live — but `ls /usr/share/themes` will not find the gruvbox one, and that is not a fault.
+Until 2026-09-28 "Nordic" was nonetheless correct in two places: the Nord **GTK theme** is named
+`Nordic` (AUR `nordic-theme`), and **papirus-folders** calls its Nord folder colour `nordic`. Both
+retired with the move to plain Adwaita (§2.2), so no name in the live setup is spelled that way
+any more — but `/usr/share/themes/Nordic` stays on disk until `nordic-theme` is uninstalled, and
+§9.27 is the story of what that theme did to waybar.
 
 ### 3.3 Switching
 
@@ -237,7 +219,6 @@ names are `gtk_theme_name` in `palettes.toml`, so nothing else needs to know whe
 theme              # re-render the current palette
 theme nord         # switch
 theme --list       # what is available
-theme --no-icons   # skip papirus-folders, which needs sudo
 ```
 
 `theme` renders every template, records the palette in `$XDG_STATE_HOME/theme/palette`,
@@ -249,8 +230,8 @@ then reloads: `sway --validate` before `swaymsg reload` (which also restarts way
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
-and the unfolded packages that carry templates (`gtk`, `vim`, `yazi` — `bin` and `claude`
-are also unfolded but carry none) link file-by-file — a file created
+and the unfolded packages that carry templates (`vim`, `yazi` — `bin`, `claude`, `gtk` and
+`herdr` are also unfolded but carry none) link file-by-file — a file created
 after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
 §5.2.
 
@@ -273,8 +254,8 @@ same package as the unrelated KDE `plasma-welcome`. `setup.sh` warns about anyth
 list that is not installed. The files also carry the tools the configs here invoke that the
 tables below assume (vim, neovim, starship, htop, and yazi's
 `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The tables say *why* each package is here
-and what breaks without it; the two `Source: source` entries (the Colloid GTK theme, the vim
-colorschemes) cannot live in either file and are §8's job.
+and what breaks without it; the one `Source: source` entry (the vim colorschemes) cannot live in
+either file and is §8's job.
 
 ### 4.1 Required — the setup is broken without these
 
@@ -305,10 +286,7 @@ colorschemes) cannot live in either file and are §8's job.
 
 | Package | Source | Why |
 |---|---|---|
-| `nordic-theme` | **AUR** | The GTK2/3/4 Nord theme. `/usr/share/themes/Nordic`. Nothing in the base install provides a Nord GTK theme. |
-| `Colloid-Yellow-Dark-Gruvbox` | **source** | The GTK theme for the Gruvbox palette, in `~/.themes`. Not a package — see §8 for the two-line install |
-| `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
-| `papirus-folders` | **AUR** | Recolours Papirus folder icons. `theme` drives it per palette (`nordic` / `yellow`), and it is the one step needing `sudo` |
+| `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK. Untinted since 2026-09-28 — `papirus-folders` drove a per-palette folder colour and was the one step of a switch that needed `sudo` (§2.2) |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
@@ -316,11 +294,6 @@ colorschemes) cannot live in either file and are §8's job.
 | `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
 | `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
 | `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
-
-**Why the gruvbox GTK theme is not the AUR package.** `gruvbox-gtk-theme-git` depends on
-`gtk-engine-murrine`, which on a current Arch pulls in a **from-source `gtk2` build** — and gtk2 is
-not installed here, nor wanted for one theme. `vinceliuice/Colloid-gtk-theme` has a gruvbox tweak
-that produces the same result, installs into `~/.themes` without root, and needs no engine.
 
 ### 4.3 Deliberately not used
 
@@ -588,12 +561,6 @@ rotted.
 do.
 
 ```sh
-# Tint the Papirus folder icons (writes into /usr/share/icons, so root).
-# `theme` re-runs this on an INTERACTIVE switch when the colour differs -- it skips
-# papirus-folders when stdin is not a tty, because it needs sudo. This is just
-# the first one. nordic for Nord, yellow for Gruvbox — see §3.2.
-sudo papirus-folders -C nordic -t Papirus-Dark
-
 # Default web browser: http, https and text/html to Chrome. This is xdg state,
 # not config — it lands in ~/.config/mimeapps.list, which xdg-settings and every
 # "make me your default?" prompt rewrite in place. Stowing that file would make
@@ -607,12 +574,6 @@ sudo papirus-folders -C nordic -t Papirus-Dark
 # `google-chrome-stable` ($mod+o, $BROWSER) and the X11 class is `Google-chrome`
 # (application_defaults). Three spellings, all required, none interchangeable.
 env -u BROWSER xdg-settings set default-web-browser google-chrome.desktop
-
-# The Gruvbox GTK theme. Not a package: see §4.2 for why not the AUR one.
-# NEVER add -l/--libadwaita — it overwrites ~/.config/gtk-4.0/gtk.css, which is
-# precisely the nwg-look failure mode of §9.1.
-git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
-cd /tmp/colloid && ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
 
 # vim: status bar, and one colorscheme per palette
 git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
@@ -653,14 +614,17 @@ appears on `PATH`.
 `export-settings-ini`, `export-gtkrc-20`, `export-index-theme`, `export-xsettingsd`,
 `export-gtk4-symlinks`.
 
-**Opening nwg-look and clicking Apply rewrites every GTK file this repo tracks.** If it writes in
-place, the write flows harmlessly through the stow symlink into the repo and shows up as a git diff.
-If it unlinks and recreates, **the stow symlinks are silently destroyed** and the repo quietly stops
-being the source of truth. `export-gtk4-symlinks` in particular replaces `~/.config/gtk-4.0/gtk.css`
-with a symlink into `/usr/share/themes/` — destroying the libadwaita overrides from §2.2.
+**Opening nwg-look and clicking Apply rewrites every GTK file this repo tracks** — the two
+`settings.ini` files and `.icons/default/index.theme`. If it writes in place, the write flows
+harmlessly through the stow symlink into the repo and shows up as a git diff. If it unlinks and
+recreates, **the stow symlinks are silently destroyed** and the repo quietly stops being the source
+of truth. It also writes files this repo no longer carries — `~/.gtkrc-2.0`, `xsettingsd.conf`, and
+with `export-gtk4-symlinks` a `~/.config/gtk-4.0/gtk.css` symlink into `/usr/share/themes/` that
+libadwaita apps would then load. Delete what it created.
 
-nwg-look is not needed at runtime: `settings.ini` is the source of truth and
-`scripts/import-gsettings` pushes it to gsettings on every reload. **After ever opening nwg-look:**
+nwg-look is not needed at runtime, and since the move to a static Adwaita look (§2.2) it has
+nothing left to do: `settings.ini` is the source of truth and `scripts/import-gsettings` pushes it
+to gsettings on every reload. **After ever opening nwg-look:**
 
 ```sh
 ls -la ~/.config/gtk-3.0/ ~/.config/gtk-4.0/ ~/.gtkrc-2.0
@@ -796,7 +760,7 @@ measured 12 px on all sides).
 
 GTK3 apps read `settings.ini` at startup. A long-running app keeps its old theme indefinitely — a
 Thunar started before the retheme was still rendering light a day later, while a freshly launched
-GTK3 app picked up Nordic correctly. Diagnose by launching a *different* GTK3 app that was not
+GTK3 app picked up the new theme correctly. Diagnose by launching a *different* GTK3 app that was not
 already running; if the new one looks right, nothing is broken:
 
 ```sh
@@ -815,6 +779,10 @@ GTK CSS resolves `@name` at parse time. If the name is not defined, **the rule t
 nothing is logged — no warning on stderr, no fallback to the previous value, no visual hint that a
 name is involved. A widget simply turns black, which reads as a rendering bug rather than a missing
 definition. On a `#2E3440` bar a black region is easy to miss entirely.
+
+GTK CSS is waybar's stylesheet now — the desktop's own `gtk.css` overrides went with the move
+to plain Adwaita (§2.2) — so waybar is where this bites, and `tests/check_consumers.sh` asserts that
+every `@name` in waybar's `style.css` is defined by `colors.gen.css`.
 
 The way to produce it is to add a role to one palette and forget the other. `theme` refuses to
 render when the two sections of `palettes.toml` do not define exactly the same keys:
@@ -1299,7 +1267,8 @@ latter only starts the wrapper now and has no timeout values of its own.
 waybar puts a module's state into a bare CSS class — `warning`, `critical`, `muted`,
 `disconnected`. Those go straight onto the GTK widget, into the same flat namespace GTK's own
 stock classes live in. **`warning` is one of GTK's own.** It is part of GtkInfoBar's set —
-`.info`, `.warning`, `.question`, `.error` — and the Nordic theme styles that set *unscoped*:
+`.info`, `.warning`, `.question`, `.error` — and the Nordic theme, nord's GTK theme until
+2026-09-28, styles that set *unscoped*:
 
 ```css
 /* /usr/share/themes/Nordic/gtk-3.0/gtk-dark.css */
@@ -1334,9 +1303,13 @@ would still get an orange pill; workspaces here are numbered.
 **Verification is a render, not a grep.** Reading `style.css` back for the missing
 `background-color` only re-checks the fix. `tests/check_waybar_paint.py` builds each module
 offscreen — a widget of that name inside a `#waybar` parent — bare and then once per class, under
-**every** GTK theme `palettes.toml` names, and fails on any class that changes the painted
-background. Testing the theme that is *not* switched on is the entire point: this bug was green
-under gruvbox for as long as gruvbox was on. It tests the whole stock set rather than the classes
+the GTK theme the tracked `gtk-3.0/settings.ini` names, and fails on any class that changes the
+painted background. While each palette had its own GTK theme it rendered under **both**, and
+testing the theme that was *not* switched on was the entire point: this bug was green under gruvbox
+for as long as gruvbox was on. Since 2026-09-28 both palettes share plain Adwaita (§2.2), which
+scopes the infobar classes — measured: with the declared paint deleted from `style.css`, the check
+still passes under Adwaita, and with an unscoped `.warning` fill added back it fails on 15 modules.
+The rule stays; Adwaita's politeness today is not a promise about the next GTK release. It tests the whole stock set rather than the classes
 waybar emits today, because the next collision will be a name nobody thought to look up, and it
 turns `gtk-enable-animations` off so `#memory.critical`'s blink does not make the sample depend on
 when the frame was grabbed. It needs a display and the themes installed, so it lives in
@@ -1382,6 +1355,17 @@ tooltip at 93% alpha is 7% whatever is behind it, so a white window lightens the
 |---|---|---|
 | nord `#a0a8b6` on Nordic's tooltip | 5.77:1 | **4.63:1** |
 | gruvbox `#a89984` on Colloid's tooltip | 6.37:1 | **4.86:1** |
+
+**Re-measured for Adwaita** (2026-09-28, §2.2), whose GTK3 dark tooltip is `rgba(0, 0, 0, 0.8)` —
+read from libgtk's own `gtk-contained-dark.css`, not assumed. Both palettes still clear the floor,
+gruvbox with the least room anywhere in the table:
+
+| | over the palette's `bg` | over a white window |
+|---|---|---|
+| nord `#a0a8b6` on Adwaita's tooltip | 8.27:1 | **5.28:1** |
+| gruvbox `#a89984` on Adwaita's tooltip | 7.20:1 | **4.55:1** |
+
+`muted` fares worse, as it is allowed to: 1.71:1 (nord) and 2.60:1 (gruvbox) over white.
 
 The first nord value tried was the plain nord3↔nord4 midpoint, which measured a comfortable 5.01:1
 over dark and **3.92:1** over white — under the floor in exactly the case that is easy not to
@@ -1659,8 +1643,7 @@ stubbed test once sent a real notification.
 | `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
 | A waybar module has a coloured block behind it | Its state class collides with a GTK stock one the theme styles bare | `sh tests/check_consumers.sh` names the module and the class; §9.27 |
 | Tooltip text is there but barely visible | `muted` used where `dim` belongs — `muted` is chrome and may disappear | §3.1, §9.28; measure against the GTK tooltip background, not `bg` |
-| GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
-| GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
+| GTK3 apps render light | `gtk-theme-name` set to `Adwaita-dark`, which is not installed, or prefer-dark lost | §2.2; `gsettings get org.gnome.desktop.interface gtk-theme` → `'Adwaita'`, and `gtk-application-prefer-dark-theme=1` in `settings.ini` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |
 | GTK theme reverted | nwg-look was opened | §9.1 |
 | Boxes instead of icons | Nerd Font missing | `fc-match "JetBrainsMono Nerd Font"` |
@@ -1683,7 +1666,6 @@ stubbed test once sent a real notification.
 | A widget renders **black** | A GTK CSS `@name` used in a hand-written file but produced by no template, or a stale/deleted rendered file | Re-run `theme` (re-rendering repairs artefacts); if the name is not a role, add it to **both** palettes; §9.10 |
 | `theme: …tmpl: no such role '…'` | A template names a role `palettes.toml` does not define | Add the role to both palettes, or fix the typo in the template; §9.10 |
 | `theme: … define different keys` | The two palettes have drifted | §9.10. This is the guard, not a fault |
-| Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo`, so `theme` only runs it from a terminal | Re-run `theme` in a terminal, or `sudo papirus-folders -C <colour> --theme Papirus-Dark` |
 | Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path |
 | A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.gen.env` from a script instead |
 
@@ -1697,7 +1679,7 @@ fc-match "JetBrainsMono Nerd Font"            # not NotoSansMono
 swaymsg -t get_outputs                        # scale 2 on eDP-1
 gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 systemctl --user show-environment | grep XDG_CURRENT      # =sway
-readlink -f ~/.config/sway ~/.config/waybar ~/.gtkrc-2.0  # all inside the repo
+readlink -f ~/.config/sway ~/.config/waybar ~/.config/gtk-3.0/settings.ini  # all inside the repo
 
 theme                                                     # re-renders; prints "N files rendered … [name]"
 cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
