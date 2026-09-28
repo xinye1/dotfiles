@@ -87,7 +87,6 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `gtk` | `~/.config/gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, `~/.icons/` — static, plain Adwaita dark |
 | `mako` | `~/.config/mako/config` |
 | `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
-| `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |
 
 **The lock screen has no row of its own.** It is swaylock, which is configured entirely by the
 flags in `sway/.config/sway/scripts/lock.sh` — a file in the `sway` package, not a package of its

@@ -165,7 +165,7 @@ def run_ok(cmd):
 
 
 def reload_desktop(home):
-    """sway reload also restarts waybar, re-runs import-gsettings and nwg-drawer.
+    """sway reload also restarts waybar and re-runs import-gsettings.
 
     Returns False if sway's config is invalid, so the caller can still exit
     non-zero — but only after every OTHER consumer has had its reload.
@@ -184,7 +184,7 @@ def reload_desktop(home):
             sway_valid = False
             print("  sway  NOT reloaded: its config is invalid")
         elif run_ok(["swaymsg", "reload"]):
-            print("  sway, waybar, nwg-drawer, gsettings  reloaded")
+            print("  sway, waybar, gsettings             reloaded")
         else:
             print("  swaymsg reload FAILED; the rendered files are in place "
                   "but the desktop still shows the old palette")
@@ -250,8 +250,8 @@ def main(argv):
         # and saying which half of the switch landed, because "not reloading"
         # on its own reads as "nothing happened", and nothing is what did not
         # happen.
-        die(f"sway's config is invalid, so sway was NOT reloaded — nor waybar, "
-            f"nwg-drawer or gsettings, which its reload restarts.\n"
+        die(f"sway's config is invalid, so sway was NOT reloaded — nor waybar "
+            f"or gsettings, which its reload restarts.\n"
             f"       Everything else IS on [{name}]: the files are rendered, "
             f"the palette is remembered, mako and kitty were reloaded above.\n"
             f"       Fix it (sway --validate -c ~/.config/sway/config), then "

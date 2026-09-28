@@ -26,9 +26,10 @@ Built on and tested against:
 
 The Sway Community Edition matters. It ships an opinionated `~/.config/sway/config.d/` split, a
 `scripts/` directory, and a set of chosen applications (foot, fuzzel, mako, nwg-drawer, gtklock,
-azote, swappy, cliphist). Two of those have since been replaced here: kitty is the terminal
-instead of foot, which was kept as a themed fallback and then retired on 2026-09-28 (§9.11), and
-swaylock is the lock screen instead of gtklock (§4.3).
+azote, swappy, cliphist). Three of those have since changed here: kitty is the terminal instead of
+foot, which was kept as a themed fallback and then retired on 2026-09-28 (§9.11); swaylock is the
+lock screen instead of gtklock (§4.3); and fuzzel is the only launcher, nwg-drawer having been
+dropped the same day (§4.1).
 This playbook is written as a **diff against that**, not against
 upstream sway's bare default config. On vanilla Arch + sway you would be starting from
 `/etc/sway/config`, and the "what stock does" column below would not apply.
@@ -55,7 +56,7 @@ greetd
        │         └─ theme                 colours, fonts, gaps, background, bar
        └─ children spawned by exec/exec_always:
             waybar, mako, kanshi, swayidle, autotiling,
-            nm-applet, cliphist watchers, polkit agent, nwg-drawer
+            nm-applet, cliphist watchers, polkit agent
 ```
 
 **Alphabetical order is load-bearing.** `application_defaults` is read before `default`, and
@@ -224,7 +225,7 @@ theme --list       # what is available
 
 `theme` renders every template, records the palette in `$XDG_STATE_HOME/theme/palette`,
 then reloads: `sway --validate` before `swaymsg reload` (which also restarts waybar, re-runs
-`import-gsettings` and re-execs nwg-drawer), then `makoctl reload` separately, because mako is
+`import-gsettings`), then `makoctl reload` separately, because mako is
 `exec`'d rather than `exec_always`'d and a sway reload does not restart it.
 
 **Switching is not a repo change.** The state file lives outside the repo and every rendered file is gitignored, so a switch
@@ -264,10 +265,9 @@ either file and is §8's job.
 | `sway` `swaybg` `swayidle` | repo | Compositor, background, idle daemon | — |
 | `waybar` | repo | The bar | No bar |
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
-| `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
+| `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
 | `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
-| `nwg-drawer` | repo | App grid (`$mod+Shift+d`), also the waybar launcher button | |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
@@ -359,7 +359,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 
 | Package | Folded? | Reason |
 |---|---|---|
-| `sway` `mako` `fuzzel` `nwg-drawer` `kanshi` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `sway` `mako` `fuzzel` `kanshi` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
 | `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so nothing writes into `~/.config/kitty`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
@@ -671,21 +671,13 @@ stow -R gtk
 Also: `exec export FOO=bar` does nothing. sway runs the command in a subshell that exits
 immediately, taking the variable with it. Use `systemctl --user set-environment`.
 
-**One `exec_always` line here lacks the `pkill` prefix:**
-
-```
-exec_always nwg-drawer -r -c 7 -is 90 …      # single instance in practice
-```
-
-`nwg-drawer -r` is resident mode and stays at one process across reloads (`pgrep -xc nwg-drawer`
-→ `1` after 15 hours and many reloads).
-
-**There is no terminal daemon here any more.** This section used to carry a second exempt line,
-`exec_always --no-startup-id foot --server`, safe for a stronger reason than nwg-drawer's — it
-*cannot* double-start, the second instance failing to bind
-`$XDG_RUNTIME_DIR/foot-wayland-1.sock` and exiting on the spot. That line is gone with the switch
-to `$term kitty`, which starts one process per window and has no daemon to prewarm. Kept here
-because the reasoning is the reusable part — **"this daemon cannot
+**No daemon-starting `exec_always` line here lacks the `pkill` prefix any more.** There used to be
+two exemptions. `exec_always nwg-drawer -r …` relied on resident mode staying at one process across
+reloads — observed (`pgrep -xc nwg-drawer` → `1` after 15 hours), never guaranteed — and went with
+nwg-drawer on 2026-09-28. `exec_always --no-startup-id foot --server` was safe for a stronger
+reason: it *cannot* double-start, the second instance failing to bind
+`$XDG_RUNTIME_DIR/foot-wayland-1.sock` and exiting on the spot; it went with the switch to
+`$term kitty`. Kept here because the reasoning is the reusable part — **"this daemon cannot
 double-start" is a valid exemption from the `pkill` rule, and "it seems to stay at one process" is
 not.** Only the second needs re-checking after every change.
 
@@ -1680,15 +1672,15 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
 
 ```sh
-for p in sway waybar kitty mako fuzzel nwg-drawer htop; do
+for p in sway waybar kitty mako fuzzel htop; do
     printf '%-12s ' "$p"
     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
 done
 ```
 
-Seven lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+Six lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
 see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
 
-Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar
+Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, the waybar
 clock tooltip (and *scroll* on it — §9.14), `$mod+f1`, thunar, a GTK4 app, `$mod+Return`, `Print`,
 `vim`, `ls`.

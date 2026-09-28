@@ -16,7 +16,6 @@ mako
 neovim
 network-manager-applet
 networkmanager
-nwg-drawer
 pamixer
 papirus-icon-theme
 pavucontrol

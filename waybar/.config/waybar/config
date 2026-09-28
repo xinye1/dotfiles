@@ -26,7 +26,7 @@
 
     "custom/launcher": {
         "format":"<span size='x-large'></span>",
-        "on-click": "exec nwg-drawer",
+        "on-click": "fuzzel",
         "tooltip": false
     },
 
