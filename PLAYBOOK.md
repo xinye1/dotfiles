@@ -248,11 +248,11 @@ every switch, and open windows recolour without being restarted (§9.11).
 
 The install lists a new machine actually consumes are `packages.txt` (official repos) and
 `packages-aur.txt` (AUR) at the repo root — `sudo pacman -S --needed $(cat packages.txt)`, then
-`yay -S --needed $(cat packages-aur.txt)`. One entry needs a repo beyond Arch's own
-`core`/`extra`/`multilib`: `welcome` comes from `endeavouros`, enabled by default on this distro
-(§1) — EndeavourOS's own new-user greeter, resolved by a plain `pacman -S`, not AUR, and not the
-same package as the unrelated KDE `plasma-welcome`. `setup.sh` warns about anything from either
-list that is not installed. The files also carry the tools the configs here invoke that the
+`yay -S --needed $(cat packages-aur.txt)`. Every entry resolves from Arch's own
+`core`/`extra`/`multilib` or the AUR — the one that needed EndeavourOS's repo, its `welcome`
+greeter, was dropped on 2026-09-28 along with `firewall-applet`, a ~40 MB tray icon for a firewalld
+that runs without it (`systemctl is-active firewalld`). `setup.sh` warns about anything from either list
+that is not installed. The files also carry the tools the configs here invoke that the
 tables below assume (vim, neovim, starship, htop, and yazi's
 `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The tables say *why* each package is here
 and what breaks without it. vim is installed but no longer configured here: the `vim` package

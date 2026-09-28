@@ -2,7 +2,6 @@ autotiling
 brightnessctl
 cliphist
 fd
-firewall-applet
 fuzzel
 fzf
 git
@@ -37,7 +36,6 @@ tmux
 ttf-jetbrains-mono-nerd
 vim
 waybar
-welcome
 wl-clipboard
 yad
 yazi

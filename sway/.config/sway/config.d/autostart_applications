@@ -88,8 +88,6 @@ exec wl-paste --type image --watch cliphist store
 # Network Applet
 exec nm-applet --indicator
 
-# Firewall Applet
-exec sleep 2 && firewall-applet
-
-# Welcome App
-exec eos-welcome --startdelay=3
+# No firewall-applet (a ~40 MB tray icon; firewalld runs without it — check it
+# with `systemctl is-active firewalld`) and no eos-welcome greeter: both dropped
+# on 2026-09-28 (PLAYBOOK §4).
