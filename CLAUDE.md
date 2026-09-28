@@ -74,10 +74,10 @@ triggers, not the full story: read the named section before working in its area.
   only — the token charts keep their history): it lives in `$XDG_STATE_HOME/claude-usage/`, so
   deleting the cache cannot undo it.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
-  that does not happen. Its wallpapers are pre-synced by `walls-sync` into
-  `~/Pictures/walls/<palette>/` — palette name *is* the directory name — and every failure falls
-  back to the solid colour with the screen still locking. The bare `exec swaylock "$@"` colour
-  fail-safe stays flagless (§9.25).
+  that does not happen. It locks over the solid `$desktop` colour (the wallpaper cache and
+  `walls-sync` retired); if an image ever returns it must already be on disk, and every failure
+  must fall back to the solid colour with the screen still locking. The bare `exec swaylock "$@"`
+  colour fail-safe stays flagless (§9.25).
 - tmux formats: wrap **every** dynamic value in `#{qh:…}` (trim runs before escape, the only safe
   order), and a hand-written `status-format[0]` needs `#[list=on]`/`#[nolist]` or every `align=`
   is ignored (§9.19, §9.20).
@@ -189,5 +189,4 @@ startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you to
 - **`theme` must run before `stow` on a fresh clone** (`setup.sh` encodes the order) and after
   adding a themed file to an unfolded package (§3.3). Applying is idempotent; re-running repairs
   a deleted or edited artefact.
-- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, and the lock screen's ~320 MB of
-  them in `~/Pictures/walls/<palette>/`, not here.
+- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, not here.

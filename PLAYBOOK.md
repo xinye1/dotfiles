@@ -175,7 +175,7 @@ isolation.
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
-| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen when no wallpaper is cached (§9.25) |
+| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen (§9.25) |
 
 **`muted` and `dim` are not shades of one idea, and the split is the whole point.** `muted` says
 "this is chrome" — a border, a rule, a weekday header — and is allowed to be almost invisible.
@@ -267,19 +267,13 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
 | `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the solid `$desktop` colour the desktop itself shows (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
 | `pamixer` `brightnessctl` `playerctl` | repo | Media/brightness keys | Function keys dead |
 | `polkit-gnome` | repo | Auth prompts for GUI privilege escalation | GUI admin actions fail silently |
 | `stow` | repo | Deploys this repo | |
-
-**Optional — the setup is not broken without these; each has its own fallback.**
-
-| Resource | Source | Why | Symptom if missing |
-|---|---|---|---|
-| `~/Pictures/walls/` | **`walls-sync`** | The lock screen's wallpapers, one directory per palette, populated by `bin/.local/bin/walls-sync` from [dharmx/walls](https://github.com/dharmx/walls). Optional, ~320 MB, and a cache in the strict sense — deleting it loses nothing but time (§9.25) | Lock screen falls back to the solid `$desktop` colour. Nothing else changes; it still locks |
 
 ### 4.2 Added by this setup
 
@@ -308,17 +302,16 @@ for the bug that prompted it.
 
 What the switch costs, plainly, because the replacement is genuinely smaller: **no clock, no power
 buttons, and no user avatar on the lock screen.** gtklock is a GTK app with a window full of
-widgets; plain swaylock draws one password ring over a wallpaper (§9.25) or a solid `$desktop`
-field, and nothing else. The power buttons are the only real loss, and they are not lost —
+widgets; plain swaylock draws one password ring over a solid `$desktop` field (§9.25), and
+nothing else. The power buttons are the only real loss, and they are not lost —
 `$mod+Shift+e` reaches the same suspend/reboot/shutdown actions through `power_menu.sh`, from an
 unlocked session. The clock is on waybar. The avatar has no replacement and none is wanted.
 
-`swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined, and **that
-is still true now that the lock screen carries a wallpaper** — read the reason carefully, because
-the obvious paraphrase of it has since been overtaken. What was rejected is *an unofficial fork as
-a dependency*, and separately *a 22 MB image living in the repo*, which is what the gtklock
-wallpaper was. A background image as such was never the objection: `--image` is stock swaylock, it
-costs no package, and §9.25's images are in `~/Pictures`, not here. Configuration lives in
+`swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined. What was
+rejected is *an unofficial fork as a dependency*, and separately *a 22 MB image living in the
+repo*, which is what the gtklock wallpaper was. A background image as such was never the
+objection — `--image` is stock swaylock, and the lock screen carried palette-matched wallpapers
+from `~/Pictures` for a while (§9.25) before going back to the solid colour. Configuration lives in
 `sway/.config/sway/scripts/lock.sh` rather than `~/.config/swaylock/config`, because a static config
 file cannot follow a palette switch and a script sourcing `theme.gen.env` at lock time can (§9.13).
 
@@ -1128,73 +1121,28 @@ dispositions written up in `docs/specs/2026-08-22-claude-usage-widget-design.rev
 on this repo: work here lands in small PRs that are often merged the moment they go green, which is
 exactly the shape the app misses.
 
-### 9.25 The lock screen's wallpapers: pre-synced, never fetched at lock time
+### 9.25 The lock screen: a solid colour, and never the network
 
-`lock.sh` picks a random image from **`~/Pictures/walls/<active palette>/`** and passes it as
-`--image … --scaling fill`. The images come from [dharmx/walls](https://github.com/dharmx/walls)
-and are put there by **`walls-sync`** (`bin/.local/bin/walls-sync`), a command you run by hand.
+`lock.sh` locks over the solid **`$desktop`** colour — the same field the desktop itself shows
+(`output * bg $desktop solid_color` in `config.d/theme`), which is Omarchy's idea too: the lock
+screen is the desktop's own background, not a separate collection. **Until 2026-09-28 it picked a
+random palette-matched image from `~/Pictures/walls/<palette>/`**, a ~320 MB cache that
+`bin/.local/bin/walls-sync` (547 lines) mirrored from [dharmx/walls](https://github.com/dharmx/walls),
+with a resolution floor, a header parser and a fail-safe chain of its own. All of that retired for
+one lock-screen picture. `~/Pictures/walls` is safe to delete: nothing reads it any more.
 
-**Why they are not in this repo.** The no-binaries rule, the same one that keeps the two desktop
-wallpapers in `~/Pictures/wallpapers`. It is ~320 MB across both palettes — 75 MB for gruvbox, 245
-MB for nord, at the default resolution floor — and none of it is configuration. Nothing lands
-inside the tree, so no `.gitignore` entry was needed or added, which is the test of whether the
-rule was actually followed rather than worked around.
-
-**Why syncing is a separate manual command, and this is the whole design.** *The lock screen must
-never touch the network.* It is asked for when the idle timer fires, before suspend, and at
+**The rule that survives is the one the wallpaper work was built around: *the lock screen must
+never touch the network.*** It is asked for when the idle timer fires, before suspend, and at
 `$mod+f1` — on a train, on dead wifi, halfway through a resume — and a lock that waits on a socket
-is a lock that does not happen. So `lock.sh` only ever picks from what is already on disk. The same
-argument one step down is why `theme` does not do it either: switching runs often and has to stay
-instant and offline, while upstream changes about never. All of the network is confined to
-`walls-sync`, where a timeout is a line on the terminal you are watching.
+is a lock that does not happen. If an image ever comes back, it must be on disk before the lock is
+asked for, and every way of not finding it must end in the solid colour with the screen locked.
 
-**The palette name *is* the directory name**, upstream and locally — `gruvbox` and `nord` are
-folders in dharmx/walls and keys in `palettes.toml`, and that coincidence is load-bearing at both
-ends: `walls-sync` asks `palettes.toml` what to sync, and `lock.sh` spells the active palette
-straight into the path. **Rename a palette and you must rename the directory with it**, or the lock
-screen silently drops back to a solid colour with nothing to say about it. `walls-sync` is the half
-that fails loudly — a palette upstream has no folder for is an error on a command you are watching.
-
-**The fail-safe chain.** Every one of these ends with the screen still locking, on the solid
-`$desktop` colour: no palette recorded (fresh machine, `theme` never run); a palette name that is
-not a plain word — it is a path component, so `../../etc` in the state file is *refused*, not
-sanitised; no such directory; a directory with no images in it; a pick that is not a readable
-regular file; a colon anywhere in the path, because swaylock reads `--image` as `[<output>:]<path>`
-and would take the leading part as a monitor name. The selection is `find -print0 | shuf -z -n1`
-read with `read -d ''`, so a filename with spaces — upstream's are whole sentences — survives as
-one argv item. Only image extensions are eligible, which is also what stops a `.part` file left by
-an interrupted `walls-sync` (a truncated image by definition) from ever being the pick.
-
-**The pre-existing colour fail-safe stays bare, deliberately.** When a role fails to parse,
-`lock.sh` still does `exec swaylock "$@"` with *no flags at all* — no `--image` either. That path
-runs when the machine's own configuration is broken, so it must be the dumbest, most
-obviously-valid invocation available: every flag it does not carry is a flag that cannot be the
-reason it failed. The wallpaper is chosen *after* that loop so the ordering says so too.
-
-**Verified, not assumed:** swaylock 1.8.6 logs `Failed to load background image` and **carries on
-to lock** rather than exiting, so even a corrupt image is cosmetic. Checked by running the real
-binary with `XDG_RUNTIME_DIR` pointed at an empty directory and `WAYLAND_DISPLAY` at a socket that
-does not exist — it cannot lock anything from there, and the image is parsed before the compositor
-is contacted, which makes the two failures distinguishable in the log. `lock.sh` checks the file
-anyway: that guarantee belongs here, not in whatever swaylock does next release.
-
-**Why there is a resolution floor.** Over half of upstream is smaller than this panel's 3840x2160,
-and the worst of it is unusable — nord ships a 435x492 and a 794x1024, gruvbox a 1017x572 — which
-`--scaling fill` blows up to fill the screen. A random picker served one of those about half the
-time. `walls-sync` therefore enforces a minimum, default **1920x1080** (at most a 2x upscale here),
-overridable with `--min WxH`. It is enforced at **sync** time, never at lock time: `lock.sh` must
-not be reading image headers on every lock. Raising it later is just a re-run — `walls-sync --min
-2560x1440` re-fetches nothing it already has and prunes what no longer qualifies, printing every
-removal with the dimensions that condemned it. The cache is a mirror the command owns and every
-file in it is one request away, which is what makes converging it that way safe.
-
-Dimensions are read from the file's own header (PNG, JPEG and WebP, in `walls-sync`, stdlib only —
-no Pillow, no ImageMagick), and **a header that will not parse keeps the file**: a parser must
-never be the reason an image is deleted. The parser sniffs the magic rather than trusting the
-extension, and that is not fastidiousness — `gruvbox/a_close_up_of_a_circuit_board.png` is a
-lossless WebP, and it is 1017x572, i.e. the single worst image in that folder was one an
-extension-trusting check would have kept. All 194 files were cross-checked against `identify` while
-this was written: 194 agreements, 0 disagreements.
+**The colour fail-safe stays bare, deliberately.** When a role fails to parse — no `theme.gen.env`
+on a fresh clone, or a half-written one — `lock.sh` does `exec swaylock "$@"` with *no flags at
+all*. That path runs when the machine's own configuration is broken, so it must be the dumbest,
+most obviously-valid invocation available: every flag it does not carry is a flag that cannot be
+the reason it failed. Measured on swaylock 1.8.6, a malformed `--color` is swallowed and it locks
+anyway; the guard does not rest on that leniency.
 
 ### 9.26 Idle policy depends on AC vs battery, and lives in `idle.sh`
 
@@ -1616,9 +1564,6 @@ stubbed test once sent a real notification.
 | Screen never locks | swayidle not running, or many are | `pgrep -xc idle.sh` and `pgrep -xc swayidle` — both must be exactly `1` |
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
 | Machine suspends when plugged in, or never suspends on battery | `idle.sh` hasn't noticed a power-source change yet (15s poll), or `AC/online` is unreadable | Wait 15s; `cat /sys/class/power_supply/AC/online`; §9.26 |
-| Lock screen is a solid colour, no wallpaper | Cache never populated, or a palette was renamed without renaming its directory | `ls ~/Pictures/walls/"$(cat "${XDG_STATE_HOME:-$HOME/.local/state}"/theme/palette)"`, then `walls-sync`; §9.25 |
-| Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
-| `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
 | A waybar module has a coloured block behind it | Its state class collides with a GTK stock one the theme styles bare | `sh tests/check_consumers.sh` names the module and the class; §9.27 |
 | Tooltip text is there but barely visible | `muted` used where `dim` belongs — `muted` is chrome and may disappear | §3.1, §9.28; measure against the GTK tooltip background, not `bg` |
 | GTK3 apps render light | `gtk-theme-name` set to `Adwaita-dark`, which is not installed, or prefer-dark lost | §2.2; `gsettings get org.gnome.desktop.interface gtk-theme` → `'Adwaita'`, and `gtk-application-prefer-dark-theme=1` in `settings.ini` |
