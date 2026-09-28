@@ -508,25 +508,26 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 
 ## 7. Keybindings
 
-Not listed here. A static table duplicating `sway/.config/sway/keyboard.conf` (457 lines) is a
-table that drifts, and this desktop already answers the question two better ways:
+Not listed here. A static table is a table that drifts. The bindings live in
+`sway/.config/sway/config.d/default` (plus the lid switches in `config.d/input`), commented, and
+that file is the source. (`sway/.config/sway/keyboard.conf` is not bindings: it is a reference list
+of xkb layouts and variants from stock EndeavourOS, and nothing reads it.)
 
-- `sway/.config/sway/keyboard.conf` holds most of them, commented.
-- `sway/.config/sway/config.d/default` holds the rest — the two files together are the source.
+**Clicking the waybar clock** runs `waybar/.config/waybar/scripts/keyhint.py`, which lists every
+binding in fuzzel — key on the left, command on the right, a mode's bindings labelled with the
+mode. It is **built from the config at click time**, the way Omarchy builds its cheat sheet from
+`hyprctl binds`, so it cannot drift. sway has no IPC call that lists bindings (`swaymsg -t
+get_config` returns only the top-level file, not what it includes), so the script reads the files
+sway reads: it follows `include` (with `~`/`$HOME` expanded, globs in sorted order), substitutes
+`set $var` values, and understands `bindsym`/`bindcode` blocks with flags and `mode "…" { }`.
+`keyhint.py --print` writes the list to stdout.
 
-**`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`. Be
-aware of what that is: a *hardcoded* `cheat=()` array, inherited from stock EndeavourOS. It reads
-no config, so it can and does drift from the two files above. It is a convenience, not a source.
-
-Two things bite when adding to it, both silent:
-
-- The array is a **flat list of cells in a 5-column grid** (left Function, left Binding, spacer,
-  right Function, right Binding). Append fewer than five and every following row shifts a column —
-  a section header lands in the Binding column and nothing errors. Count with
-  `len(cells) % 5 == 0` before trusting it.
-- **`--geometry` does not grow with the array.** yad clips the overflow with no scrollbar and no
-  warning: the NOTIFICATIONS section was invisible at `1200x680` until the height went to `860`.
-  Screenshot the window after adding rows; do not assume it rendered.
+`tests/keyhint_test.py` (run by `theme_test.sh`) covers each of those shapes, and asserts that the
+number of rows equals the number of bind lines in the repo's sway package — so a binding written in
+a shape the parser cannot follow fails the suite rather than silently vanishing from the list.
+The list replaced `keyhint.sh`, a hardcoded yad grid inherited from stock EndeavourOS: a flat
+5-column cell array that read no config, drifted from the real bindings, shifted every later row
+when a cell was missed, and clipped overflow without a scrollbar. Retiring it also retired `yad`.
 
 The notification bindings are `$mod+Shift+n` (do-not-disturb toggle), `$mod+Ctrl+n` (restore the
 last notification from history) and `$mod+Ctrl+Shift+n` (dismiss all). They are plain `makoctl`
@@ -688,8 +689,8 @@ fc-match "JetBrainsMono Nerd Font"    # before installing: falls back to NotoSan
 Two distinct traps:
 - **`JetBrainsMono-Regular` is a file-style name**, not a fontconfig family. fuzzel had this. It
   matched by luck. The family is `JetBrains Mono`, with a space.
-- **`JetBrains Mono` ≠ `JetBrainsMono Nerd Font`.** The unpatched family has no icon glyphs. waybar,
-  `power_menu.sh` and `keyhint.sh` are full of Nerd Font icons; without the patched font they render
+- **`JetBrains Mono` ≠ `JetBrainsMono Nerd Font`.** The unpatched family has no icon glyphs. waybar
+  and `power_menu.sh` are full of Nerd Font icons; without the patched font they render
   via a fontconfig fallback to `Symbols Nerd Font`. That *works*, which is exactly why it went
   unnoticed — but it is a fallback, not a configuration.
 

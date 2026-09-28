@@ -215,6 +215,10 @@ python3 "$REPO/tests/claude_usage_test.py" >/dev/null
 # backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.
 python3 "$REPO/tests/herdr_test.py" 2>/dev/null
 
+# The keybinding cheat sheet reads sway's config files itself (PLAYBOOK §7);
+# this also asserts it lists every bind line in the repo's sway package.
+python3 "$REPO/tests/keyhint_test.py" 2>/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar

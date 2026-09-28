@@ -94,9 +94,10 @@ triggers, not the full story: read the named section before working in its area.
   `tests/theme_test.sh` is still `sh` and the rule applies there.
 - Moving a config block wholesale silently loses whatever stays behind, and every check in this
   repo is syntactic. Diff the old block against the new one key by key before deleting (§9.14).
-- `keyhint.sh` is a flat cell list in a 5-column yad grid: a cell count that isn't a multiple of 5
-  shifts every later row, and `--geometry` clips overflow with no scrollbar. Both look like
-  nothing happened (§7).
+- The keybinding list (waybar clock click, `keyhint.py`) is **parsed from the sway config at click
+  time** — sway has no IPC that lists bindings. A binding in a shape the parser does not follow
+  would silently drop off the list, so `tests/keyhint_test.py` asserts row count = bind lines in
+  the repo's sway package; extend the parser, not the count (§7).
 
 ## Verify
 
@@ -118,6 +119,7 @@ sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
+python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
