@@ -7,8 +7,8 @@
 # This script manages nothing. It is the README quickstart made executable:
 # the same mkdir/theme/stow commands, in the one order that works, stopping at
 # the first failure instead of leaving a half-linked $HOME. Re-running it is
-# always safe. What it cannot do — system packages, vim plugin clones, the
-# default browser — stays manual: PLAYBOOK.md §4 and §8.
+# always safe. What it cannot do — system packages, the default browser —
+# stays manual: PLAYBOOK.md §4 and §8.
 
 set -eu
 
@@ -51,15 +51,14 @@ fi
 # Stow folds any target directory that does not exist yet — it links the whole
 # directory into the repo. For these targets that would be a trap sprung later:
 # each one accumulates untracked content (installed binaries in ~/.local/bin,
-# plugin clones in ~/.vim, Claude Code state in ~/.claude, nwg-look output in
-# gtk-{3,4}.0, `ya pkg` installs in ~/.config/yazi), and folded,
-# all of it lands inside the repo. On a fresh $HOME none of these directories
+# Claude Code state in ~/.claude, nwg-look output in gtk-{3,4}.0, `ya pkg`
+# installs in ~/.config/yazi), and folded, all of it lands inside the repo. On a fresh $HOME none of these directories
 # exist, so create them before stow sees them. mkdir -p is a no-op when they
 # already do.
 #
 # ~/.config/herdr is herdr's runtime directory as much as its config: the live
 # API socket, logs, session.json and the plugin registry all land there.
-for dir in "$HOME/.local/bin" "$HOME/.vim" "$HOME/.claude" "$HOME/.icons" \
+for dir in "$HOME/.local/bin" "$HOME/.claude" "$HOME/.icons" \
            "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" \
            "$HOME/.config/yazi" "$HOME/.config/herdr"; do
     if [ -L "$dir" ]; then
@@ -134,7 +133,6 @@ sh tests/theme_test.sh
 cat <<'EOF'
 setup: done. Still manual, and needed once per machine (PLAYBOOK §4, §8):
 setup:   - system packages           §4.1/§4.2 (pacman + AUR)
-setup:   - vim plugins               three git clones (§8)
 setup:   - default web browser       env -u BROWSER xdg-settings set … (§8)
 setup:   - herdr                     its installer, then re-run this (§9.30)
 setup:   - herdr session backups     systemctl --user enable --now herdr-session-backup.timer

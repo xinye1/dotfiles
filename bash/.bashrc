@@ -12,9 +12,11 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # --- Environment ------------------------------------------------------------
 # EDITOR was previously set in the old i3 package's .profile, which went away
-# with the X11 setup; it has been unset since.
-export EDITOR="vim"
-export VISUAL="vim"
+# with the X11 setup. It was `vim` until 2026-09-28, when the vim package was
+# retired: nvim is the editor actually used, and the vim binary stays installed
+# unconfigured, for root and rescue shells.
+export EDITOR="nvim"
+export VISUAL="nvim"
 # The AUR google-chrome package ships /usr/bin/google-chrome-stable only — there is
 # no bare `google-chrome`, so the old i3/.profile value would not resolve today.
 export BROWSER="google-chrome-stable"
@@ -34,8 +36,7 @@ alias grep='grep --color=auto'
 # Carried over from the old zsh package (dropped in 3c3cfc0):
 alias mkd='mkdir -pv'
 alias pm='sudo pacman'
-alias vimrc='vim ~/.vimrc'
-alias bashrc='vim ~/.bashrc'   # was `zshrc` in the old .aliases
+alias bashrc='nvim ~/.bashrc'   # was `zshrc` in the old .aliases
 
 # --- yazi --------------------------------------------------------------------
 # `y` runs yazi and leaves the shell in whatever directory yazi ended up in.

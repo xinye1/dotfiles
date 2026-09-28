@@ -110,8 +110,8 @@ def bindings(palette, name):
     """Every key, plus:
 
     `<key>_hex`  the colour without its leading # — fuzzel wants that.
-    `palette`    the palette's own name — vim and nvim name their colourscheme
-                 rather than listing its colours.
+    `palette`    the palette's own name — nvim names its colourscheme rather
+                 than listing its colours.
     """
     flat = flatten(palette)
     out = dict(flat, palette=name)

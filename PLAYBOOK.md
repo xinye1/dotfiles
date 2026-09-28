@@ -232,8 +232,8 @@ then reloads: `sway --validate` before `swaymsg reload` (which also restarts way
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
-and the unfolded packages that carry templates (`vim`, `yazi` — `bin`, `claude`, `gtk` and
-`herdr` are also unfolded but carry none) link file-by-file — a file created
+and the one unfolded package that carries a template (`yazi` — `bin`, `claude`, `gtk` and
+`herdr` are also unfolded but carry none) links file-by-file — a file created
 after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
 §5.2.
 
@@ -255,8 +255,8 @@ same package as the unrelated KDE `plasma-welcome`. `setup.sh` warns about anyth
 list that is not installed. The files also carry the tools the configs here invoke that the
 tables below assume (vim, neovim, starship, htop, and yazi's
 `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The tables say *why* each package is here
-and what breaks without it; the one `Source: source` entry (the vim colorschemes) cannot live in
-either file and is §8's job.
+and what breaks without it. vim is installed but no longer configured here: the `vim` package
+retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and rescue shells.
 
 ### 4.1 Required — the setup is broken without these
 
@@ -290,7 +290,6 @@ either file and is §8's job.
 | `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
-| `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
 | `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
 | `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
 
@@ -362,11 +361,10 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `sway` `mako` `fuzzel` `kanshi` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
 | `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so nothing writes into `~/.config/kitty`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
-| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
+| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so there is no untracked content to keep out of the repo. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
-| `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future themed file — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `herdr` | **No** | `~/.config/herdr` is herdr's runtime directory as much as its config: the live API socket (`herdr.sock`), the client socket, logs, `session.json` (every workspace, pane and Claude conversation to restore), `plugins.json` and the `plugins/` state tree are all written there. Folding would put live sockets and session state in the repo. Unfolded, stow links `config.toml` as a file and `local-plugins/` as a folded subdirectory, which is safe because herdr never writes into it — its own plugin state goes to `plugins/`, which is why the source directory is *not* called that. **herdr rewrites `config.toml` in place** from its settings screen (`std::fs::write`, not `rename()`), so unlike htop (§9.16) the symlink survives and the edit lands in the repo: after touching herdr's settings, `git status`, then commit or revert. `setup.sh` pre-creates the directory. See §9.30. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
@@ -573,11 +571,6 @@ do.
 # `google-chrome-stable` ($mod+o, $BROWSER) and the X11 class is `Google-chrome`
 # (application_defaults). Three spellings, all required, none interchangeable.
 env -u BROWSER xdg-settings set default-web-browser google-chrome.desktop
-
-# vim: status bar, and one colorscheme per palette
-git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
-git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
-git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 
 # nvim: nothing to run. Its colourscheme is rendered from the §3.1 roles
 # (nvim/.config/nvim/colorscheme.gen.lua.tmpl), so there is no colorscheme
@@ -1683,4 +1676,4 @@ see §5.2 for why that one passes silently when things are fine and only speaks 
 
 Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, the waybar
 clock tooltip (and *scroll* on it — §9.14), `$mod+f1`, thunar, a GTK4 app, `$mod+Return`, `Print`,
-`vim`, `ls`.
+`nvim`, `ls`.

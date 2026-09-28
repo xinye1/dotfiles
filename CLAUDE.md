@@ -123,7 +123,7 @@ python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
 a fake `$HOME` and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live
 desktop. `check_consumers.sh` is the one that would have caught the breakages that reached the
-desktop: it asks waybar, kitty, sway, vim, nvim, tmux, yazi and herdr whether they accept what was
+desktop: it asks waybar, kitty, sway, mako, nvim, tmux, yazi and herdr whether they accept what was
 rendered, rather than inspecting files from outside; it briefly starts a second waybar, and it
 offscreen-renders every waybar module under **both** palettes' GTK themes (§9.27). A check there
 can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.

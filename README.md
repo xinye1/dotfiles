@@ -21,8 +21,7 @@ and stow would fold them — pulling every later plugin clone and installed bina
 dry run, so existing configs stop it *before* anything is linked — and the sandboxed tests.
 Re-running it is always safe; it manages nothing.
 
-Full desktop, including the steps `setup.sh` cannot do — system packages, vim plugin clones, the
-default browser: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
+Full desktop, including the steps `setup.sh` cannot do — system packages, the default browser: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
 
 ## The intention
 
@@ -60,8 +59,8 @@ What this costs, stated plainly, because a reader deserves it up front:
   never needs `sudo` (PLAYBOOK §2.2).
 - A palette switch is a render, not a symlink flip, so it rewrites every rendered file rather than relinking them.
 - `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
-  adding a themed file to `vim` or `yazi` — the unfolded packages that carry
-  templates. See PLAYBOOK §5.2.
+  adding a themed file to `yazi` — the one unfolded package that carries a
+  template. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
 ## Packages
@@ -71,7 +70,6 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | Package | Links to |
 |---|---|
 | `bash` | `~/.bashrc`, `~/.config/dircolors` |
-| `vim` | `~/.vimrc`, `~/.vim/colorscheme.gen.vim` |
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
 | `bin` | `~/.local/bin/theme` — the palette renderer; `walls-sync` — the lock screen's wallpaper cache; `herdr-session-backup` |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |

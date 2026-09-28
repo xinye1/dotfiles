@@ -361,19 +361,6 @@ else
     esac
 fi
 
-# --- vim ---
-# Note the limit of this one: vim accepts a stray `#` (it parses as `:number`),
-# so this catches real syntax errors but would NOT have caught the wrong-comment
-# banner. Only waybar's JSON check catches that class.
-if have vim && [ -f "$HOME/.vim/colorscheme.gen.vim" ]; then
-    out=$(vim -es -u NONE -c "source $HOME/.vim/colorscheme.gen.vim" -c q 2>&1 | head -5)
-    if [ -z "$out" ]; then
-        ok "vim sources its colourscheme"
-    else
-        no "vim sources its colourscheme" "$(printf '%s' "$out" | head -2)"
-    fi
-fi
-
 # --- neovim ---
 if have nvim; then
     out=$(timeout 20 nvim --headless -c q 2>&1 | head -5)
