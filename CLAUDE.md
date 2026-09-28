@@ -94,7 +94,7 @@ triggers, not the full story: read the named section before working in its area.
   `tests/theme_test.sh` is still `sh` and the rule applies there.
 - Moving a config block wholesale silently loses whatever stays behind, and every check in this
   repo is syntactic. Diff the old block against the new one key by key before deleting (§9.14).
-- The keybinding list (waybar clock click, `keyhint.py`) is **parsed from the sway config at click
+- The keybinding list (waybar keyboard-icon click, `keyhint.py`) is **parsed from the sway config at click
   time** — sway has no IPC that lists bindings. A binding in a shape the parser does not follow
   would silently drop off the list, so `tests/keyhint_test.py` asserts row count = bind lines in
   the repo's sway package; extend the parser, not the count (§7).

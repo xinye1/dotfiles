@@ -95,7 +95,7 @@ lock even then: a shell crash must not take the lock with it.
 | `chore(vim)` | `EDITOR`/`VISUAL` = nvim; vim binary kept, unconfigured | package, template, consumer check, §8 plugin clones |
 | `chore(sway)` | — | firewall-applet (~40 MB tray icon), eos-welcome autostart |
 | `feat(lock)` | Lock over the solid `$desktop` colour the desktop itself shows | `walls-sync` (547 lines), the ~320 MB wallpaper cache's reader |
-| `feat(waybar)` | Keybinding list parsed from the sway config at click time, shown in fuzzel; tested | `keyhint.sh`, yad |
+| `feat(waybar)` | Keybinding list parsed from the sway config at click time, shown in fuzzel from waybar's keyboard icon; tested | `keyhint.sh`, yad |
 
 The net result:
 - **Templates:** 19 → 10.
@@ -121,6 +121,17 @@ yay -Rns papirus-folders
 rm -rf ~/.themes/Colloid-Yellow-Dark-Gruvbox*     # the hand-installed gruvbox GTK theme
 rm -rf ~/Pictures/walls                           # ~320 MB lock-wallpaper cache, now unread
 rm -rf ~/.vim                                     # 14 MB of vim plugin clones, now unconfigured
+```
+
+**Another existing checkout** (none today; the live one was migrated in place). Deleting a template
+does not delete what it rendered, and the six GTK paths are no longer gitignored, so after `git
+pull` there, remove the leftovers and dangling links before re-stowing:
+
+```sh
+cd ~/repos/dotfiles
+rm -f gtk/.config/gtk-{3,4}.0/gtk.css gtk/.config/xsettingsd/xsettingsd.conf gtk/.gtkrc-2.0
+git clean -ndX foot nwg-drawer vim     # review, then -fdX: their rendered, ignored outputs
+stow -R gtk bin && find ~ ~/.config -maxdepth 3 -xtype l   # remove what points into the repo
 ```
 
 Optional and not decided: `pacman -Rns welcome` (EndeavourOS's greeter, no longer autostarted), and

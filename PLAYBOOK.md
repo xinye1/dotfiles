@@ -513,9 +513,10 @@ Not listed here. A static table is a table that drifts. The bindings live in
 that file is the source. (`sway/.config/sway/keyboard.conf` is not bindings: it is a reference list
 of xkb layouts and variants from stock EndeavourOS, and nothing reads it.)
 
-**Clicking the waybar clock** runs `waybar/.config/waybar/scripts/keyhint.py`, which lists every
-binding in fuzzel — key on the left, command on the right, a mode's bindings labelled with the
-mode. It is **built from the config at click time**, the way Omarchy builds its cheat sheet from
+**Clicking waybar's keyboard icon** (`custom/keyboard-layout`) runs
+`waybar/.config/waybar/scripts/keyhint.py`, which lists every binding in fuzzel — key on the left,
+command on the right, a mode's bindings labelled with the mode. (Earlier text here said the clock;
+it was always the keyboard icon.) It is **built from the config at click time**, the way Omarchy builds its cheat sheet from
 `hyprctl binds`, so it cannot drift. sway has no IPC call that lists bindings (`swaymsg -t
 get_config` returns only the top-level file, not what it includes), so the script reads the files
 sway reads: it follows `include` (with `~`/`$HOME` expanded, globs in sorted order), substitutes

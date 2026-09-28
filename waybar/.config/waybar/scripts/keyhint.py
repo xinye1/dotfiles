@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """keyhint — every sway key binding, read from the live config, shown in fuzzel.
 
-Clicking the waybar clock runs this. It replaced keyhint.sh, a hardcoded yad
-grid inherited from stock EndeavourOS: a flat cell list that read no config,
-so it drifted from the real bindings, and whose 5-column layout shifted every
-later row when a cell was missed (PLAYBOOK §7). Omarchy builds its cheat sheet
+Clicking waybar's keyboard icon (custom/keyboard-layout) runs this. It
+replaced keyhint.sh, a hardcoded yad grid inherited from stock EndeavourOS: a
+flat cell list that read no config, so it drifted from the real bindings, and
+whose 5-column layout shifted every later row when a cell was missed
+(PLAYBOOK §7). Omarchy builds its cheat sheet
 from the compositor's own bindings; sway has no IPC call that lists them
 (`get_config` returns only the top-level file, not what it includes), so this
 reads the files sway reads, the way sway reads them:
