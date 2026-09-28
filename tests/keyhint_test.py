@@ -81,6 +81,16 @@ class ParseTest(unittest.TestCase):
             os.environ["HOME"] = old
         self.assertEqual([r[1] for r in rows], ["Super+A", "Super+B", "Super+E"])
 
+    def test_flag_with_a_value(self):
+        rows = self.rows("bindsym --input-device=1:1:AT_keyboard --locked Mod4+x exec kitty\n")
+        self.assertEqual(rows, [("default", "Super+X", "kitty")])
+
+    def test_include_with_several_paths(self):
+        self.write("one", "bindsym Mod4+1 kill\n")
+        self.write("two words", "bindsym Mod4+2 kill\n")
+        rows = kh.bindings(self.write("config", 'include one "two words"\n'))
+        self.assertEqual([r[1] for r in rows], ["Super+1", "Super+2"])
+
     def test_continuation_lines(self):
         rows = self.rows("bindsym Mod4+c exec one \\\n    two\n")
         self.assertEqual(rows[0][2], "one two")

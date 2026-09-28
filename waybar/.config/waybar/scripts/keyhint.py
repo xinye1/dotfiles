@@ -10,9 +10,9 @@ from the compositor's own bindings; sway has no IPC call that lists them
 (`get_config` returns only the top-level file, not what it includes), so this
 reads the files sway reads, the way sway reads them:
 
-  * `include` lines are followed — `~` and environment variables expanded,
-    globs in sorted order (sway's own), relative paths against the including
-    file's directory;
+  * `include` lines are followed — every path on the line, `~` and
+    environment variables expanded, globs in sorted order (sway's own),
+    relative paths against the including file's directory;
   * `set $name value` defines a variable, substituted into keys and commands;
   * `bindsym`/`bindcode` come one per line or as a `bindsym [flags] { … }`
     block, and a `mode "name" { … }` block labels the bindings inside it;
@@ -24,6 +24,7 @@ Display only: choosing a row does nothing. The list is the answer.
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -34,7 +35,8 @@ MODIFIERS = {"mod4": "Super", "mod1": "Alt", "ctrl": "Ctrl", "control": "Ctrl",
 # bindcode's digit row: keycode 10 is `1` … 19 is `0` on every layout, which
 # is why the workspace bindings use bindcode at all.
 KEYCODES = {str(code): str((code - 9) % 10) for code in range(10, 20)}
-BIND = re.compile(r"^(bindsym|bindcode)((?:\s+--[\w-]+)*)\s*(.*)$")
+# Flags may carry a value: `--input-device=<device>`.
+BIND = re.compile(r"^(bindsym|bindcode)((?:\s+--[\w-]+(?:=\S+)?)*)\s*(.*)$")
 
 
 def logical_lines(path):
@@ -95,13 +97,15 @@ def bindings(config):
                     stack.pop()
                 continue
             if line.startswith("include "):
-                pattern = expand(line.split(None, 1)[1].strip().strip('"'), variables)
-                # sway runs include paths through wordexp(3): ~ and $HOME both.
-                pattern = os.path.expandvars(os.path.expanduser(pattern))
-                if not os.path.isabs(pattern):
-                    pattern = str(path.parent / pattern)
-                for name in sorted(glob.glob(pattern)):
-                    walk(Path(name), seen)
+                # sway runs the argument through wordexp(3) and loads every
+                # word it yields: ~ and $HOME expand, and one directive may
+                # name several paths or globs.
+                for word in shlex.split(expand(line.split(None, 1)[1], variables)):
+                    pattern = os.path.expandvars(os.path.expanduser(word))
+                    if not os.path.isabs(pattern):
+                        pattern = str(path.parent / pattern)
+                    for name in sorted(glob.glob(pattern)):
+                        walk(Path(name), seen)
                 continue
             if line.startswith("set $"):
                 _, name, *value = line.split(None, 2)
