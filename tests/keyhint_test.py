@@ -12,6 +12,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "waybar/.config/waybar/scripts/keyhint.py"
@@ -70,15 +71,12 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(rows, [("default", "Super+Q", "kill")])
 
     def test_includes_home_glob_and_relative(self):
-        old = os.environ.get("HOME")
-        os.environ["HOME"] = str(self.dir)
-        try:
+        # patch.dict restores HOME exactly, including when it was unset.
+        with mock.patch.dict(os.environ, {"HOME": str(self.dir)}):
             self.write("config.d/b", "bindsym Mod4+b splith\n")
             self.write("config.d/a", "bindsym Mod4+a focus parent\n")
             self.write("extra", "bindsym Mod4+e layout toggle split\n")
             rows = kh.bindings(self.write("config", "include $HOME/config.d/*\ninclude extra\n"))
-        finally:
-            os.environ["HOME"] = old
         self.assertEqual([r[1] for r in rows], ["Super+A", "Super+B", "Super+E"])
 
     def test_flag_with_a_value(self):
@@ -110,15 +108,11 @@ class RepoConfigTest(unittest.TestCase):
 
     def test_every_bind_line_in_the_repo_is_listed(self):
         sway = REPO / "sway/.config/sway"
-        old = os.environ.get("HOME")
         with tempfile.TemporaryDirectory() as home:
             (Path(home) / ".config").mkdir()
             (Path(home) / ".config/sway").symlink_to(sway)
-            os.environ["HOME"] = home
-            try:
+            with mock.patch.dict(os.environ, {"HOME": home}):
                 rows = kh.bindings(Path(home) / ".config/sway/config")
-            finally:
-                os.environ["HOME"] = old
         # Count what a reader of the files would count: single-line binds,
         # plus every non-comment, non-brace line inside a bind block.
         expected, inside = 0, False
