@@ -31,9 +31,9 @@ warning = "#ebcb8b"
 success = "#a3be8c"
 desktop = "#272b33"
 
-# The 16-colour terminal ramp, shared by kitty and foot. Previously
-# duplicated across both, with a comment asking that they be kept in step
-# by hand; now they render from here.
+# The 16-colour terminal ramp, kitty's. It was once duplicated across kitty
+# and foot, with a comment asking that they be kept in step by hand; it
+# rendered from here for both until foot was retired.
 [nord.ansi]
 bright_black = "#4c566a"
 bright_blue = "#81a1c1"
@@ -72,9 +72,7 @@ warning = "#fe8019"
 success = "#b8bb26"
 desktop = "#1d2021"
 
-# The 16-colour terminal ramp, shared by kitty and foot. Previously
-# duplicated across both, with a comment asking that they be kept in step
-# by hand; now they render from here.
+# The 16-colour terminal ramp, kitty's. See [nord.ansi].
 [gruvbox.ansi]
 bright_black = "#928374"
 bright_blue = "#83a598"

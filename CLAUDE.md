@@ -45,9 +45,8 @@ triggers, not the full story: read the named section before working in its area.
   exists for this (§9.10). tmux is the same shape: an undefined `@thm_foo` becomes an accepted
   empty `#[fg=]` and the bar quietly goes default (§9.18).
 - waybar's `include` gives precedence to the **including** file — a module must live in `config`
-  or the included file, never both (§9.12). foot's colours use `[colors-dark]` and foot has no
-  config-reload signal at all; kitty reloads on SIGUSR1, sent only via kitty's own reloader,
-  never `pkill` (§9.11).
+  or the included file, never both (§9.12). kitty — the one terminal carried —
+  reloads on SIGUSR1, sent only via kitty's own reloader, never `pkill` (§9.11).
 - **`muted` is chrome, `dim` is text.** `muted` may be almost invisible (borders, rules); anything
   meant to be *read* quietly takes `dim`, which carries a 4.5:1 floor in **both** palettes. `muted`
   measured 1.87:1 on the GTK tooltip under nord and 3.64:1 under gruvbox — legible in the palette it
@@ -124,7 +123,7 @@ python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
 a fake `$HOME` and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live
 desktop. `check_consumers.sh` is the one that would have caught the breakages that reached the
-desktop: it asks waybar, foot, sway, vim, nvim, tmux, yazi and herdr whether they accept what was
+desktop: it asks waybar, kitty, sway, vim, nvim, tmux, yazi and herdr whether they accept what was
 rendered, rather than inspecting files from outside; it briefly starts a second waybar, and it
 offscreen-renders every waybar module under **both** palettes' GTK themes (§9.27). A check there
 can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.

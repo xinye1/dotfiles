@@ -26,8 +26,9 @@ Built on and tested against:
 
 The Sway Community Edition matters. It ships an opinionated `~/.config/sway/config.d/` split, a
 `scripts/` directory, and a set of chosen applications (foot, fuzzel, mako, nwg-drawer, gtklock,
-azote, swappy, cliphist). Two of those have since been replaced here: kitty is the default terminal
-instead of foot (§9.11), and swaylock is the lock screen instead of gtklock (§4.3).
+azote, swappy, cliphist). Two of those have since been replaced here: kitty is the terminal
+instead of foot, which was kept as a themed fallback and then retired on 2026-09-28 (§9.11), and
+swaylock is the lock screen instead of gtklock (§4.3).
 This playbook is written as a **diff against that**, not against
 upstream sway's bare default config. On vanilla Arch + sway you would be starting from
 `/etc/sway/config`, and the "what stock does" column below would not apply.
@@ -190,8 +191,8 @@ is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its va
 hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
 
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
-role colours; the other eight are not, and are shared by kitty and foot. They used to be
-duplicated across the terminals with a comment asking that they be kept in step by hand.
+role colours; the other eight are not, and are kitty's. They used to be duplicated across two
+terminals with a comment asking that they be kept in step by hand, until foot was retired.
 
 **Both palettes must define exactly the same keys.** `theme` refuses to render otherwise. This
 matters more than it looks: an undefined `@name` in GTK CSS renders as **black, with no warning**,
@@ -237,9 +238,8 @@ after `stow` is silently absent until `stow -R`. The folded packages pick it up 
 
 Applying is idempotent: re-running repairs a deleted or edited artefact.
 
-**foot does not reload.** It has no config-reload signal at all; `SIGUSR1`/`SIGUSR2` only pick
-between the `[colors-dark]` and `[colors-light]` blocks loaded at startup. A switch needs a foot
-server restart or a logout.
+**kitty reloads in place.** `theme` sends it SIGUSR1 through kitty's own reloader at the end of
+every switch, and open windows recolour without being restarted (§9.11).
 
 ---
 
@@ -264,7 +264,6 @@ either file and is §8's job.
 | `sway` `swaybg` `swayidle` | repo | Compositor, background, idle daemon | — |
 | `waybar` | repo | The bar | No bar |
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
-| `foot` | repo | Standalone fallback, still themed. No longer `$term` and no server is started; run `foot`. Wayland-only, which is why it is not the default | Nothing — `foot` is optional now |
 | `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
 | `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
@@ -360,8 +359,8 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 
 | Package | Folded? | Reason |
 |---|---|---|
-| `sway` `mako` `fuzzel` `nwg-drawer` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
-| `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so it behaves like `foot`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
+| `sway` `mako` `fuzzel` `nwg-drawer` `kanshi` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so nothing writes into `~/.config/kitty`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
@@ -447,7 +446,7 @@ To fold one that isn't: `stow -D <pkg> && rmdir <the now-empty target dirs> && s
 **The theming work did not change a single row of this table, by design.** Each template and its
 rendered output live *inside* the package that owns them, so switching writes into the repo, never
 into `~/.config`. The alternative — a pair of per-palette stow packages — would have
-put a second package's files into `~/.config/waybar`, `~/.config/foot` and the rest, forcing stow to
+put a second package's files into `~/.config/waybar`, `~/.config/kitty` and the rest, forcing stow to
 unfold every one of them and costing all seven themed folded packages their "new files appear for
 free" property in exchange for nothing. See §3.3.
 
@@ -802,26 +801,25 @@ theme: waybar/.config/waybar/colors.gen.css.tmpl: no such role 'accnet' in this 
 Related: **a raw hex in an application config is now a bug**, not a style choice. It will survive a
 switch and sit there in the wrong palette. §2.3 lists where values are allowed to live.
 
-### 9.11 foot cannot be told to re-read its colours
+### 9.11 A terminal is recoloured by reload, never by restart
 
-foot has **no config-reload signal.** `SIGUSR1` and `SIGUSR2` look like one and are not: they toggle
-between the `[colors-dark]` and `[colors-light]` blocks *that were loaded at startup*. Sending them
-after editing the config does nothing new.
+**kitty's `SIGUSR1` is a genuine config-reload**: every running instance re-reads `kitty.conf` and
+its `include`, so a palette switch recolours open windows in place, without closing them and without
+touching what is running inside. `theme` sends it at the end of every switch, and this is the only
+signal it sends to a terminal. **Nothing in this repo restarts a terminal, ever** — the processes
+inside one are the user's, not the theme switcher's: an editor with unsaved work, a long build, a
+Claude Code session.
 
-**The answer is that foot does not get restarted.** An already-open foot keeps its old palette
-until you close and reopen it; a new one comes up correct. That is a deliberate limit, not a
-missing feature: restarting terminals to recolour them destroys the processes inside them, which
-are the user's and not the theme switcher's — an editor with unsaved work, a long build, a Claude
-Code session. Nothing in this repo restarts a terminal, ever. (The rejected alternatives — the
-dark/light-slot trick, the `--restart-terminals` flag this document once described but which never
-existed, the tmux-survives caveat — are archived in
+That rule is why **foot was retired** (2026-09-28). It was the SwayCE default, then kept as a
+themed standalone fallback after kitty took over, and it has **no config-reload signal**: `SIGUSR1`
+and `SIGUSR2` only toggle between the `[colors-dark]` and `[colors-light]` blocks loaded at startup.
+An open foot kept its old palette until closed, and the only way to force it was the restart this
+rule forbids. It also cannot render ligatures, and never will — upstream closed that as needing "a
+large rewrite of the rendering logic". A fallback terminal that could only ever be half-themed cost
+a package, a template and this section; `kitty` alone is carried now. (The rejected
+alternatives — the dark/light-slot trick, a `--restart-terminals` flag this document once described
+but which never existed, the tmux-survives caveat — are archived in
 `docs/archive/2026-08-17-stock-deviations.md`.)
-
-**kitty — now the default terminal — does not have the problem.** `SIGUSR1` is a genuine
-config-reload there: every running instance re-reads `kitty.conf` and its `include`, so a palette
-switch recolours open windows in place, without closing them and without touching what is running
-inside. `theme` sends it at the end of every switch, and this is the only signal it sends to a
-terminal. Nothing is restarted.
 
 **Send it with kitty's own reloader, never with `pkill`:**
 
@@ -841,11 +839,6 @@ The measurements, and the two usual pro-daemon arguments that were checked and f
 kitty, are in the archive file above. The consequence that stays operative: a throwaway window —
 waybar's htop popup, fuzzel's launcher — must never share a process with a long-lived shell, which
 one-process-per-window gives for free.
-
-Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
-foot template uses `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
-`[colors-dark]` unconditionally, which is what makes the section name a formality rather than a
-light/dark switch.
 
 ### 9.12 waybar's `include` is overridden by the *including* file
 
@@ -1660,9 +1653,8 @@ stubbed test once sent a real notification.
 | A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
 | One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
 | `$mod+Return` does nothing | kitty not installed, or its first start is failing | `kitty --version`, then run `kitty` from another terminal and read the error |
-| An open **foot** is still the old palette after a switch | foot cannot reload colours, and nothing restarts it | Close and reopen it; §9.11 |
 | An open **kitty** is still the old palette after a switch | The SIGUSR1 never arrived | `theme` prints `kitty … reloaded (SIGUSR1)` when it sends one; §9.11 |
-| One surface still the old palette, everything else switched | A running GTK app (§9.9), an open foot (§9.11), or an unfolded package that was stowed before `theme` first ran, so the rendered file was never linked | Restart the app; else `readlink` the file under `~` and `stow -R <pkg>` if it is missing; §3.3 |
+| One surface still the old palette, everything else switched | A running GTK app (§9.9), or an unfolded package that was stowed before `theme` first ran, so the rendered file was never linked | Restart the app; else `readlink` the file under `~` and `stow -R <pkg>` if it is missing; §3.3 |
 | A widget renders **black** | A GTK CSS `@name` used in a hand-written file but produced by no template, or a stale/deleted rendered file | Re-run `theme` (re-rendering repairs artefacts); if the name is not a role, add it to **both** palettes; §9.10 |
 | `theme: …tmpl: no such role '…'` | A template names a role `palettes.toml` does not define | Add the role to both palettes, or fix the typo in the template; §9.10 |
 | `theme: … define different keys` | The two palettes have drifted | §9.10. This is the guard, not a fault |
@@ -1688,13 +1680,13 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
 
 ```sh
-for p in sway waybar foot kitty mako fuzzel nwg-drawer htop; do
+for p in sway waybar kitty mako fuzzel nwg-drawer htop; do
     printf '%-12s ' "$p"
     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
 done
 ```
 
-Eight lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+Seven lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
 see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
 
 Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar

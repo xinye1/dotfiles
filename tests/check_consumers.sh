@@ -38,15 +38,6 @@ if have sway; then
     fi
 fi
 
-# --- foot ---
-if have foot; then
-    if out=$(foot --check-config 2>&1); then
-        ok "foot accepts its config"
-    else
-        no "foot accepts its config" "$(printf '%s' "$out" | head -2)"
-    fi
-fi
-
 # --- kitty ---
 # kitty 0.48 has no --debug-config, but its config parser is importable and
 # `kitty +runpy` runs a snippet against it without opening a window or needing
@@ -144,8 +135,8 @@ fi
 # palettes now share plain Adwaita (§2.2), so there is one theme to ask.
 #
 # Only python3 is guarded here, and nothing else is. Every other block in this
-# file goes silent when its tool is absent, which is right for them -- no foot
-# means nothing about foot to check. This one is the opposite: the subject is
+# file goes silent when its tool is absent, which is right for them -- no kitty
+# means nothing about kitty to check. This one is the opposite: the subject is
 # still there, only the instrument is missing, and going quiet about that is
 # how a green run comes to mean "never looked". check_waybar_paint.py already
 # reports its own missing pieces -- no stylesheet, no bindings, no display, no

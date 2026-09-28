@@ -3,7 +3,6 @@ brightnessctl
 cliphist
 fd
 firewall-applet
-foot
 fuzzel
 fzf
 git

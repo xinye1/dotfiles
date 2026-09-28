@@ -23,7 +23,7 @@ COMMENT_MARKERS = {
     ".sh": r'^\s*#',
     ".json": r'^\s*//',              # waybar's JSON accepts // comments
 }
-# Extensionless and unknown: `#` covers sway's config.d, foot, mako, htoprc and
+# Extensionless and unknown: `#` covers sway's config.d, mako, htoprc and
 # the shell rc files. Deliberately NOT `"` — that is vimscript's rule alone,
 # and applying it everywhere is the bug this file's docstring describes.
 DEFAULT_COMMENT = r'^\s*#'

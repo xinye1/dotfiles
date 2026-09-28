@@ -102,7 +102,7 @@ if [ -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
 fi
 
 # Dry run first: stow refuses to overwrite real files, and on a stock
-# EndeavourOS Sway install ~/.config/sway, waybar, foot etc. ARE real files.
+# EndeavourOS Sway install ~/.config/sway, waybar, fuzzel etc. ARE real files.
 # Surface every conflict before linking anything, so a failure never leaves
 # half the packages stowed.
 if ! out=$(stow -n $pkgs 2>&1); then
