@@ -26,8 +26,10 @@ Built on and tested against:
 
 The Sway Community Edition matters. It ships an opinionated `~/.config/sway/config.d/` split, a
 `scripts/` directory, and a set of chosen applications (foot, fuzzel, mako, nwg-drawer, gtklock,
-azote, swappy, cliphist). Two of those have since been replaced here: kitty is the default terminal
-instead of foot (§9.11), and swaylock is the lock screen instead of gtklock (§4.3).
+azote, swappy, cliphist). Three of those have since changed here: kitty is the terminal instead of
+foot, which was kept as a themed fallback and then retired on 2026-09-28 (§9.11); swaylock is the
+lock screen instead of gtklock (§4.3); and fuzzel is the only launcher, nwg-drawer having been
+dropped the same day (§4.1).
 This playbook is written as a **diff against that**, not against
 upstream sway's bare default config. On vanilla Arch + sway you would be starting from
 `/etc/sway/config`, and the "what stock does" column below would not apply.
@@ -54,7 +56,7 @@ greetd
        │         └─ theme                 colours, fonts, gaps, background, bar
        └─ children spawned by exec/exec_always:
             waybar, mako, kanshi, swayidle, autotiling,
-            nm-applet, cliphist watchers, polkit agent, nwg-drawer
+            nm-applet, cliphist watchers, polkit agent
 ```
 
 **Alphabetical order is load-bearing.** `application_defaults` is read before `default`, and
@@ -65,7 +67,15 @@ greetd
 
 ### 2.2 How GTK theming actually reaches applications
 
-There are five parallel mechanisms, and they do not agree with each other by default:
+**The GTK look is plain Adwaita in its dark variant, for both palettes** — Omarchy's choice, adopted
+on 2026-09-28. GTK apps are neutral grey rather than tinted to the palette; in exchange, nothing in
+this section changes on a switch, so the files below are tracked as they are rather than rendered.
+Until then each palette named its own GTK theme (Nordic, Colloid-Gruvbox), `gtk.css` overrides
+re-coloured libadwaita, and papirus-folders tinted the folder icons per palette — six templates, two
+out-of-repo theme installs and the one step of a switch that needed `sudo`, all for window chrome.
+Adwaita is compiled into GTK, so there is nothing to install.
+
+There are four parallel mechanisms, and they do not agree with each other by default:
 
 ```
 ~/.config/gtk-3.0/settings.ini ──┬──> GTK3 apps read this file directly
@@ -79,29 +89,20 @@ There are five parallel mechanisms, and they do not agree with each other by def
                                           ├─ font-name
                                           └─ color-scheme   ← added by us
 
-~/.gtkrc-2.0                    ────>  GTK2 apps (legacy; lxappearance-era)
 ~/.config/gtk-4.0/settings.ini  ────>  GTK4 apps
-~/.config/gtk-4.0/gtk.css       ────>  libadwaita apps  ← the one that matters
-~/.config/xsettingsd/           ────>  XSettings protocol, for XWayland clients
-                                       ← CONFIGURED BUT NOT INSTALLED (below)
+gsettings color-scheme          ────>  libadwaita apps  ← the one that matters
 ```
 
-**Four of those five are live; the xsettingsd one is not.** `xsettingsd` is not installed on this
-machine — there is no binary, nothing starts one, and nothing reads
-`~/.config/xsettingsd/xsettingsd.conf`. `theme` renders it with every switch and the result is
-inert. It is kept because it costs one template, and because the alternative is finding out at
-install time that the one mechanism carrying GTK settings to XWayland clients was never themed;
-`pacman -S xsettingsd` plus something to start it is what makes the arrow above real. Until then
-XWayland clients fall back to what `gtk-3.0/settings.ini` and Xft give them. Note this is *not* the
-same as the nwg-look `export-xsettingsd` toggle in §9.1 — that one writes the file, and would
-clobber the template's output whether or not the daemon exists.
+`~/.gtkrc-2.0` and `~/.config/xsettingsd/` are no longer carried. gtk2 is not installed and
+`xsettingsd` never was, so both files were rendered on every switch for readers that did not exist;
+XWayland clients fall back to what `gtk-3.0/settings.ini` and Xft give them.
 
-**The critical thing to understand:** *libadwaita apps ignore `gtk-theme-name` completely.*
-Installing the Nordic GTK theme does nothing for them. They read named colours
-(`@window_bg_color`, `@accent_bg_color`, …) and decide light vs dark from the gsettings
-`color-scheme` key. That is why this repo carries a hand-written
-`gtk/.config/gtk-4.0/gtk.css` redefining those colours, and why `import-gsettings` was extended
-to set `color-scheme`.
+**The critical thing to understand:** *libadwaita apps ignore `gtk-theme-name` completely.* They
+decide light vs dark from the gsettings `color-scheme` key alone, which is why `import-gsettings`
+was extended to set it. There is also no `Adwaita-dark` theme to name — that directory comes from
+`gnome-themes-extra`, which is not installed, and GTK3 given the name renders *light*. Dark GTK3
+comes from `gtk-theme-name=Adwaita` plus `gtk-application-prefer-dark-theme=1`, which is what
+`settings.ini` says.
 
 ### 2.3 Where the palette lives
 
@@ -126,13 +127,11 @@ That is what makes switching a re-render rather than a reconfiguration.
 **Rendered files are build artefacts.** They match `*.gen.*` — or a bare `*.gen`, which is what
 mako's `colors.gen` is, since its `include=` names the file with no suffix; `.gitignore` carries
 both globs for that reason. Git ignores them, and editing one is pointless because the next switch
-overwrites it. Seven files are the exception and cannot carry the
-marker, because the application reads them at a hardcoded path and takes no include: GTK and
-xsettingsd account for six — `gtk-{3,4}.0/gtk.css`, `gtk-{3,4}.0/settings.ini`,
-`xsettingsd/xsettingsd.conf` and `.gtkrc-2.0` — and yazi's `theme.toml` for the seventh.
-Those seven are listed individually in `.gitignore`. That list is structural — it can only change if
-an application with a hardcoded config filename joins the desktop, which is exactly what happened
-when yazi arrived on 2026-08-16.
+overwrites it. One file is the exception and cannot carry the marker, because yazi reads its
+`theme.toml` at a hardcoded path and takes no include; it is listed individually in `.gitignore`.
+That list is structural — it can only change if an application with a hardcoded config filename
+joins the desktop, which is exactly what happened when yazi arrived on 2026-08-16. It was seven
+entries until the six GTK files stopped being rendered (§2.2).
 
 (The pre-render scheme this replaced is described in
 `docs/archive/2026-08-17-stock-deviations.md`.)
@@ -170,13 +169,13 @@ isolation.
 | `dim` | secondary *text* that still has to be read: tooltip subtitles, reset countdowns, chart labels, footers (§9.28) |
 | `fg` | body text everywhere |
 | `fg_bright` | focused window title, active text |
-| **`accent`** | sway focused border, waybar focused workspace, GTK accent, fuzzel border |
+| **`accent`** | sway focused border, waybar focused workspace, fuzzel border |
 | `accent2` | focused-inactive border, calendar weekdays, waybar mode |
 | `indicator` | sway split indicator — where the next window will open |
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
-| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen when no wallpaper is cached (§9.25) |
+| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen (§9.25) |
 
 **`muted` and `dim` are not shades of one idea, and the split is the whole point.** `muted` says
 "this is chrome" — a border, a rule, a weekday header — and is allowed to be almost invisible.
@@ -192,12 +191,9 @@ added for text, give it a measured floor in this table or it will drift the same
 is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
 hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
 
-Two per-palette values are not colours and still have to be chosen per palette: `gtk_theme_name`
-and `papirus_folder`. They live in the same table.
-
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
-role colours; the other eight are not, and are shared by kitty and foot. They used to be
-duplicated across the terminals with a comment asking that they be kept in step by hand.
+role colours; the other eight are not, and are kitty's. They used to be duplicated across two
+terminals with a comment asking that they be kept in step by hand, until foot was retired.
 
 **Both palettes must define exactly the same keys.** `theme` refuses to render otherwise. This
 matters more than it looks: an undefined `@name` in GTK CSS renders as **black, with no warning**,
@@ -213,23 +209,11 @@ scheme with a `#242933` background and warm yellow/green accents. **Nord** is `#
 blue accents. `alacritty-theme` ships `nord.toml`, `nordic.toml`, `nordfox.toml` and
 `nord_light.toml` — three of those are wrong for this setup.
 
-**Two exceptions where "Nordic" is nonetheless correct**, and both will look like mistakes later:
-
-- The **GTK theme** is genuinely named `Nordic` (AUR `nordic-theme`). It implements Nord. There is
-  no GTK theme called "Nord".
-- **papirus-folders** calls its Nord folder colour `nordic`, and rejects `nord` outright with
-  *"Unable to find 'nord' color"*. The icons really are Nord — `folder-nordic.svg` is drawn in
-  `#5E81AC` (nord10), `#81A1C1` (nord9) and `#ECEFF4` (nord6). Use `-C nordic`.
-
-**The parallel gruvbox trap: papirus-folders has no gruvbox colour at all.** `papirus-folders -l`
-lists 25 names and gruvbox is not among them, so `papirus_folder = "yellow"` in `palettes.toml` is a
-*stand-in*, chosen because gruvbox's signature accent is its yellow. It is the one place in the
-setup where the Gruvbox theme is approximated rather than matched. Do not "fix" it by inventing a
-hex — papirus-folders only accepts names from its own list.
-
-**The GTK themes are asymmetric too.** Nord's is `Nordic` in `/usr/share/themes` from the AUR;
-Gruvbox's is `Colloid-Yellow-Dark-Gruvbox` in **`~/.themes`**, installed by hand (§4.2, §8). Both
-names are `gtk_theme_name` in `palettes.toml`, so nothing else needs to know where they live — but `ls /usr/share/themes` will not find the gruvbox one, and that is not a fault.
+Until 2026-09-28 "Nordic" was nonetheless correct in two places: the Nord **GTK theme** is named
+`Nordic` (AUR `nordic-theme`), and **papirus-folders** calls its Nord folder colour `nordic`. Both
+retired with the move to plain Adwaita (§2.2), so no name in the live setup is spelled that way
+any more — but `/usr/share/themes/Nordic` stays on disk until `nordic-theme` is uninstalled, and
+§9.27 is the story of what that theme did to waybar.
 
 ### 3.3 Switching
 
@@ -237,28 +221,26 @@ names are `gtk_theme_name` in `palettes.toml`, so nothing else needs to know whe
 theme              # re-render the current palette
 theme nord         # switch
 theme --list       # what is available
-theme --no-icons   # skip papirus-folders, which needs sudo
 ```
 
 `theme` renders every template, records the palette in `$XDG_STATE_HOME/theme/palette`,
 then reloads: `sway --validate` before `swaymsg reload` (which also restarts waybar, re-runs
-`import-gsettings` and re-execs nwg-drawer), then `makoctl reload` separately, because mako is
+`import-gsettings`), then `makoctl reload` separately, because mako is
 `exec`'d rather than `exec_always`'d and a sway reload does not restart it.
 
 **Switching is not a repo change.** The state file lives outside the repo and every rendered file is gitignored, so a switch
 leaves `git status` untouched. `tests/theme_test.sh` asserts it.
 
 **`theme` must run before `stow` on a fresh clone.** The rendered files do not exist in a clone,
-and the unfolded packages that carry templates (`gtk`, `vim`, `yazi` — `bin` and `claude`
-are also unfolded but carry none) link file-by-file — a file created
+and the one unfolded package that carries a template (`yazi` — `bin`, `claude`, `gtk` and
+`herdr` are also unfolded but carry none) links file-by-file — a file created
 after `stow` is silently absent until `stow -R`. The folded packages pick it up for free. See
 §5.2.
 
 Applying is idempotent: re-running repairs a deleted or edited artefact.
 
-**foot does not reload.** It has no config-reload signal at all; `SIGUSR1`/`SIGUSR2` only pick
-between the `[colors-dark]` and `[colors-light]` blocks loaded at startup. A switch needs a foot
-server restart or a logout.
+**kitty reloads in place.** `theme` sends it SIGUSR1 through kitty's own reloader at the end of
+every switch, and open windows recolour without being restarted (§9.11).
 
 ---
 
@@ -266,15 +248,15 @@ server restart or a logout.
 
 The install lists a new machine actually consumes are `packages.txt` (official repos) and
 `packages-aur.txt` (AUR) at the repo root — `sudo pacman -S --needed $(cat packages.txt)`, then
-`yay -S --needed $(cat packages-aur.txt)`. One entry needs a repo beyond Arch's own
-`core`/`extra`/`multilib`: `welcome` comes from `endeavouros`, enabled by default on this distro
-(§1) — EndeavourOS's own new-user greeter, resolved by a plain `pacman -S`, not AUR, and not the
-same package as the unrelated KDE `plasma-welcome`. `setup.sh` warns about anything from either
-list that is not installed. The files also carry the tools the configs here invoke that the
+`yay -S --needed $(cat packages-aur.txt)`. Every entry resolves from Arch's own
+`core`/`extra`/`multilib` or the AUR — the one that needed EndeavourOS's repo, its `welcome`
+greeter, was dropped on 2026-09-28 along with `firewall-applet`, a ~40 MB tray icon for a firewalld
+that runs without it (`systemctl is-active firewalld`). `setup.sh` warns about anything from either list
+that is not installed. The files also carry the tools the configs here invoke that the
 tables below assume (vim, neovim, starship, htop, and yazi's
 `fd`/`ripgrep`/`fzf`/`jq`/`poppler`/`imagemagick`). The tables say *why* each package is here
-and what breaks without it; the two `Source: source` entries (the Colloid GTK theme, the vim
-colorschemes) cannot live in either file and are §8's job.
+and what breaks without it. vim is installed but no longer configured here: the `vim` package
+retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and rescue shells.
 
 ### 4.1 Required — the setup is broken without these
 
@@ -283,11 +265,9 @@ colorschemes) cannot live in either file and are §8's job.
 | `sway` `swaybg` `swayidle` | repo | Compositor, background, idle daemon | — |
 | `waybar` | repo | The bar | No bar |
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
-| `foot` | repo | Standalone fallback, still themed. No longer `$term` and no server is started; run `foot`. Wayland-only, which is why it is not the default | Nothing — `foot` is optional now |
-| `fuzzel` | repo | Launcher (`$mod+d`) and the cliphist picker | Launcher and clipboard history dead |
+| `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and picks a random wallpaper out of `~/Pictures/walls/<palette>/` (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
-| `nwg-drawer` | repo | App grid (`$mod+Shift+d`), also the waybar launcher button | |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the solid `$desktop` colour the desktop itself shows (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
@@ -295,32 +275,17 @@ colorschemes) cannot live in either file and are §8's job.
 | `polkit-gnome` | repo | Auth prompts for GUI privilege escalation | GUI admin actions fail silently |
 | `stow` | repo | Deploys this repo | |
 
-**Optional — the setup is not broken without these; each has its own fallback.**
-
-| Resource | Source | Why | Symptom if missing |
-|---|---|---|---|
-| `~/Pictures/walls/` | **`walls-sync`** | The lock screen's wallpapers, one directory per palette, populated by `bin/.local/bin/walls-sync` from [dharmx/walls](https://github.com/dharmx/walls). Optional, ~320 MB, and a cache in the strict sense — deleting it loses nothing but time (§9.25) | Lock screen falls back to the solid `$desktop` colour. Nothing else changes; it still locks |
-
 ### 4.2 Added by this setup
 
 | Package | Source | Why |
 |---|---|---|
-| `nordic-theme` | **AUR** | The GTK2/3/4 Nord theme. `/usr/share/themes/Nordic`. Nothing in the base install provides a Nord GTK theme. |
-| `Colloid-Yellow-Dark-Gruvbox` | **source** | The GTK theme for the Gruvbox palette, in `~/.themes`. Not a package — see §8 for the two-line install |
-| `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK |
-| `papirus-folders` | **AUR** | Recolours Papirus folder icons. `theme` drives it per palette (`nordic` / `yellow`), and it is the one step needing `sudo` |
+| `papirus-icon-theme` | repo | Icon theme, referenced by mako, fuzzel and GTK. Untinted since 2026-09-28 — `papirus-folders` drove a per-palette folder colour and was the one step of a switch that needed `sudo` (§2.2) |
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
-| `nord-vim`, `gruvbox` | **source** | vim colorschemes, cloned into `~/.vim/pack/plugins/start/` — §8. Without them vim still starts; `vim/.vimrc` guards the `source` with `filereadable` |
 | `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
 | `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
-
-**Why the gruvbox GTK theme is not the AUR package.** `gruvbox-gtk-theme-git` depends on
-`gtk-engine-murrine`, which on a current Arch pulls in a **from-source `gtk2` build** — and gtk2 is
-not installed here, nor wanted for one theme. `vinceliuice/Colloid-gtk-theme` has a gruvbox tweak
-that produces the same result, installs into `~/.themes` without root, and needs no engine.
 
 ### 4.3 Deliberately not used
 
@@ -337,17 +302,16 @@ for the bug that prompted it.
 
 What the switch costs, plainly, because the replacement is genuinely smaller: **no clock, no power
 buttons, and no user avatar on the lock screen.** gtklock is a GTK app with a window full of
-widgets; plain swaylock draws one password ring over a wallpaper (§9.25) or a solid `$desktop`
-field, and nothing else. The power buttons are the only real loss, and they are not lost —
+widgets; plain swaylock draws one password ring over a solid `$desktop` field (§9.25), and
+nothing else. The power buttons are the only real loss, and they are not lost —
 `$mod+Shift+e` reaches the same suspend/reboot/shutdown actions through `power_menu.sh`, from an
 unlocked session. The clock is on waybar. The avatar has no replacement and none is wanted.
 
-`swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined, and **that
-is still true now that the lock screen carries a wallpaper** — read the reason carefully, because
-the obvious paraphrase of it has since been overtaken. What was rejected is *an unofficial fork as
-a dependency*, and separately *a 22 MB image living in the repo*, which is what the gtklock
-wallpaper was. A background image as such was never the objection: `--image` is stock swaylock, it
-costs no package, and §9.25's images are in `~/Pictures`, not here. Configuration lives in
+`swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined. What was
+rejected is *an unofficial fork as a dependency*, and separately *a 22 MB image living in the
+repo*, which is what the gtklock wallpaper was. A background image as such was never the
+objection — `--image` is stock swaylock, and the lock screen carried palette-matched wallpapers
+from `~/Pictures` for a while (§9.25) before going back to the solid colour. Configuration lives in
 `sway/.config/sway/scripts/lock.sh` rather than `~/.config/swaylock/config`, because a static config
 file cannot follow a palette switch and a script sourcing `theme.gen.env` at lock time can (§9.13).
 
@@ -387,14 +351,13 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 
 | Package | Folded? | Reason |
 |---|---|---|
-| `sway` `mako` `fuzzel` `nwg-drawer` `kanshi` `foot` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
-| `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so it behaves like `foot`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
+| `sway` `mako` `fuzzel` `kanshi` `waybar` | **Yes** | Nothing writes into these directories. New files appear for free. |
+| `kitty` | **Yes** | kitty's state is in `~/.local/state/kitty` and `~/.cache/kitty`, not the config dir, so nothing writes into `~/.config/kitty`. **The one thing that would break this is `kitten themes`**, which writes `current-theme.conf` into `~/.config/kitty` *and* appends an include to `kitty.conf` — folded, that lands in the repo, and it is the wrong mechanism here anyway: colours come from `palettes.toml`. Do not run it, for the same reason `nwg-look` is a hazard for `gtk` (§9.1). |
 | `tmux` | **Yes** | tmux itself never writes to `~/.config/tmux` — its state is sockets under `$TMUX_TMPDIR`. The package is at the XDG path rather than `~/.tmux.conf` (tmux has read it since 3.1) precisely so that folding is available: the rendered `colors.gen.conf` and `scripts/git-branch.sh` then appear with no `stow -R`, and neither has to sit loose in `$HOME`. **The one thing that would break this is a plugin manager**: tpm installs into `~/.config/tmux/plugins`, which folded means untracked plugin clones inside the repo. None is used today; adding one means unfolding first. |
-| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so the reason `vim` stays unfolded does not apply. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
+| `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so there is no untracked content to keep out of the repo. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
-| `vim` | **No** | `~/.vim` holds untracked plugin clones (`lightline`, and now `nord-vim` and `gruvbox`), so folding would pull them into the repo. A newly added file in the package — such as a future themed file — is silently absent until `stow -R vim`. That is exactly the trap this section exists to document. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `herdr` | **No** | `~/.config/herdr` is herdr's runtime directory as much as its config: the live API socket (`herdr.sock`), the client socket, logs, `session.json` (every workspace, pane and Claude conversation to restore), `plugins.json` and the `plugins/` state tree are all written there. Folding would put live sockets and session state in the repo. Unfolded, stow links `config.toml` as a file and `local-plugins/` as a folded subdirectory, which is safe because herdr never writes into it — its own plugin state goes to `plugins/`, which is why the source directory is *not* called that. **herdr rewrites `config.toml` in place** from its settings screen (`std::fs::write`, not `rename()`), so unlike htop (§9.16) the symlink survives and the edit lands in the repo: after touching herdr's settings, `git status`, then commit or revert. `setup.sh` pre-creates the directory. See §9.30. |
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
@@ -474,7 +437,7 @@ To fold one that isn't: `stow -D <pkg> && rmdir <the now-empty target dirs> && s
 **The theming work did not change a single row of this table, by design.** Each template and its
 rendered output live *inside* the package that owns them, so switching writes into the repo, never
 into `~/.config`. The alternative — a pair of per-palette stow packages — would have
-put a second package's files into `~/.config/waybar`, `~/.config/foot` and the rest, forcing stow to
+put a second package's files into `~/.config/waybar`, `~/.config/kitty` and the rest, forcing stow to
 unfold every one of them and costing all seven themed folded packages their "new files appear for
 free" property in exchange for nothing. See §3.3.
 
@@ -545,25 +508,27 @@ stowed. Do it by hand on a new machine if you care about the remaining gap.
 
 ## 7. Keybindings
 
-Not listed here. A static table duplicating `sway/.config/sway/keyboard.conf` (457 lines) is a
-table that drifts, and this desktop already answers the question two better ways:
+Not listed here. A static table is a table that drifts. The bindings live in
+`sway/.config/sway/config.d/default` (plus the lid switches in `config.d/input`), commented, and
+that file is the source. (`sway/.config/sway/keyboard.conf` is not bindings: it is a reference list
+of xkb layouts and variants from stock EndeavourOS, and nothing reads it.)
 
-- `sway/.config/sway/keyboard.conf` holds most of them, commented.
-- `sway/.config/sway/config.d/default` holds the rest — the two files together are the source.
+**Clicking waybar's keyboard icon** (`custom/keyboard-layout`) runs
+`waybar/.config/waybar/scripts/keyhint.py`, which lists every binding in fuzzel — key on the left,
+command on the right, a mode's bindings labelled with the mode. (Earlier text here said the clock;
+it was always the keyboard icon.) It is **built from the config at click time**, the way Omarchy builds its cheat sheet from
+`hyprctl binds`, so it cannot drift. sway has no IPC call that lists bindings (`swaymsg -t
+get_config` returns only the top-level file, not what it includes), so the script reads the files
+sway reads: it follows `include` (with `~`/`$HOME` expanded, globs in sorted order), substitutes
+`set $var` values, and understands `bindsym`/`bindcode` blocks with flags and `mode "…" { }`.
+`keyhint.py --print` writes the list to stdout.
 
-**`$mod+?`**, or clicking the waybar clock, runs `waybar/.config/waybar/scripts/keyhint.sh`. Be
-aware of what that is: a *hardcoded* `cheat=()` array, inherited from stock EndeavourOS. It reads
-no config, so it can and does drift from the two files above. It is a convenience, not a source.
-
-Two things bite when adding to it, both silent:
-
-- The array is a **flat list of cells in a 5-column grid** (left Function, left Binding, spacer,
-  right Function, right Binding). Append fewer than five and every following row shifts a column —
-  a section header lands in the Binding column and nothing errors. Count with
-  `len(cells) % 5 == 0` before trusting it.
-- **`--geometry` does not grow with the array.** yad clips the overflow with no scrollbar and no
-  warning: the NOTIFICATIONS section was invisible at `1200x680` until the height went to `860`.
-  Screenshot the window after adding rows; do not assume it rendered.
+`tests/keyhint_test.py` (run by `theme_test.sh`) covers each of those shapes, and asserts that the
+number of rows equals the number of bind lines in the repo's sway package — so a binding written in
+a shape the parser cannot follow fails the suite rather than silently vanishing from the list.
+The list replaced `keyhint.sh`, a hardcoded yad grid inherited from stock EndeavourOS: a flat
+5-column cell array that read no config, drifted from the real bindings, shifted every later row
+when a cell was missed, and clipped overflow without a scrollbar. Retiring it also retired `yad`.
 
 The notification bindings are `$mod+Shift+n` (do-not-disturb toggle), `$mod+Ctrl+n` (restore the
 last notification from history) and `$mod+Ctrl+Shift+n` (dismiss all). They are plain `makoctl`
@@ -588,12 +553,6 @@ rotted.
 do.
 
 ```sh
-# Tint the Papirus folder icons (writes into /usr/share/icons, so root).
-# `theme` re-runs this on an INTERACTIVE switch when the colour differs -- it skips
-# papirus-folders when stdin is not a tty, because it needs sudo. This is just
-# the first one. nordic for Nord, yellow for Gruvbox — see §3.2.
-sudo papirus-folders -C nordic -t Papirus-Dark
-
 # Default web browser: http, https and text/html to Chrome. This is xdg state,
 # not config — it lands in ~/.config/mimeapps.list, which xdg-settings and every
 # "make me your default?" prompt rewrite in place. Stowing that file would make
@@ -607,17 +566,6 @@ sudo papirus-folders -C nordic -t Papirus-Dark
 # `google-chrome-stable` ($mod+o, $BROWSER) and the X11 class is `Google-chrome`
 # (application_defaults). Three spellings, all required, none interchangeable.
 env -u BROWSER xdg-settings set default-web-browser google-chrome.desktop
-
-# The Gruvbox GTK theme. Not a package: see §4.2 for why not the AUR one.
-# NEVER add -l/--libadwaita — it overwrites ~/.config/gtk-4.0/gtk.css, which is
-# precisely the nwg-look failure mode of §9.1.
-git clone https://github.com/vinceliuice/Colloid-gtk-theme /tmp/colloid
-cd /tmp/colloid && ./install.sh -d ~/.themes -c dark -s standard -t yellow --tweaks gruvbox
-
-# vim: status bar, and one colorscheme per palette
-git clone https://github.com/itchyny/lightline.vim ~/.vim/pack/plugins/start/lightline
-git clone https://github.com/arcticicestudio/nord-vim ~/.vim/pack/plugins/start/nord-vim
-git clone https://github.com/morhetz/gruvbox   ~/.vim/pack/plugins/start/gruvbox
 
 # nvim: nothing to run. Its colourscheme is rendered from the §3.1 roles
 # (nvim/.config/nvim/colorscheme.gen.lua.tmpl), so there is no colorscheme
@@ -653,14 +601,17 @@ appears on `PATH`.
 `export-settings-ini`, `export-gtkrc-20`, `export-index-theme`, `export-xsettingsd`,
 `export-gtk4-symlinks`.
 
-**Opening nwg-look and clicking Apply rewrites every GTK file this repo tracks.** If it writes in
-place, the write flows harmlessly through the stow symlink into the repo and shows up as a git diff.
-If it unlinks and recreates, **the stow symlinks are silently destroyed** and the repo quietly stops
-being the source of truth. `export-gtk4-symlinks` in particular replaces `~/.config/gtk-4.0/gtk.css`
-with a symlink into `/usr/share/themes/` — destroying the libadwaita overrides from §2.2.
+**Opening nwg-look and clicking Apply rewrites every GTK file this repo tracks** — the two
+`settings.ini` files and `.icons/default/index.theme`. If it writes in place, the write flows
+harmlessly through the stow symlink into the repo and shows up as a git diff. If it unlinks and
+recreates, **the stow symlinks are silently destroyed** and the repo quietly stops being the source
+of truth. It also writes files this repo no longer carries — `~/.gtkrc-2.0`, `xsettingsd.conf`, and
+with `export-gtk4-symlinks` a `~/.config/gtk-4.0/gtk.css` symlink into `/usr/share/themes/` that
+libadwaita apps would then load. Delete what it created.
 
-nwg-look is not needed at runtime: `settings.ini` is the source of truth and
-`scripts/import-gsettings` pushes it to gsettings on every reload. **After ever opening nwg-look:**
+nwg-look is not needed at runtime, and since the move to a static Adwaita look (§2.2) it has
+nothing left to do: `settings.ini` is the source of truth and `scripts/import-gsettings` pushes it
+to gsettings on every reload. **After ever opening nwg-look:**
 
 ```sh
 ls -la ~/.config/gtk-3.0/ ~/.config/gtk-4.0/ ~/.gtkrc-2.0
@@ -708,21 +659,13 @@ stow -R gtk
 Also: `exec export FOO=bar` does nothing. sway runs the command in a subshell that exits
 immediately, taking the variable with it. Use `systemctl --user set-environment`.
 
-**One `exec_always` line here lacks the `pkill` prefix:**
-
-```
-exec_always nwg-drawer -r -c 7 -is 90 …      # single instance in practice
-```
-
-`nwg-drawer -r` is resident mode and stays at one process across reloads (`pgrep -xc nwg-drawer`
-→ `1` after 15 hours and many reloads).
-
-**There is no terminal daemon here any more.** This section used to carry a second exempt line,
-`exec_always --no-startup-id foot --server`, safe for a stronger reason than nwg-drawer's — it
-*cannot* double-start, the second instance failing to bind
-`$XDG_RUNTIME_DIR/foot-wayland-1.sock` and exiting on the spot. That line is gone with the switch
-to `$term kitty`, which starts one process per window and has no daemon to prewarm. Kept here
-because the reasoning is the reusable part — **"this daemon cannot
+**No daemon-starting `exec_always` line here lacks the `pkill` prefix any more.** There used to be
+two exemptions. `exec_always nwg-drawer -r …` relied on resident mode staying at one process across
+reloads — observed (`pgrep -xc nwg-drawer` → `1` after 15 hours), never guaranteed — and went with
+nwg-drawer on 2026-09-28. `exec_always --no-startup-id foot --server` was safe for a stronger
+reason: it *cannot* double-start, the second instance failing to bind
+`$XDG_RUNTIME_DIR/foot-wayland-1.sock` and exiting on the spot; it went with the switch to
+`$term kitty`. Kept here because the reasoning is the reusable part — **"this daemon cannot
 double-start" is a valid exemption from the `pkill` rule, and "it seems to stay at one process" is
 not.** Only the second needs re-checking after every change.
 
@@ -747,8 +690,8 @@ fc-match "JetBrainsMono Nerd Font"    # before installing: falls back to NotoSan
 Two distinct traps:
 - **`JetBrainsMono-Regular` is a file-style name**, not a fontconfig family. fuzzel had this. It
   matched by luck. The family is `JetBrains Mono`, with a space.
-- **`JetBrains Mono` ≠ `JetBrainsMono Nerd Font`.** The unpatched family has no icon glyphs. waybar,
-  `power_menu.sh` and `keyhint.sh` are full of Nerd Font icons; without the patched font they render
+- **`JetBrains Mono` ≠ `JetBrainsMono Nerd Font`.** The unpatched family has no icon glyphs. waybar
+  and `power_menu.sh` are full of Nerd Font icons; without the patched font they render
   via a fontconfig fallback to `Symbols Nerd Font`. That *works*, which is exactly why it went
   unnoticed — but it is a fallback, not a configuration.
 
@@ -796,7 +739,7 @@ measured 12 px on all sides).
 
 GTK3 apps read `settings.ini` at startup. A long-running app keeps its old theme indefinitely — a
 Thunar started before the retheme was still rendering light a day later, while a freshly launched
-GTK3 app picked up Nordic correctly. Diagnose by launching a *different* GTK3 app that was not
+GTK3 app picked up the new theme correctly. Diagnose by launching a *different* GTK3 app that was not
 already running; if the new one looks right, nothing is broken:
 
 ```sh
@@ -816,6 +759,10 @@ nothing is logged — no warning on stderr, no fallback to the previous value, n
 name is involved. A widget simply turns black, which reads as a rendering bug rather than a missing
 definition. On a `#2E3440` bar a black region is easy to miss entirely.
 
+GTK CSS is waybar's stylesheet now — the desktop's own `gtk.css` overrides went with the move
+to plain Adwaita (§2.2) — so waybar is where this bites, and `tests/check_consumers.sh` asserts that
+every `@name` in waybar's `style.css` is defined by `colors.gen.css`.
+
 The way to produce it is to add a role to one palette and forget the other. `theme` refuses to
 render when the two sections of `palettes.toml` do not define exactly the same keys:
 
@@ -834,26 +781,25 @@ theme: waybar/.config/waybar/colors.gen.css.tmpl: no such role 'accnet' in this 
 Related: **a raw hex in an application config is now a bug**, not a style choice. It will survive a
 switch and sit there in the wrong palette. §2.3 lists where values are allowed to live.
 
-### 9.11 foot cannot be told to re-read its colours
+### 9.11 A terminal is recoloured by reload, never by restart
 
-foot has **no config-reload signal.** `SIGUSR1` and `SIGUSR2` look like one and are not: they toggle
-between the `[colors-dark]` and `[colors-light]` blocks *that were loaded at startup*. Sending them
-after editing the config does nothing new.
+**kitty's `SIGUSR1` is a genuine config-reload**: every running instance re-reads `kitty.conf` and
+its `include`, so a palette switch recolours open windows in place, without closing them and without
+touching what is running inside. `theme` sends it at the end of every switch, and this is the only
+signal it sends to a terminal. **Nothing in this repo restarts a terminal, ever** — the processes
+inside one are the user's, not the theme switcher's: an editor with unsaved work, a long build, a
+Claude Code session.
 
-**The answer is that foot does not get restarted.** An already-open foot keeps its old palette
-until you close and reopen it; a new one comes up correct. That is a deliberate limit, not a
-missing feature: restarting terminals to recolour them destroys the processes inside them, which
-are the user's and not the theme switcher's — an editor with unsaved work, a long build, a Claude
-Code session. Nothing in this repo restarts a terminal, ever. (The rejected alternatives — the
-dark/light-slot trick, the `--restart-terminals` flag this document once described but which never
-existed, the tmux-survives caveat — are archived in
+That rule is why **foot was retired** (2026-09-28). It was the SwayCE default, then kept as a
+themed standalone fallback after kitty took over, and it has **no config-reload signal**: `SIGUSR1`
+and `SIGUSR2` only toggle between the `[colors-dark]` and `[colors-light]` blocks loaded at startup.
+An open foot kept its old palette until closed, and the only way to force it was the restart this
+rule forbids. It also cannot render ligatures, and never will — upstream closed that as needing "a
+large rewrite of the rendering logic". A fallback terminal that could only ever be half-themed cost
+a package, a template and this section; `kitty` alone is carried now. (The rejected
+alternatives — the dark/light-slot trick, a `--restart-terminals` flag this document once described
+but which never existed, the tmux-survives caveat — are archived in
 `docs/archive/2026-08-17-stock-deviations.md`.)
-
-**kitty — now the default terminal — does not have the problem.** `SIGUSR1` is a genuine
-config-reload there: every running instance re-reads `kitty.conf` and its `include`, so a palette
-switch recolours open windows in place, without closing them and without touching what is running
-inside. `theme` sends it at the end of every switch, and this is the only signal it sends to a
-terminal. Nothing is restarted.
 
 **Send it with kitty's own reloader, never with `pkill`:**
 
@@ -873,11 +819,6 @@ The measurements, and the two usual pro-daemon arguments that were checked and f
 kitty, are in the archive file above. The consequence that stays operative: a throwaway window —
 waybar's htop popup, fuzzel's launcher — must never share a process with a long-lived shell, which
 one-process-per-window gives for free.
-
-Separately: **foot's plain `[colors]` section is deprecated** and warns on every launch. The
-foot template uses `[colors-dark]`. With no `[colors-light]` block defined anywhere, foot picks
-`[colors-dark]` unconditionally, which is what makes the section name a formality rather than a
-light/dark switch.
 
 ### 9.12 waybar's `include` is overridden by the *including* file
 
@@ -1182,73 +1123,28 @@ dispositions written up in `docs/specs/2026-08-22-claude-usage-widget-design.rev
 on this repo: work here lands in small PRs that are often merged the moment they go green, which is
 exactly the shape the app misses.
 
-### 9.25 The lock screen's wallpapers: pre-synced, never fetched at lock time
+### 9.25 The lock screen: a solid colour, and never the network
 
-`lock.sh` picks a random image from **`~/Pictures/walls/<active palette>/`** and passes it as
-`--image … --scaling fill`. The images come from [dharmx/walls](https://github.com/dharmx/walls)
-and are put there by **`walls-sync`** (`bin/.local/bin/walls-sync`), a command you run by hand.
+`lock.sh` locks over the solid **`$desktop`** colour — the same field the desktop itself shows
+(`output * bg $desktop solid_color` in `config.d/theme`), which is Omarchy's idea too: the lock
+screen is the desktop's own background, not a separate collection. **Until 2026-09-28 it picked a
+random palette-matched image from `~/Pictures/walls/<palette>/`**, a ~320 MB cache that
+`bin/.local/bin/walls-sync` (547 lines) mirrored from [dharmx/walls](https://github.com/dharmx/walls),
+with a resolution floor, a header parser and a fail-safe chain of its own. All of that retired for
+one lock-screen picture. `~/Pictures/walls` is safe to delete: nothing reads it any more.
 
-**Why they are not in this repo.** The no-binaries rule, the same one that keeps the two desktop
-wallpapers in `~/Pictures/wallpapers`. It is ~320 MB across both palettes — 75 MB for gruvbox, 245
-MB for nord, at the default resolution floor — and none of it is configuration. Nothing lands
-inside the tree, so no `.gitignore` entry was needed or added, which is the test of whether the
-rule was actually followed rather than worked around.
-
-**Why syncing is a separate manual command, and this is the whole design.** *The lock screen must
-never touch the network.* It is asked for when the idle timer fires, before suspend, and at
+**The rule that survives is the one the wallpaper work was built around: *the lock screen must
+never touch the network.*** It is asked for when the idle timer fires, before suspend, and at
 `$mod+f1` — on a train, on dead wifi, halfway through a resume — and a lock that waits on a socket
-is a lock that does not happen. So `lock.sh` only ever picks from what is already on disk. The same
-argument one step down is why `theme` does not do it either: switching runs often and has to stay
-instant and offline, while upstream changes about never. All of the network is confined to
-`walls-sync`, where a timeout is a line on the terminal you are watching.
+is a lock that does not happen. If an image ever comes back, it must be on disk before the lock is
+asked for, and every way of not finding it must end in the solid colour with the screen locked.
 
-**The palette name *is* the directory name**, upstream and locally — `gruvbox` and `nord` are
-folders in dharmx/walls and keys in `palettes.toml`, and that coincidence is load-bearing at both
-ends: `walls-sync` asks `palettes.toml` what to sync, and `lock.sh` spells the active palette
-straight into the path. **Rename a palette and you must rename the directory with it**, or the lock
-screen silently drops back to a solid colour with nothing to say about it. `walls-sync` is the half
-that fails loudly — a palette upstream has no folder for is an error on a command you are watching.
-
-**The fail-safe chain.** Every one of these ends with the screen still locking, on the solid
-`$desktop` colour: no palette recorded (fresh machine, `theme` never run); a palette name that is
-not a plain word — it is a path component, so `../../etc` in the state file is *refused*, not
-sanitised; no such directory; a directory with no images in it; a pick that is not a readable
-regular file; a colon anywhere in the path, because swaylock reads `--image` as `[<output>:]<path>`
-and would take the leading part as a monitor name. The selection is `find -print0 | shuf -z -n1`
-read with `read -d ''`, so a filename with spaces — upstream's are whole sentences — survives as
-one argv item. Only image extensions are eligible, which is also what stops a `.part` file left by
-an interrupted `walls-sync` (a truncated image by definition) from ever being the pick.
-
-**The pre-existing colour fail-safe stays bare, deliberately.** When a role fails to parse,
-`lock.sh` still does `exec swaylock "$@"` with *no flags at all* — no `--image` either. That path
-runs when the machine's own configuration is broken, so it must be the dumbest, most
-obviously-valid invocation available: every flag it does not carry is a flag that cannot be the
-reason it failed. The wallpaper is chosen *after* that loop so the ordering says so too.
-
-**Verified, not assumed:** swaylock 1.8.6 logs `Failed to load background image` and **carries on
-to lock** rather than exiting, so even a corrupt image is cosmetic. Checked by running the real
-binary with `XDG_RUNTIME_DIR` pointed at an empty directory and `WAYLAND_DISPLAY` at a socket that
-does not exist — it cannot lock anything from there, and the image is parsed before the compositor
-is contacted, which makes the two failures distinguishable in the log. `lock.sh` checks the file
-anyway: that guarantee belongs here, not in whatever swaylock does next release.
-
-**Why there is a resolution floor.** Over half of upstream is smaller than this panel's 3840x2160,
-and the worst of it is unusable — nord ships a 435x492 and a 794x1024, gruvbox a 1017x572 — which
-`--scaling fill` blows up to fill the screen. A random picker served one of those about half the
-time. `walls-sync` therefore enforces a minimum, default **1920x1080** (at most a 2x upscale here),
-overridable with `--min WxH`. It is enforced at **sync** time, never at lock time: `lock.sh` must
-not be reading image headers on every lock. Raising it later is just a re-run — `walls-sync --min
-2560x1440` re-fetches nothing it already has and prunes what no longer qualifies, printing every
-removal with the dimensions that condemned it. The cache is a mirror the command owns and every
-file in it is one request away, which is what makes converging it that way safe.
-
-Dimensions are read from the file's own header (PNG, JPEG and WebP, in `walls-sync`, stdlib only —
-no Pillow, no ImageMagick), and **a header that will not parse keeps the file**: a parser must
-never be the reason an image is deleted. The parser sniffs the magic rather than trusting the
-extension, and that is not fastidiousness — `gruvbox/a_close_up_of_a_circuit_board.png` is a
-lossless WebP, and it is 1017x572, i.e. the single worst image in that folder was one an
-extension-trusting check would have kept. All 194 files were cross-checked against `identify` while
-this was written: 194 agreements, 0 disagreements.
+**The colour fail-safe stays bare, deliberately.** When a role fails to parse — no `theme.gen.env`
+on a fresh clone, or a half-written one — `lock.sh` does `exec swaylock "$@"` with *no flags at
+all*. That path runs when the machine's own configuration is broken, so it must be the dumbest,
+most obviously-valid invocation available: every flag it does not carry is a flag that cannot be
+the reason it failed. Measured on swaylock 1.8.6, a malformed `--color` is swallowed and it locks
+anyway; the guard does not rest on that leniency.
 
 ### 9.26 Idle policy depends on AC vs battery, and lives in `idle.sh`
 
@@ -1299,7 +1195,8 @@ latter only starts the wrapper now and has no timeout values of its own.
 waybar puts a module's state into a bare CSS class — `warning`, `critical`, `muted`,
 `disconnected`. Those go straight onto the GTK widget, into the same flat namespace GTK's own
 stock classes live in. **`warning` is one of GTK's own.** It is part of GtkInfoBar's set —
-`.info`, `.warning`, `.question`, `.error` — and the Nordic theme styles that set *unscoped*:
+`.info`, `.warning`, `.question`, `.error` — and the Nordic theme, nord's GTK theme until
+2026-09-28, styles that set *unscoped*:
 
 ```css
 /* /usr/share/themes/Nordic/gtk-3.0/gtk-dark.css */
@@ -1334,9 +1231,13 @@ would still get an orange pill; workspaces here are numbered.
 **Verification is a render, not a grep.** Reading `style.css` back for the missing
 `background-color` only re-checks the fix. `tests/check_waybar_paint.py` builds each module
 offscreen — a widget of that name inside a `#waybar` parent — bare and then once per class, under
-**every** GTK theme `palettes.toml` names, and fails on any class that changes the painted
-background. Testing the theme that is *not* switched on is the entire point: this bug was green
-under gruvbox for as long as gruvbox was on. It tests the whole stock set rather than the classes
+the GTK theme the tracked `gtk-3.0/settings.ini` names, and fails on any class that changes the
+painted background. While each palette had its own GTK theme it rendered under **both**, and
+testing the theme that was *not* switched on was the entire point: this bug was green under gruvbox
+for as long as gruvbox was on. Since 2026-09-28 both palettes share plain Adwaita (§2.2), which
+scopes the infobar classes — measured: with the declared paint deleted from `style.css`, the check
+still passes under Adwaita, and with an unscoped `.warning` fill added back it fails on 15 modules.
+The rule stays; Adwaita's politeness today is not a promise about the next GTK release. It tests the whole stock set rather than the classes
 waybar emits today, because the next collision will be a name nobody thought to look up, and it
 turns `gtk-enable-animations` off so `#memory.critical`'s blink does not make the sample depend on
 when the frame was grabbed. It needs a display and the themes installed, so it lives in
@@ -1382,6 +1283,17 @@ tooltip at 93% alpha is 7% whatever is behind it, so a white window lightens the
 |---|---|---|
 | nord `#a0a8b6` on Nordic's tooltip | 5.77:1 | **4.63:1** |
 | gruvbox `#a89984` on Colloid's tooltip | 6.37:1 | **4.86:1** |
+
+**Re-measured for Adwaita** (2026-09-28, §2.2), whose GTK3 dark tooltip is `rgba(0, 0, 0, 0.8)` —
+read from libgtk's own `gtk-contained-dark.css`, not assumed. Both palettes still clear the floor,
+gruvbox with the least room anywhere in the table:
+
+| | over the palette's `bg` | over a white window |
+|---|---|---|
+| nord `#a0a8b6` on Adwaita's tooltip | 8.27:1 | **5.28:1** |
+| gruvbox `#a89984` on Adwaita's tooltip | 7.20:1 | **4.55:1** |
+
+`muted` fares worse, as it is allowed to: 1.71:1 (nord) and 2.60:1 (gruvbox) over white.
 
 The first nord value tried was the plain nord3↔nord4 midpoint, which measured a comfortable 5.01:1
 over dark and **3.92:1** over white — under the floor in exactly the case that is easy not to
@@ -1654,13 +1566,9 @@ stubbed test once sent a real notification.
 | Screen never locks | swayidle not running, or many are | `pgrep -xc idle.sh` and `pgrep -xc swayidle` — both must be exactly `1` |
 | Screen locks immediately / repeatedly | Multiple swayidle instances racing | Same check; the `pkill` prefix is missing |
 | Machine suspends when plugged in, or never suspends on battery | `idle.sh` hasn't noticed a power-source change yet (15s poll), or `AC/online` is unreadable | Wait 15s; `cat /sys/class/power_supply/AC/online`; §9.26 |
-| Lock screen is a solid colour, no wallpaper | Cache never populated, or a palette was renamed without renaming its directory | `ls ~/Pictures/walls/"$(cat "${XDG_STATE_HOME:-$HOME/.local/state}"/theme/palette)"`, then `walls-sync`; §9.25 |
-| Lock screen wallpaper looks blurry or pixelated | An image below the resolution floor | `walls-sync` prunes on every run; raise it with `walls-sync --min 2560x1440`; §9.25 |
-| `walls-sync` exits non-zero | One or more files failed; everything else synced | Read the `walls-sync:` lines on stderr, then re-run — it retries failed or incomplete entries and skips only files whose size already matches upstream; §9.25 |
 | A waybar module has a coloured block behind it | Its state class collides with a GTK stock one the theme styles bare | `sh tests/check_consumers.sh` names the module and the class; §9.27 |
 | Tooltip text is there but barely visible | `muted` used where `dim` belongs — `muted` is chrome and may disappear | §3.1, §9.28; measure against the GTK tooltip background, not `bg` |
-| GTK apps still not Nord | `nordic-theme` not installed | `ls /usr/share/themes/Nordic` |
-| GTK apps still not Gruvbox | `Colloid-Yellow-Dark-Gruvbox` not installed | `ls -d ~/.themes/Colloid-Yellow-Dark-Gruvbox` — it lives in `~/.themes`, not `/usr/share/themes` |
+| GTK3 apps render light | `gtk-theme-name` set to `Adwaita-dark`, which is not installed, or prefer-dark lost | §2.2; `gsettings get org.gnome.desktop.interface gtk-theme` → `'Adwaita'`, and `gtk-application-prefer-dark-theme=1` in `settings.ini` |
 | *Some* apps still light | libadwaita | §2.2; check `gsettings get org.gnome.desktop.interface color-scheme` → `prefer-dark` |
 | GTK theme reverted | nwg-look was opened | §9.1 |
 | Boxes instead of icons | Nerd Font missing | `fc-match "JetBrainsMono Nerd Font"` |
@@ -1677,13 +1585,11 @@ stubbed test once sent a real notification.
 | A window has no border at all | `smart_borders on` with one window | Set `smart_borders off`; §9.8 |
 | One GTK app is the wrong theme | It predates the theme change | Restart it; §9.9 |
 | `$mod+Return` does nothing | kitty not installed, or its first start is failing | `kitty --version`, then run `kitty` from another terminal and read the error |
-| An open **foot** is still the old palette after a switch | foot cannot reload colours, and nothing restarts it | Close and reopen it; §9.11 |
 | An open **kitty** is still the old palette after a switch | The SIGUSR1 never arrived | `theme` prints `kitty … reloaded (SIGUSR1)` when it sends one; §9.11 |
-| One surface still the old palette, everything else switched | A running GTK app (§9.9), an open foot (§9.11), or an unfolded package that was stowed before `theme` first ran, so the rendered file was never linked | Restart the app; else `readlink` the file under `~` and `stow -R <pkg>` if it is missing; §3.3 |
+| One surface still the old palette, everything else switched | A running GTK app (§9.9), or an unfolded package that was stowed before `theme` first ran, so the rendered file was never linked | Restart the app; else `readlink` the file under `~` and `stow -R <pkg>` if it is missing; §3.3 |
 | A widget renders **black** | A GTK CSS `@name` used in a hand-written file but produced by no template, or a stale/deleted rendered file | Re-run `theme` (re-rendering repairs artefacts); if the name is not a role, add it to **both** palettes; §9.10 |
 | `theme: …tmpl: no such role '…'` | A template names a role `palettes.toml` does not define | Add the role to both palettes, or fix the typo in the template; §9.10 |
 | `theme: … define different keys` | The two palettes have drifted | §9.10. This is the guard, not a fault |
-| Folder icons don't match the theme | papirus-folders was skipped — it needs `sudo`, so `theme` only runs it from a terminal | Re-run `theme` in a terminal, or `sudo papirus-folders -C <colour> --theme Papirus-Dark` |
 | Cursor is the default X arrow | Theme name case | `ls -d /usr/share/icons/<name>` — XCursor resolves by case-sensitive path |
 | A `$role` breaks `sway --validate` | `Invalid border color $accent` — the binding is in `default`, parsed before `theme` | §9.13; source `theme.gen.env` from a script instead |
 
@@ -1697,7 +1603,7 @@ fc-match "JetBrainsMono Nerd Font"            # not NotoSansMono
 swaymsg -t get_outputs                        # scale 2 on eDP-1
 gsettings get org.gnome.desktop.interface color-scheme    # 'prefer-dark'
 systemctl --user show-environment | grep XDG_CURRENT      # =sway
-readlink -f ~/.config/sway ~/.config/waybar ~/.gtkrc-2.0  # all inside the repo
+readlink -f ~/.config/sway ~/.config/waybar ~/.config/gtk-3.0/settings.ini  # all inside the repo
 
 theme                                                     # re-renders; prints "N files rendered … [name]"
 cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
@@ -1706,15 +1612,15 @@ cat "${XDG_STATE_HOME:-$HOME/.local/state}/theme/palette" # nord | gruvbox
 Folding — the property §5.2 depends on, and the one that a stray file in `~/.config` quietly breaks:
 
 ```sh
-for p in sway waybar foot kitty mako fuzzel nwg-drawer htop; do
+for p in sway waybar kitty mako fuzzel htop; do
     printf '%-12s ' "$p"
     if [ -L ~/.config/$p ]; then echo "folded (symlink)"; else echo "UNFOLDED (real dir)"; fi
 done
 ```
 
-Eight lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
+Six lines, every one `folded (symlink)`. Use this form, not `ls -la ~/.config | grep -E ' foo$'` —
 see §5.2 for why that one passes silently when things are fine and only speaks up when they break.
 
-Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, `$mod+Shift+d`, the waybar
+Then trigger each themed surface by hand: `$mod+d`, `notify-send test`, the waybar
 clock tooltip (and *scroll* on it — §9.14), `$mod+f1`, thunar, a GTK4 app, `$mod+Return`, `Print`,
-`vim`, `ls`.
+`nvim`, `ls`.

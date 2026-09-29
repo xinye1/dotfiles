@@ -2,8 +2,6 @@ autotiling
 brightnessctl
 cliphist
 fd
-firewall-applet
-foot
 fuzzel
 fzf
 git
@@ -17,7 +15,6 @@ mako
 neovim
 network-manager-applet
 networkmanager
-nwg-drawer
 pamixer
 papirus-icon-theme
 pavucontrol
@@ -39,7 +36,5 @@ tmux
 ttf-jetbrains-mono-nerd
 vim
 waybar
-welcome
 wl-clipboard
-yad
 yazi

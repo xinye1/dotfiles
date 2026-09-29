@@ -7,8 +7,8 @@
 # This script manages nothing. It is the README quickstart made executable:
 # the same mkdir/theme/stow commands, in the one order that works, stopping at
 # the first failure instead of leaving a half-linked $HOME. Re-running it is
-# always safe. What it cannot do — system packages, GTK themes, vim plugin
-# clones, the papirus tint — stays manual: PLAYBOOK.md §4 and §8.
+# always safe. What it cannot do — system packages, the default browser —
+# stays manual: PLAYBOOK.md §4 and §8.
 
 set -eu
 
@@ -51,23 +51,16 @@ fi
 # Stow folds any target directory that does not exist yet — it links the whole
 # directory into the repo. For these targets that would be a trap sprung later:
 # each one accumulates untracked content (installed binaries in ~/.local/bin,
-# plugin clones in ~/.vim, Claude Code state in ~/.claude, nwg-look output in
-# gtk-{3,4}.0 and xsettingsd, `ya pkg` installs in ~/.config/yazi), and folded,
-# all of it lands inside the repo. On a fresh $HOME none of these directories
+# Claude Code state in ~/.claude, nwg-look output in gtk-{3,4}.0, `ya pkg`
+# installs in ~/.config/yazi), and folded, all of it lands inside the repo. On a fresh $HOME none of these directories
 # exist, so create them before stow sees them. mkdir -p is a no-op when they
 # already do.
 #
-# ~/.config/xsettingsd is on this list for the same reason gtk-{3,4}.0 are, not
-# because anything reads it: nwg-look's `export-xsettingsd` toggle (§9.1) writes
-# that directory exactly as its siblings' toggles write theirs. It happens to be
-# a real directory on this machine, which masked the gap — a fresh clone would
-# have folded it.
-#
 # ~/.config/herdr is herdr's runtime directory as much as its config: the live
 # API socket, logs, session.json and the plugin registry all land there.
-for dir in "$HOME/.local/bin" "$HOME/.vim" "$HOME/.claude" "$HOME/.icons" \
-           "$HOME/.config/gtk-3.0" "$HOME/.config/xsettingsd" \
-           "$HOME/.config/gtk-4.0" "$HOME/.config/yazi" "$HOME/.config/herdr"; do
+for dir in "$HOME/.local/bin" "$HOME/.claude" "$HOME/.icons" \
+           "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" \
+           "$HOME/.config/yazi" "$HOME/.config/herdr"; do
     if [ -L "$dir" ]; then
         printf 'setup: %s is already a symlink — stow folded it on an earlier run.\n' "$dir" >&2
         printf 'setup: unfold it first: stow -D <pkg>; mkdir %s; stow <pkg>  (PLAYBOOK §5.2)\n' "$dir" >&2
@@ -108,7 +101,7 @@ if [ -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
 fi
 
 # Dry run first: stow refuses to overwrite real files, and on a stock
-# EndeavourOS Sway install ~/.config/sway, waybar, foot etc. ARE real files.
+# EndeavourOS Sway install ~/.config/sway, waybar, fuzzel etc. ARE real files.
 # Surface every conflict before linking anything, so a failure never leaves
 # half the packages stowed.
 if ! out=$(stow -n $pkgs 2>&1); then
@@ -140,9 +133,6 @@ sh tests/theme_test.sh
 cat <<'EOF'
 setup: done. Still manual, and needed once per machine (PLAYBOOK §4, §8):
 setup:   - system packages           §4.1/§4.2 (pacman + AUR)
-setup:   - GTK themes                nordic-theme (AUR), Colloid-…-Gruvbox (§8)
-setup:   - vim plugins               three git clones (§8)
-setup:   - papirus folder tint       sudo papirus-folders … (§8), or just `theme`
 setup:   - default web browser       env -u BROWSER xdg-settings set … (§8)
 setup:   - herdr                     its installer, then re-run this (§9.30)
 setup:   - herdr session backups     systemctl --user enable --now herdr-session-backup.timer

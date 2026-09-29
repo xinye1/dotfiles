@@ -8,10 +8,9 @@ A Sway desktop on Arch, carrying two palettes — [Nord](https://www.nordtheme.c
 git clone git@github.com:xinye1/dotfiles.git ~/repos/dotfiles
 cd ~/repos/dotfiles
 sudo pacman -S --needed $(cat packages.txt)   # the desktop and every tool a config here invokes
-yay -S --needed $(cat packages-aur.txt)       # google-chrome, nordic-theme, papirus-folders
+yay -S --needed $(cat packages-aur.txt)       # google-chrome
 ./setup.sh gruvbox                  # or nord
 sh tests/check_consumers.sh         # once the desktop is up: asks the live apps
-walls-sync                          # optional: the lock screen's wallpapers (~320 MB)
 ```
 
 `setup.sh` is this quickstart made executable, in the one order that works: the fold-guard
@@ -21,8 +20,7 @@ and stow would fold them — pulling every later plugin clone and installed bina
 dry run, so existing configs stop it *before* anything is linked — and the sandboxed tests.
 Re-running it is always safe; it manages nothing.
 
-Full desktop, including the steps `setup.sh` cannot do — system packages, GTK themes, vim plugin
-clones, the papirus tint: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
+Full desktop, including the steps `setup.sh` cannot do — system packages, the default browser: **[PLAYBOOK.md](PLAYBOOK.md)** §4 and §8.
 
 ## The intention
 
@@ -41,25 +39,27 @@ themed by hand.
 bare `*.gen`, which is what mako's `colors.gen` is, because mako's `include=` names the file with
 no suffix at all — is a build artefact. Editing one is pointless: the next switch overwrites it.
 That is what lets `.gitignore` be a glob instead of the twenty-two hand-maintained paths it used to
-be, and what makes "did switching dirty the tree?" a question with a permanent answer of no. Seven
-files cannot carry the marker, because GTK, xsettingsd and yazi each read a config at a hardcoded
-name and take no include; those are listed one by one in `.gitignore`, next to the reason.
+be, and what makes "did switching dirty the tree?" a question with a permanent answer of no. One
+file cannot carry the marker, because yazi reads its theme at a hardcoded name and takes no include;
+it is listed in `.gitignore`, next to the reason.
 
 **Nothing is clever that could be obvious.** Stow does the linking; `setup.sh` only sequences the
 documented steps and would change nothing if you typed them from PLAYBOOK §8 instead. `theme`
 renders and reloads; it does not manage state beyond one word in
 `$XDG_STATE_HOME/theme/palette`. The one genuinely
-surprising rule — seven files that cannot carry the `.gen` marker — is written down in
-`.gitignore` next to the entries themselves, because a rule you have to remember is a rule that
-will be broken.
+surprising rule — a file that cannot carry the `.gen` marker — is written down in `.gitignore` next
+to the entry itself, because a rule you have to remember is a rule that will be broken.
 
 What this costs, stated plainly, because a reader deserves it up front:
 
 - You cannot theme one application differently from the rest without adding a role.
-- A palette switch is a render, not a symlink flip, so it writes 19 files rather than relinking 19.
+- GTK apps are not palette-tinted at all: they run plain Adwaita dark under both palettes, the
+  trade taken on 2026-09-28 for six fewer templates, two fewer theme installs and a switch that
+  never needs `sudo` (PLAYBOOK §2.2).
+- A palette switch is a render, not a symlink flip, so it rewrites every rendered file rather than relinking them.
 - `theme` must run **before** `stow` on a fresh clone (`setup.sh` encodes the order), and after
-  adding a themed file to `gtk`, `vim` or `yazi` — the unfolded packages that carry
-  templates. See PLAYBOOK §5.2.
+  adding a themed file to `yazi` — the one unfolded package that carries a
+  template. See PLAYBOOK §5.2.
 - Theming needs Python 3.11+ (for `tomllib`). It was `sh`; rendering needs a parser.
 
 ## Packages
@@ -69,13 +69,11 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | Package | Links to |
 |---|---|
 | `bash` | `~/.bashrc`, `~/.config/dircolors` |
-| `vim` | `~/.vimrc`, `~/.vim/colorscheme.gen.vim` |
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
-| `bin` | `~/.local/bin/theme` — the palette renderer; `walls-sync` — the lock screen's wallpaper cache; `herdr-session-backup` |
+| `bin` | `~/.local/bin/theme` — the palette renderer; `herdr-session-backup`; `tp-backup`, `tp-backup-ssd` |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
 | `herdr` | `~/.config/herdr/config.toml`, `local-plugins/attention/` — the agent multiplexer and its blocked-agent alerts |
-| `foot` | `~/.config/foot/foot.ini` — standalone fallback, still themed |
-| `kitty` | `~/.config/kitty/kitty.conf` — **the default terminal**; a port of `foot` |
+| `kitty` | `~/.config/kitty/kitty.conf` — **the terminal**; ported from the retired `foot` package |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
 | `starship` | `~/.config/starship.toml` |
 | `htop` | `~/.config/htop/htoprc` |
@@ -83,10 +81,9 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `waybar` | `~/.config/waybar/` — `config`, `style.css`, `scripts/` |
 | `sway` | `~/.config/sway/` — `config`, `config.d/`, `scripts/` |
 | `kanshi` | `~/.config/kanshi/config` |
-| `gtk` | `~/.config/gtk-3.0/`, `gtk-4.0/`, `xsettingsd/`, `~/.gtkrc-2.0`, `~/.icons/` |
+| `gtk` | `~/.config/gtk-3.0/settings.ini`, `gtk-4.0/settings.ini`, `~/.icons/` — static, plain Adwaita dark |
 | `mako` | `~/.config/mako/config` |
 | `fuzzel` | `~/.config/fuzzel/fuzzel.ini` |
-| `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |
 
 **The lock screen has no row of its own.** It is swaylock, which is configured entirely by the
 flags in `sway/.config/sway/scripts/lock.sh` — a file in the `sway` package, not a package of its
@@ -94,22 +91,10 @@ own. swaylock does read `~/.config/swaylock/config` if one exists; deliberately 
 a config file could not derive its colours from the active palette and the script can (PLAYBOOK
 §4.3, §9.13).
 
-It locks over a **random wallpaper matching the active palette**, picked at lock time from
-`~/Pictures/walls/<palette>/`. Those images are **not in this repo** and never will be — the
-no-binaries rule, the same one that keeps the two desktop wallpapers in `~/Pictures/wallpapers` —
-so the directory starts empty and the lock screen is the solid `$desktop` colour until you fill it:
-
-```sh
-walls-sync                      # both palettes, ~320 MB, from github.com/dharmx/walls
-walls-sync nord                 # just one
-walls-sync --min 2560x1440      # raise the resolution floor (default 1920x1080)
-```
-
-Re-running downloads nothing it already has. It is a command **you** run, never something `theme`
-or the lock screen does: locking must not depend on the network, and syncing at lock time would
-make an unreachable GitHub into an unlocked screen. Everything in `~/Pictures/walls` is a cache —
-delete it and re-run, and you have lost only time. `lock.sh` falls back to the solid colour if the
-cache is missing, empty, or does not match the palette, and it locks either way (PLAYBOOK §9.25).
+It locks over the solid **`$desktop`** colour — the field the desktop itself shows — and never
+touches the network: a lock that waits on a socket is a lock that does not happen. It used to pick
+a random palette-matched wallpaper from a ~320 MB cache that `walls-sync` downloaded; both retired
+on 2026-09-28 (PLAYBOOK §9.25).
 
 `docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
 would install to `~/tests/…`. `systemd-system/` mirrors the root filesystem (`/etc/systemd/system`,

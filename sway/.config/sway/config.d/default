@@ -28,11 +28,9 @@ set $right l
 # so isolation was never the differentiator people expect.
 set $term kitty
 
-# Application launcher
+# Application launcher. The only one: nwg-drawer's app grid on $mod+Shift+d
+# was retired on 2026-09-28 (PLAYBOOK §4.1).
 set $launcher fuzzel
-
-# Application menu
-set $menu nwg-drawer
 
 # Power Menu
 set $powermenu ~/.config/sway/scripts/power_menu.sh
@@ -52,9 +50,6 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
 
     # Start your launcher
     bindsym $mod+d exec $launcher
-
-    # Menu
-    bindsym $mod+Shift+d exec $menu
 
     # Lock screen
     bindsym $mod+f1 exec ~/.config/sway/scripts/lock.sh

@@ -1,3 +1,1 @@
 google-chrome
-nordic-theme
-papirus-folders

@@ -13,10 +13,12 @@ triggers, not the full story: read the named section before working in its area.
   with `[ -L ~/.config/<pkg> ]`, never `ls | grep` — the grep passes exactly when things are fine
   (§5.2, which also has each package's fold decision). Never fold a dir a tool writes into;
   `setup.sh` pre-creates the must-stay-unfolded targets on a fresh machine.
-- **nwg-look clobbers the `gtk` package** — it rewrites `settings.ini`, `.gtkrc-2.0`, xsettingsd
-  and replaces the libadwaita `gtk-4.0/gtk.css`. After ever opening it: `git status`, then
-  `stow -R gtk`. It is never needed at runtime — `settings.ini` is the source of truth and
-  `import-gsettings` pushes it on every reload (§9.1, §2.2).
+- **nwg-look clobbers the `gtk` package** — it rewrites the two `settings.ini` files and recreates
+  `.gtkrc-2.0`, xsettingsd and a `gtk-4.0/gtk.css` symlink this repo no longer carries. After ever
+  opening it: `git status`, delete what it created, `stow -R gtk`. It is never needed — the GTK
+  look is static Adwaita dark for both palettes, and `import-gsettings` pushes `settings.ini` on
+  every reload (§9.1, §2.2). There is no `Adwaita-dark` theme installed: naming it renders GTK3
+  *light*; dark comes from `Adwaita` plus `gtk-application-prefer-dark-theme=1`.
 - sway: `exec_always` starting a daemon needs `sh -c 'pkill -x <name>; exec <name>'` — the `pkill`
   or it leaks one process per reload, **and** the `sh -c` wrapper because an unquoted `;` on an
   exec line is split at startup (not at reload), so the daemon never starts at login while every
@@ -43,21 +45,20 @@ triggers, not the full story: read the named section before working in its area.
   exists for this (§9.10). tmux is the same shape: an undefined `@thm_foo` becomes an accepted
   empty `#[fg=]` and the bar quietly goes default (§9.18).
 - waybar's `include` gives precedence to the **including** file — a module must live in `config`
-  or the included file, never both (§9.12). foot's colours use `[colors-dark]` and foot has no
-  config-reload signal at all; kitty reloads on SIGUSR1, sent only via kitty's own reloader,
-  never `pkill` (§9.11).
+  or the included file, never both (§9.12). kitty — the one terminal carried —
+  reloads on SIGUSR1, sent only via kitty's own reloader, never `pkill` (§9.11).
 - **`muted` is chrome, `dim` is text.** `muted` may be almost invisible (borders, rules); anything
   meant to be *read* quietly takes `dim`, which carries a 4.5:1 floor in **both** palettes. `muted`
   measured 1.87:1 on the GTK tooltip under nord and 3.64:1 under gruvbox — legible in the palette it
   was written under, unreadable in the other. Tooltips sit on the **GTK theme's** background, not
   `bg`, so measure against that (§3.1, §9.28).
 - **A waybar state class is a bare GTK class** — `warning` collides with GtkInfoBar's stock one,
-  which Nordic styles unscoped, so any module in that state paints an orange block. `style.css`
-  declares `background`/`border`/`box-shadow` on every module for this reason; never delete that
-  rule as "redundant". It renders correct under a GTK theme that scopes the class (gruvbox's
-  Colloid does) and breaks on the switch, so verify by rendering, not by reading —
-  `tests/check_waybar_paint.py`, via `check_consumers.sh`, does it under *both* palettes' GTK
-  themes (§9.27).
+  which the old Nordic theme styled unscoped, so any module in that state painted an orange block.
+  `style.css` declares `background`/`border`/`box-shadow` on every module for this reason; never
+  delete that rule as "redundant" — today's Adwaita scopes the class, which is exactly how the bug
+  hid under gruvbox's Colloid for months. Verify by rendering, not by reading —
+  `tests/check_waybar_paint.py`, via `check_consumers.sh`, renders under the theme
+  `gtk-3.0/settings.ini` names (§9.27).
 - **herdr** runs every Claude pane, and this session is probably inside one: a bare `herdr …`
   reaches the LIVE server through the inherited `HERDR_SOCKET_PATH`. Tests use their own
   `XDG_CONFIG_HOME`/`XDG_STATE_HOME`/short `HERDR_SOCKET_PATH` under `/tmp`, `HERDR_*` unset, and
@@ -73,10 +74,10 @@ triggers, not the full story: read the named section before working in its area.
   only — the token charts keep their history): it lives in `$XDG_STATE_HOME/claude-usage/`, so
   deleting the cache cannot undo it.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
-  that does not happen. Its wallpapers are pre-synced by `walls-sync` into
-  `~/Pictures/walls/<palette>/` — palette name *is* the directory name — and every failure falls
-  back to the solid colour with the screen still locking. The bare `exec swaylock "$@"` colour
-  fail-safe stays flagless (§9.25).
+  that does not happen. It locks over the solid `$desktop` colour (the wallpaper cache and
+  `walls-sync` retired); if an image ever returns it must already be on disk, and every failure
+  must fall back to the solid colour with the screen still locking. The bare `exec swaylock "$@"`
+  colour fail-safe stays flagless (§9.25).
 - tmux formats: wrap **every** dynamic value in `#{qh:…}` (trim runs before escape, the only safe
   order), and a hand-written `status-format[0]` needs `#[list=on]`/`#[nolist]` or every `align=`
   is ignored (§9.19, §9.20).
@@ -93,9 +94,10 @@ triggers, not the full story: read the named section before working in its area.
   `tests/theme_test.sh` is still `sh` and the rule applies there.
 - Moving a config block wholesale silently loses whatever stays behind, and every check in this
   repo is syntactic. Diff the old block against the new one key by key before deleting (§9.14).
-- `keyhint.sh` is a flat cell list in a 5-column yad grid: a cell count that isn't a multiple of 5
-  shifts every later row, and `--geometry` clips overflow with no scrollbar. Both look like
-  nothing happened (§7).
+- The keybinding list (waybar keyboard-icon click, `keyhint.py`) is **parsed from the sway config at click
+  time** — sway has no IPC that lists bindings. A binding in a shape the parser does not follow
+  would silently drop off the list, so `tests/keyhint_test.py` asserts row count = bind lines in
+  the repo's sway package; extend the parser, not the count (§7).
 
 ## Verify
 
@@ -117,12 +119,13 @@ sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
+python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
 a fake `$HOME` and stubs `swaymsg`/`sway`/`makoctl` to exit 1, so it never touches the live
 desktop. `check_consumers.sh` is the one that would have caught the breakages that reached the
-desktop: it asks waybar, foot, sway, vim, nvim, tmux, yazi and herdr whether they accept what was
+desktop: it asks waybar, kitty, sway, mako, nvim, tmux, yazi and herdr whether they accept what was
 rendered, rather than inspecting files from outside; it briefly starts a second waybar, and it
 offscreen-renders every waybar module under **both** palettes' GTK themes (§9.27). A check there
 can report `skip` as well as ok/FAIL — a skip is not a pass, and the tally line says how many.
@@ -188,7 +191,4 @@ startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you to
 - **`theme` must run before `stow` on a fresh clone** (`setup.sh` encodes the order) and after
   adding a themed file to an unfolded package (§3.3). Applying is idempotent; re-running repairs
   a deleted or edited artefact.
-- `theme` skips papirus-folders when stdin is not a tty (it needs `sudo`); `--no-icons` forces the
-  skip. Icon tint therefore only changes on an interactive run.
-- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, and the lock screen's ~320 MB of
-  them in `~/Pictures/walls/<palette>/`, not here.
+- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, not here.

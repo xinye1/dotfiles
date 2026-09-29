@@ -77,9 +77,6 @@ exec mako
 # there is no daemon to prewarm and nothing to translate the line into. An
 # `exec_always` starting one would be the process-per-reload leak §9.2 warns
 # about, and kitty starts in ~220ms anyway.
-#
-# foot is still installed and still works, standalone, as `foot`. It just is
-# not what the desktop launches, so nothing needs its server running.
 
 # Autotiling
 exec autotiling
@@ -91,11 +88,6 @@ exec wl-paste --type image --watch cliphist store
 # Network Applet
 exec nm-applet --indicator
 
-# Firewall Applet
-exec sleep 2 && firewall-applet
-
-# Welcome App
-exec eos-welcome --startdelay=3
-
-# nwg-drawer
-exec_always nwg-drawer -r -c 7 -is 90 -mb 10 -ml 50 -mr 50 -mt 10
+# No firewall-applet (a ~40 MB tray icon; firewalld runs without it — check it
+# with `systemctl is-active firewalld`) and no eos-welcome greeter: both dropped
+# on 2026-09-28 (PLAYBOOK §4).

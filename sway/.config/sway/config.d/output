@@ -5,7 +5,7 @@
 # Built-in display: a 3840x2160 Sharp panel (Dell laptop).
 #
 # scale 2 gives a 1920x1080 logical size, which is what everything else in this
-# repo is sized against — waybar's 45px width and 12px font, foot's size=11.
+# repo is sized against — waybar's 45px width and 12px font, kitty's font_size 11.
 #
 # Stock left this file as comments only. The scale was being applied by
 # autodetection, which meant it worked on this machine and would silently not

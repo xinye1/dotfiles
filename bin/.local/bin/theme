@@ -4,7 +4,6 @@
     theme              re-apply the current palette
     theme <name>       switch to <name>
     theme --list       list the palettes
-    theme --no-icons   skip papirus-folders (it needs sudo; use in scripts)
 
 Every colour in the desktop comes from palettes.toml. Each `*.tmpl` in the repo
 is rendered against the chosen palette and written beside itself with `.tmpl`
@@ -110,9 +109,9 @@ def load_palettes(root):
 def bindings(palette, name):
     """Every key, plus:
 
-    `<key>_hex`  the colour without its leading # — foot and fuzzel want that.
-    `palette`    the palette's own name — vim and nvim name their colourscheme
-                 rather than listing its colours.
+    `<key>_hex`  the colour without its leading # — fuzzel wants that.
+    `palette`    the palette's own name — nvim names its colourscheme rather
+                 than listing its colours.
     """
     flat = flatten(palette)
     out = dict(flat, palette=name)
@@ -166,13 +165,13 @@ def run_ok(cmd):
 
 
 def reload_desktop(home):
-    """sway reload also restarts waybar, re-runs import-gsettings and nwg-drawer.
+    """sway reload also restarts waybar and re-runs import-gsettings.
 
     Returns False if sway's config is invalid, so the caller can still exit
     non-zero — but only after every OTHER consumer has had its reload.
 
-    Nothing in here aborts, deliberately. By the time this runs, all nineteen
-    files and the state file are already written, so giving up early cannot
+    Nothing in here aborts, deliberately. By the time this runs, every
+    rendered file and the state file are already written, so giving up early cannot
     undo the switch; it only skips the consumers further down. An invalid sway
     config used to die() on the spot, which left mako and every open kitty
     window on the OLD palette for a reason that had nothing to do with either
@@ -185,7 +184,7 @@ def reload_desktop(home):
             sway_valid = False
             print("  sway  NOT reloaded: its config is invalid")
         elif run_ok(["swaymsg", "reload"]):
-            print("  sway, waybar, nwg-drawer, gsettings  reloaded")
+            print("  sway, waybar, gsettings             reloaded")
         else:
             print("  swaymsg reload FAILED; the rendered files are in place "
                   "but the desktop still shows the old palette")
@@ -201,11 +200,9 @@ def reload_desktop(home):
 def reload_kitty():
     """kitty re-reads kitty.conf and its include on SIGUSR1.
 
-    This is the one terminal here that can change palette without being
-    restarted, so it is the one terminal this script signals. foot has no
-    reload at all (PLAYBOOK §9.11) and is deliberately left alone: nothing in
-    this repo restarts a terminal, because the processes inside one are the
-    user's, not ours.
+    kitty is the one terminal this repo carries, and it changes palette
+    without being restarted. Nothing in this repo restarts a terminal, because
+    the processes inside one are the user's, not ours (PLAYBOOK §9.11).
 
     Sent through kitty's own reload_conf_in_all_kitties() rather than
     `pkill -USR1 -x kitty`, and that is not fussiness. `kitty @ ...` and
@@ -222,29 +219,12 @@ def reload_kitty():
         print("  kitty                                 reloaded (SIGUSR1)")
 
 
-def reload_icons(values):
-    """papirus-folders writes into /usr/share/icons — the one step needing root."""
-    wanted = values.get("papirus_folder")
-    if not wanted or not shutil.which("papirus-folders"):
-        return
-    listing = subprocess.run(["papirus-folders", "-l"], capture_output=True, text=True)
-    for line in listing.stdout.splitlines():
-        if line.strip().startswith(">") and line.split()[-1] == wanted:
-            return                            # already this colour
-    if not sys.stdin.isatty():
-        print("  papirus-folders needs sudo; skipped (not a terminal)")
-        return
-    subprocess.run(["sudo", "papirus-folders", "-C", wanted, "--theme", "Papirus-Dark"])
-
-
 def main(argv):
     root = repo_root()
     data = load_palettes(root)
-    want_icons, name = True, None
+    name = None
     for arg in argv:
-        if arg == "--no-icons":
-            want_icons = False
-        elif arg == "--list":
+        if arg == "--list":
             print("\n".join(sorted(data)))
             return 0
         elif arg.startswith("-"):
@@ -264,16 +244,14 @@ def main(argv):
 
     apply_theme(root, name, data)
     sway_valid = reload_desktop(Path(os.path.expanduser("~")))
-    if want_icons:
-        reload_icons(bindings(data[name], name))
     if not sway_valid:
         # Same exit code the die() inside reload_desktop() used to give, but
-        # raised here — after mako, kitty and the icons have had their turn —
+        # raised here — after mako and kitty have had their turn —
         # and saying which half of the switch landed, because "not reloading"
         # on its own reads as "nothing happened", and nothing is what did not
         # happen.
-        die(f"sway's config is invalid, so sway was NOT reloaded — nor waybar, "
-            f"nwg-drawer or gsettings, which its reload restarts.\n"
+        die(f"sway's config is invalid, so sway was NOT reloaded — nor waybar "
+            f"or gsettings, which its reload restarts.\n"
             f"       Everything else IS on [{name}]: the files are rendered, "
             f"the palette is remembered, mako and kitty were reloaded above.\n"
             f"       Fix it (sway --validate -c ~/.config/sway/config), then "
