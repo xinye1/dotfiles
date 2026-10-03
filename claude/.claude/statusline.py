@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Claude Code status line.
 
-dir | model |  NN% | $N.NN |  NN% (Nh) |  NN% (Nd) |  branch(+dirty) |  level | /rc
+dir | model |  NN% | $N.NN |  Nm |  NN% (Nh) |  NN% (Nd) |  branch(+dirty) |  level | /rc
 
 Styled after starship: normal-weight coloured values, prefixed by a dimmed Nerd
 Font icon wherever the value does not already name itself. Colours are the
@@ -35,6 +35,7 @@ RESET = "\033[0m"
 ICON_CONTEXT = ""  # nf-fa-gauge_simple (how full the context window is)
 ICON_SESSION = ""  # nf-fa-clock_o      (the rolling 5h window)
 ICON_WEEK = ""     # nf-fa-calendar_o   (the rolling 7d window)
+ICON_CACHE = ""    # nf-fa-hourglass_half (prompt cache time-to-live)
 ICON_GIT = ""      # nf-pl-branch
 ICON_EFFORT = ""   # nf-fa-flash        (FA4's name for the bolt glyph)
 # Directory and model carry no icon — a path and a model name label themselves.
@@ -69,9 +70,9 @@ PATH_MIN = 12
 PATH_MAX = 40
 # Slack for terminals that render Nerd Font glyphs double-width. cell_len
 # counts a glyph as one column, so the line can draw one column wider per icon
-# than the budget predicts — five of them (context, session, week, git, effort),
-# hence five.
-MARGIN = 5
+# than the budget predicts — six of them (context, cache, session, week, git,
+# effort), hence six.
+MARGIN = 6
 # Claude Code exports COLUMNS, so this only falls back on an unusual client.
 FALLBACK_COLUMNS = 100
 
@@ -155,6 +156,30 @@ def resets_in(epoch):
     return f"{math.ceil(seconds / 86400)}d"
 
 
+CACHE_TTLS = {"5m": 300, "1h": 3600}
+
+
+def cache_segment(cache):
+    """`Nm` left before the prompt cache expires, `cold` once it has.
+
+    Claude Code hands the status line its own cache bookkeeping (`prompt_cache`,
+    seen on 2.1.288; absent until the session's first request). It re-renders
+    at `expires_at` by itself, so the flip to `cold` lands on time even with no
+    event; the minutes in between only tick down because settings.json sets
+    `statusLine.refreshInterval`. Yellow in the last quarter of the TTL — the
+    window in which to reply before the next message re-writes the context.
+    """
+    if not cache:
+        return None
+    expires = cache.get("expires_at")
+    left = resets_in(expires) if cache.get("warm") else None
+    if not left:
+        return segment(ICON_CACHE, paint(RED, "cold"))
+    ttl = CACHE_TTLS.get(cache.get("ttl"))
+    late = ttl and expires - time.time() < ttl / 4
+    return segment(ICON_CACHE, paint(YELLOW if late else GREEN, left))
+
+
 def git_segment(cwd):
     """Return the branch segment, or None outside a repo."""
     def git(*args):
@@ -222,6 +247,9 @@ def main():
         usage_segment(ICON_CONTEXT, float(pct), 60, 85),
         paint(VALUE, f"${cost:.2f}"),
     ]
+    cache = cache_segment(data.get("prompt_cache"))
+    if cache:
+        rest.append(cache)
     # Rate limits cost delivery speed, not output quality — context (60/85
     # above) is what degrades quality, so it is the one that warns earlier.
     # 70/90 matches the waybar claude widget: one machine-wide definition.
