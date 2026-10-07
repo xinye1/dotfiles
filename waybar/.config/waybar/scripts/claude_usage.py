@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Claude Code usage widget for waybar: limits, reset countdowns, token charts.
 
-Design: docs/specs/2026-08-22-claude-usage-widget-design.md. Read-only on
+Design: docs/specs/2026-08-22-claude-usage-widget-design.md. `--json` prints a
+surface-neutral snapshot instead of waybar's Pango, for the Windows tray in
+windows/claude-usage/ (PLAYBOOK §9.31). Read-only on
 ~/.claude; all state in ~/.cache/claude-usage/, except the one thing that is
 the user's rather than derived: `--limits-reset` records when the limits were reset
 early, in $XDG_STATE_HOME/claude-usage/limits-reset-at (PLAYBOOK §9.23). Stdlib
@@ -36,14 +38,6 @@ FALLBACK_THEME = {
     "accent2": "orange", "indicator": "lightgreen", "critical": "red",
     "warning": "orange", "success": "green", "desktop": "black",
 }
-
-MODEL_NAMES = (
-    ("claude-fable-5", "Fable 5"),
-    ("claude-opus-5", "Opus 5"),
-    ("claude-sonnet-5", "Sonnet 5"),
-    ("claude-haiku-4-5", "Haiku 4.5"),
-)
-
 
 def pango_escape(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -108,10 +102,29 @@ def countdown(resets_at, now):
     return f"{m}m"
 
 
+def _epoch(resets_at):
+    """`resets_at` as epoch seconds, or None — countdown()'s reading, for
+    countdown()'s reasons (bare timestamps are UTC; a non-string can arrive
+    from a hand-edited state.json). Shared by pace_window() and snapshot()."""
+    if not isinstance(resets_at, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (ValueError, OverflowError):
+        return None
+
+
 def model_display(model_id):
-    for prefix, name in MODEL_NAMES:
-        if model_id.startswith(prefix):
-            return name
+    """`claude-opus-5-5` -> `Opus 5.5`, `claude-haiku-4-5-<date>` -> `Haiku 4.5`.
+
+    Derived from the id alone. There used to be a prefix table in front of
+    this, and a prefix cannot tell a model from its point releases:
+    `claude-sonnet-5` matched `claude-sonnet-5-5` too, so the model chart drew
+    two rows both called "Sonnet 5". Every name the table gave, this gives.
+    """
     parts = [p for p in model_id.removeprefix("claude-").split("-")
              if not (len(p) == 8 and p.isdigit())]  # drop date suffixes
     words = [p.capitalize() for p in parts if p.isalpha()]
@@ -443,18 +456,15 @@ def limit_label(l):
     return str(kind)
 
 
-def pace_mark(kind, resets_at, now, floor=None):
-    """Which bar cell the pace marker replaces: how far through its OWN window
-    this limit is, as an index in 0..BAR_CELLS-1. None whenever that cannot be
-    established, and None is the only fallback there is — a bar without a
-    marker still reads perfectly, a bar of the wrong width shifts every column
-    in the tooltip (see cells()).
+def pace_window(kind, resets_at, floor=None):
+    """(start, end) in epoch seconds of the window a limit's pace is measured
+    against, or None whenever that cannot be established.
 
-    Timestamp handling is countdown()'s, for countdown()'s reasons: the
-    endpoint is undocumented (§9.23), so `resets_at` may lose its zone at any
-    time and is read as UTC when it does, and a corrupted or hand-edited
-    state.json can hand over a non-string entirely. `kind` gets an isinstance
-    of its own because it is raw JSON too: a drift to a list or dict is
+    Timestamp handling is _epoch()'s, for countdown()'s reasons: the endpoint
+    is undocumented (§9.23), so `resets_at` may lose its zone at any time and
+    is read as UTC when it does, and a corrupted or hand-edited state.json can
+    hand over a non-string entirely. `kind` gets an isinstance of its own
+    because it is raw JSON too: a drift to a list or dict is
     unhashable and would raise straight out of the dict lookup below.
 
     `floor` is the user's `--limits-reset` instant. An out-of-cycle reset zeroes
@@ -465,18 +475,34 @@ def pace_mark(kind, resets_at, now, floor=None):
     plain start (the window has rolled over since) changes nothing, which is
     what retires it without anyone deleting the file; one at or past the end
     would give a window of no length, so it is ignored rather than divided by.
+
+    Split out of pace_mark() so the Windows tray can be handed the window
+    itself (snapshot()) and place its marker against its own clock: a panel
+    that sits open, or a snapshot that is minutes old, still puts "now" where
+    now is.
     """
     window = LIMIT_WINDOWS.get(kind) if isinstance(kind, str) else None
-    if not window or not isinstance(resets_at, str):
+    end = _epoch(resets_at)
+    if not window or end is None:
         return None
+    start = end - window
+    if isinstance(floor, (int, float)) and start < floor < end:
+        start = floor
+    return start, end
+
+
+def pace_mark(kind, resets_at, now, floor=None):
+    """Which bar cell the pace marker replaces: how far through its OWN window
+    (pace_window) this limit is, as an index in 0..BAR_CELLS-1. None whenever
+    that cannot be established, and None is the only fallback there is — a bar
+    without a marker still reads perfectly, a bar of the wrong width shifts
+    every column in the tooltip (see cells()).
+    """
+    span = pace_window(kind, resets_at, floor)
+    if span is None:
+        return None
+    start, end = span
     try:
-        dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        end = dt.timestamp()
-        start = end - window
-        if isinstance(floor, (int, float)) and start < floor < end:
-            start = floor
         elapsed = (now.timestamp() - start) / (end - start)
     except (ValueError, TypeError, OverflowError):
         return None
@@ -538,12 +564,19 @@ def shown_pct(limit):
     return int(round(limit.get("percent") or 0))
 
 
-def _pct_color(pct, theme):  # pct is the rounded, displayed integer
+def level_of(pct):  # pct is the rounded, displayed integer
+    """The one place the 70/90 thresholds live: waybar's state class, the
+    tooltip's fill colour and the Windows tray's colours all read it."""
     if pct >= 90:
-        return theme["critical"]
+        return "critical"
     if pct >= 70:
-        return theme["warning"]
-    return theme["indicator"]
+        return "warning"
+    return "normal"
+
+
+def _pct_color(pct, theme):
+    level = level_of(pct)
+    return theme["indicator" if level == "normal" else level]
 
 
 def render(st, theme, now):
@@ -555,8 +588,7 @@ def render(st, theme, now):
     if err:
         cls = "stale"
     else:
-        worst = max(shown, default=0)
-        cls = "critical" if worst >= 90 else "warning" if worst >= 70 else "normal"
+        cls = level_of(max(shown, default=0))
 
     meta = st.get("creds_meta") or {}
     # subscriptionType first, per the design doc's `<subscriptionType/
@@ -668,9 +700,77 @@ def render(st, theme, now):
     return {"text": text, "tooltip": tooltip, "class": cls}
 
 
+SNAPSHOT_SCHEMA = 1
+
+
+def snapshot(st, now):
+    """Everything render() decides, as data rather than Pango: the `--json`
+    output the Windows tray draws (windows/claude-usage/, PLAYBOOK §9.31).
+
+    The split is deliberate. Every *decision* stays here, under this file's
+    tests — the rounded percent and the 70/90 level it is judged by, row
+    labels, the pace window and its reset floor, local-midnight day buckets,
+    model names and order, humanized counts. What is left to the consumer is
+    what depends on its own clock and pixels: the countdown and the marker
+    position, computed from `resets_at` and `window_start` at paint time, so a
+    panel left open (or a snapshot from before WSL went idle) never shows a
+    countdown that has stopped. Times are epoch seconds, not ISO strings, so
+    the consumer never parses a timestamp.
+
+    `schema` is bumped on any change a consumer would misread; the tray
+    refuses a schema it does not know rather than drawing half of it.
+    """
+    limits = st.get("limits") or []
+    err = st.get("limits_error")
+    shown = [shown_pct(l) for l in limits]
+    meta = st.get("creds_meta") or {}
+    tier = title_case(meta.get("subscriptionType") or meta.get("rateLimitTier") or "")
+    rows = []
+    for l, disp in zip(limits, shown):
+        span = pace_window(l.get("kind"), l.get("resets_at"), st.get("reset_floor"))
+        pct = l.get("percent") or 0
+        rows.append({
+            "label": limit_label(l),
+            "shown": disp,
+            "fill": min(max(pct, 0), 100) / 100,   # the bar: float, like cells()
+            "level": level_of(disp),
+            "resets_at": _epoch(l.get("resets_at")),
+            "window_start": span[0] if span else None,
+        })
+    out = {
+        "schema": SNAPSHOT_SCHEMA,
+        "generated_at": now.timestamp(),
+        "tier": tier,
+        "level": "stale" if err else level_of(max(shown, default=0)),
+        "error": err,
+        "fetched_at": st.get("limits_fetched_at"),
+        "limits": rows,
+        "days": [],
+        "models": [],
+    }
+    days = st.get("days") or {}
+    if days:
+        today = now.astimezone().date()
+        window = [today - timedelta(days=i) for i in range(6, -1, -1)]
+        by_model = {}
+        for d in window:
+            per = days.get(d.isoformat()) or {}
+            total = sum(per.values())
+            out["days"].append({"date": d.isoformat(), "tokens": total,
+                                "human": humanize(total)})
+            for model, n in per.items():
+                by_model[model] = by_model.get(model, 0) + n
+        out["models"] = [{"name": model_display(m), "tokens": n, "human": humanize(n)}
+                         for m, n in sorted(by_model.items(), key=lambda kv: -kv[1])]
+    return out
+
+
 def main(argv=None, now=None):
     argv = argv if argv is not None else sys.argv[1:]
     force = "--refresh" in argv
+    # The Windows tray's mode (PLAYBOOK §9.31): same refresh, same scan, same
+    # state, but snapshot() on stdout instead of waybar's JSON.
+    as_json = "--json" in argv
     # A hand-run mode, never one waybar passes: the limits were reset early,
     # so the pace markers start their windows again from now.
     reset = "--limits-reset" in argv
@@ -724,16 +824,22 @@ def main(argv=None, now=None):
         refresh_limits(st, home / ".claude" / ".credentials.json",
                        force, now.timestamp())
         scan_jsonl(home / ".claude" / "projects", st, now.timestamp())
-        theme = load_theme(home / ".config" / "sway" / "theme.gen.env")
-        out = render(st, theme, now)
+        if as_json:
+            out = snapshot(st, now)
+        else:
+            theme = load_theme(home / ".config" / "sway" / "theme.gen.env")
+            out = render(st, theme, now)
         tmp = state_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(st))
         tmp.replace(state_path)
     if reset:
         when = now.astimezone().strftime("%a %d %b %H:%M")
+        # To stderr under --json: the tray reads stdout as one JSON document,
+        # and its "Mark limits reset" item wants the repainted snapshot back.
         print(f"claude_usage: pace markers now start from {when}; "
-              f"delete {floor_path} to undo")
-    else:
+              f"delete {floor_path} to undo",
+              file=sys.stderr if as_json else sys.stdout)
+    if as_json or not reset:
         print(json.dumps(out))
 
 

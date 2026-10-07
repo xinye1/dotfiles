@@ -103,6 +103,14 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(cu.model_display("claude-haiku-4-5-20251001"), "Haiku 4.5")
         # Unknown ids prettified, date suffix dropped, version dotted.
         self.assertEqual(cu.model_display("claude-opus-4-1-20250805"), "Opus 4.1")
+        # Point releases keep their point: a prefix table once named
+        # claude-sonnet-5-5 "Sonnet 5", colliding with claude-sonnet-5.
+        self.assertEqual(cu.model_display("claude-opus-5-5"), "Opus 5.5")
+        self.assertEqual(cu.model_display("claude-sonnet-5-5"), "Sonnet 5.5")
+        self.assertEqual(cu.model_display("claude-fable-5-1"), "Fable 5.1")
+        ids = ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5",
+               "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1"]
+        self.assertEqual(len({cu.model_display(i) for i in ids}), len(ids))
 
     def test_title_case_rescues_acronyms_from_str_title(self):
         # str.title() renders this "Default Claude Ai", which reads as a typo
@@ -1260,6 +1268,137 @@ class ResetFloorKeepsHistoryTest(unittest.TestCase):
             self.assertEqual(st["days"]["2026-08-22"], {"claude-fable-5": 200})
 
 
+class PaceWindowTest(unittest.TestCase):
+    """The window itself, which snapshot() hands the tray so it can place the
+    marker against its own clock. pace_mark() is this plus one division."""
+
+    def test_plain_windows_end_at_resets_at(self):
+        end = NOW + timedelta(hours=3)
+        self.assertEqual(cu.pace_window("session", end.isoformat()),
+                         (end.timestamp() - 5 * 3600, end.timestamp()))
+        self.assertEqual(cu.pace_window("weekly_scoped", end.isoformat()),
+                         (end.timestamp() - 7 * 86400, end.timestamp()))
+
+    def test_floor_moves_only_the_start_and_only_from_inside(self):
+        end = NOW + timedelta(days=4)
+        inside, before = NOW.timestamp(), (NOW - timedelta(days=5)).timestamp()
+        self.assertEqual(cu.pace_window("weekly_all", end.isoformat(), inside),
+                         (inside, end.timestamp()))
+        self.assertEqual(cu.pace_window("weekly_all", end.isoformat(), before)[0],
+                         end.timestamp() - 7 * 86400)
+        self.assertEqual(cu.pace_window("weekly_all", end.isoformat(),
+                                        end.timestamp())[0],
+                         end.timestamp() - 7 * 86400)   # zero-length: ignored
+
+    def test_none_for_anything_unestablishable(self):
+        for kind, resets_at in (("mystery", NOW.isoformat()), (["x"], NOW.isoformat()),
+                                ("session", None), ("session", 17),
+                                ("session", "garbage")):
+            with self.subTest(kind=kind, resets_at=resets_at):
+                self.assertIsNone(cu.pace_window(kind, resets_at))
+
+    def test_naive_and_zulu_read_as_utc(self):
+        want = cu.pace_window("session", "2026-08-22T14:30:00+00:00")
+        self.assertEqual(cu.pace_window("session", "2026-08-22T14:30:00"), want)
+        self.assertEqual(cu.pace_window("session", "2026-08-22T14:30:00Z"), want)
+
+
+class LevelTest(unittest.TestCase):
+    def test_thresholds_on_the_displayed_integer(self):
+        for pct, want in ((0, "normal"), (69, "normal"), (70, "warning"),
+                          (89, "warning"), (90, "critical"), (100, "critical")):
+            self.assertEqual(cu.level_of(pct), want, msg=f"pct={pct}")
+
+
+class SnapshotTest(unittest.TestCase):
+    """snapshot(): render()'s decisions as data, for the Windows tray."""
+
+    def fresh_state(self, **over):
+        st = {"limits": LIMITS, "limits_fetched_at": NOW.timestamp() - 60,
+              "limits_error": None,
+              "creds_meta": {"subscriptionType": "max", "rateLimitTier": "max_20x"},
+              "days": {"2026-08-22": {"claude-fable-5": 57_700_000},
+                       "2026-08-20": {"claude-opus-5": 256_200_000,
+                                      "claude-fable-5": 1_000}}}
+        st.update(over)
+        return st
+
+    def test_round_trips_through_json(self):
+        snap = cu.snapshot(self.fresh_state(), NOW)
+        self.assertEqual(jsonlib.loads(jsonlib.dumps(snap)), snap)
+        self.assertEqual(snap["schema"], cu.SNAPSHOT_SCHEMA)
+        self.assertEqual(snap["generated_at"], NOW.timestamp())
+
+    def test_limit_rows_carry_render_decisions(self):
+        snap = cu.snapshot(self.fresh_state(), NOW)
+        self.assertEqual([r["label"] for r in snap["limits"]],
+                         ["Session", "Weekly", "Fable Wk"])
+        self.assertEqual([r["shown"] for r in snap["limits"]], [44, 41, 70])
+        self.assertEqual([r["level"] for r in snap["limits"]],
+                         ["normal", "normal", "warning"])
+        self.assertEqual(snap["level"], "warning")
+        session = snap["limits"][0]
+        end = datetime(2026, 8, 22, 15, 13, tzinfo=timezone.utc).timestamp()
+        self.assertEqual(session["resets_at"], end)
+        self.assertEqual(session["window_start"], end - 5 * 3600)
+        self.assertEqual(session["fill"], 0.44)
+
+    def test_level_and_fill_follow_the_rounded_number_and_clamp(self):
+        st = self.fresh_state(limits=[dict(LIMITS[0], percent=89.6)])
+        row = cu.snapshot(st, NOW)["limits"][0]
+        self.assertEqual((row["shown"], row["level"]), (90, "critical"))
+        for pct, fill in ((130, 1.0), (-5, 0.0), (None, 0.0)):
+            st = self.fresh_state(limits=[dict(LIMITS[0], percent=pct)])
+            self.assertEqual(cu.snapshot(st, NOW)["limits"][0]["fill"], fill)
+
+    def test_floor_reaches_window_start(self):
+        floor = (NOW - timedelta(hours=1)).timestamp()
+        snap = cu.snapshot(self.fresh_state(reset_floor=floor), NOW)
+        self.assertEqual(snap["limits"][1]["window_start"], floor)
+
+    def test_unknown_kind_and_bad_timestamp_degrade_to_none(self):
+        st = self.fresh_state(limits=[{"kind": "mystery", "percent": 5,
+                                       "resets_at": "garbage"}])
+        row = cu.snapshot(st, NOW)["limits"][0]
+        self.assertEqual(row["label"], "mystery")
+        self.assertIsNone(row["resets_at"])
+        self.assertIsNone(row["window_start"])
+
+    def test_stale_and_never_logged_in(self):
+        snap = cu.snapshot(self.fresh_state(limits_error="HTTP 429"), NOW)
+        self.assertEqual((snap["level"], snap["error"]), ("stale", "HTTP 429"))
+        empty = cu.snapshot({"limits_error": "not logged in"}, NOW)
+        self.assertEqual(empty["limits"], [])
+        self.assertEqual(empty["days"], [])
+        self.assertEqual(empty["level"], "stale")
+        self.assertIsNone(empty["fetched_at"])
+        self.assertEqual(empty["tier"], "")
+
+    def test_tier_prefers_subscription_then_tier(self):
+        self.assertEqual(cu.snapshot(self.fresh_state(), NOW)["tier"], "Max")
+        st = self.fresh_state(creds_meta={"rateLimitTier": "default_claude_ai"})
+        self.assertEqual(cu.snapshot(st, NOW)["tier"], "Default Claude AI")
+
+    def test_seven_local_days_ending_today_and_models_by_size(self):
+        snap = cu.snapshot(self.fresh_state(), NOW)
+        self.assertEqual([d["date"] for d in snap["days"]],
+                         [f"2026-08-{n}" for n in range(16, 23)])
+        self.assertEqual(snap["days"][-1]["human"], "57.7M")
+        self.assertEqual(snap["days"][4]["tokens"], 256_201_000)
+        self.assertEqual([m["name"] for m in snap["models"]], ["Opus 5", "Fable 5"])
+        self.assertEqual(snap["models"][1]["tokens"], 57_701_000)
+
+    def test_days_bucket_by_local_midnight(self):
+        # 23:30 UTC on the 22nd is already the 23rd in Tokyo: "today" there
+        # is the 23rd, so the 22nd's tokens sit one row from the end.
+        self.addCleanup(set_tz, os.environ.get("TZ"))
+        set_tz("Asia/Tokyo")
+        late = NOW.replace(hour=23, minute=30)
+        snap = cu.snapshot(self.fresh_state(), late)
+        self.assertEqual(snap["days"][-1]["date"], "2026-08-23")
+        self.assertEqual(snap["days"][-2]["tokens"], 57_700_000)
+
+
 class MainTest(unittest.TestCase):
     def test_end_to_end_against_fake_home(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1417,6 +1556,44 @@ class MainTest(unittest.TestCase):
             home, env, _log = self.fake_home(td)
             self.run_main(env, [], NOW)
             self.assertFalse((home / ".local").exists())
+
+    def test_json_mode_prints_the_snapshot_not_waybar_json(self):
+        # The Windows tray's whole interface (PLAYBOOK §9.31): same refresh,
+        # same scan, same state.json, a snapshot on stdout.
+        with tempfile.TemporaryDirectory() as td:
+            home, env, log = self.fake_home(td)
+            log.write_text(usage_line(NOW.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                                      "claude-fable-5", "m1", "r1"))
+            out = jsonlib.loads(self.run_main(env, ["--json"], NOW))
+            self.assertEqual(out["schema"], cu.SNAPSHOT_SCHEMA)
+            self.assertNotIn("tooltip", out)
+            self.assertEqual([r["shown"] for r in out["limits"]], [44, 41, 70])
+            self.assertEqual(out["days"][-1], {"date": "2026-08-22",
+                                               "tokens": 100, "human": "100"})
+            # ...and it is a full tick, not a read-only peek: the next waybar
+            # run finds the fetch and the scan already done.
+            self.assertEqual(self.state_of(home)["limits"], LIMITS)
+            self.assertIn("2026-08-22", self.state_of(home)["days"])
+
+    def test_json_mode_with_limits_reset_keeps_stdout_one_document(self):
+        # The tray's "Mark limits reset" runs `--limits-reset --json` and
+        # parses stdout: the human line must go to stderr, and the snapshot
+        # must already carry the moved window.
+        with tempfile.TemporaryDirectory() as td:
+            _home, env, _log = self.fake_home(td)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                out = jsonlib.loads(self.run_main(env, ["--limits-reset", "--json"], NOW))
+            self.assertIn("pace markers now start", err.getvalue())
+            self.assertEqual(out["limits"][1]["window_start"], NOW.timestamp())
+
+    def test_json_mode_never_reads_the_sway_theme(self):
+        # The snapshot carries levels, not colours; the tray owns its palette.
+        with tempfile.TemporaryDirectory() as td:
+            _home, env, _log = self.fake_home(td)
+            with mock.patch.object(cu, "load_theme",
+                                   side_effect=AssertionError("theme read")):
+                jsonlib.loads(self.run_main(env, ["--json"], NOW))
 
 
 if __name__ == "__main__":
