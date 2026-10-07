@@ -49,6 +49,12 @@ HEX = re.compile(r'#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b')
 # configs (measured: zero across the tracked tree), and a false positive here
 # fails loudly, which is the right direction for a guard to be wrong in.
 BARE_HEX = re.compile(r'(?<![#\w])(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6})(?!\w)')
+# A GUID is never a colour, and its 8- and 12-digit groups would otherwise
+# read as bare RRGGBBAA: the Windows tray names the toast sender Explorer
+# derives for it, `Microsoft.Explorer.Notification.{B0AA627D-...}` (PLAYBOOK
+# §9.31). Only the full 8-4-4-4-12 shape is removed before matching, so a
+# colour sitting next to one is still caught.
+GUID = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
 SKIP_PREFIX = ("tests/", "docs/")
 SKIP_EXACT = {"palettes.toml"}
 
@@ -76,6 +82,7 @@ def main(repo):
         for n, line in enumerate(text.splitlines(), 1):
             if skip.match(line):
                 continue
+            line = GUID.sub("", line)
             if HEX.search(line):
                 bad.append(f"{rel}:{n}: literal colour outside palettes.toml: {line.strip()[:60]}")
             elif BARE_HEX.search(line):

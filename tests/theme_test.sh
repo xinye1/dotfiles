@@ -206,10 +206,32 @@ python3 "$REPO/tests/check_hex.py" "$REPO" \
   && ok "no tracked config carries a literal hex" \
   || no "no tracked config carries a literal hex"
 
+# check_hex.py removes GUIDs before matching (the Windows tray names a toast
+# sender by one, PLAYBOOK §9.31). The exemption must stay that narrow: a GUID
+# alone passes, and a colour on the same line is still caught.
+g="$WORK/guidrepo"; mkdir -p "$g"; git -C "$g" init -q
+printf 'id = "{B0AA627D-AE34-F5C9-9971-19C8E1D372A3}"\n' > "$g/a.ps1"
+git -C "$g" add a.ps1
+if python3 "$REPO/tests/check_hex.py" "$g" 2>/dev/null; then
+    printf 'id = "{B0AA627D-AE34-F5C9-9971-19C8E1D372A3}" "bf616aff"\n' > "$g/a.ps1"
+    if python3 "$REPO/tests/check_hex.py" "$g" 2>/dev/null; then
+        no "check_hex still catches a colour beside a GUID"
+    else
+        ok "check_hex passes a GUID and still catches a colour beside one"
+    fi
+else
+    no "check_hex passes a GUID and still catches a colour beside one" "a bare GUID was flagged"
+fi
+
 # The waybar claude widget's own unit tests (stdlib unittest). Deliberately not
 # ok/no-wrapped: a failure here must abort the suite via set -e, not just
 # decrement a counter -- claude_usage_test.py already prints its own failures.
 python3 "$REPO/tests/claude_usage_test.py" >/dev/null
+
+# Its Windows tray (PLAYBOOK §9.31): install.py's logic everywhere, and the
+# PowerShell half against fixtures from the real snapshot() wherever
+# powershell.exe is reachable (WSL); a skip elsewhere. Same contract.
+python3 "$REPO/tests/claude_tray_test.py" 2>/dev/null
 
 # herdr's attention plugin, the waybar custom/herdr module and the session
 # backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.
