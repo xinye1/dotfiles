@@ -120,8 +120,23 @@ class PowerShellQuotingTest(unittest.TestCase):
         self.assertIn("$l.WindowStyle = 7", s)
         self.assertNotIn("Start-Process", s)
         self.assertIn(inst.EXIT_EVENT, s)          # stops the old tray first
-        self.assertIn("Start-Process -FilePath 'C:\\S\\Claude Usage.lnk'",
-                      inst.install_snippet(r"C:\S\Claude Usage.lnk", "a", "b", start=True))
+        started = inst.install_snippet(r"C:\S\Claude Usage.lnk", "a", "b", start=True)
+        self.assertIn(inst.start_snippet("a", "b"), started)
+
+    def test_start_does_not_need_the_shortcut(self):
+        # The README allows deleting the Startup shortcut; --start must still work.
+        s = inst.start_snippet(r"C:\L\ClaudeUsage", r"C:\L\ClaudeUsage\ClaudeUsageTray.ps1")
+        self.assertNotIn(".lnk", s)
+        self.assertIn("System32\\conhost.exe", s)
+        self.assertIn(inst.ps_literal(inst.tray_command_args(r"C:\L\ClaudeUsage\ClaudeUsageTray.ps1")), s)
+        self.assertIn("-WindowStyle Minimized", s)
+
+    def test_stop_and_status_reach_only_this_sessions_tray(self):
+        ps1 = r"C:\L\ClaudeUsage\ClaudeUsageTray.ps1"
+        for s in (inst.stop_snippet(ps1), inst.status_snippet(ps1)):
+            self.assertIn("$_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId", s)
+            self.assertIn(f"$_.CommandLine.Contains('{ps1}')", s)
+            self.assertNotIn("-like '*ClaudeUsageTray.ps1*'", s)
 
     def test_exit_event_name_matches_the_tray(self):
         # install.py stops the tray by this name; a rename on one side only

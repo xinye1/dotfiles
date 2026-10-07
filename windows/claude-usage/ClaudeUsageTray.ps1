@@ -706,10 +706,17 @@ function Invoke-WslList {
     $psi.EnvironmentVariables['WSL_UTF8'] = '1'
     $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
     try {
+        # Read asynchronously and wait with a timeout: a synchronous
+        # ReadToEnd() would block until wsl.exe closed stdout, so a hung
+        # `wsl --list` would freeze this, the UI thread, for good.
         $p = [Diagnostics.Process]::Start($psi)
-        $out = $p.StandardOutput.ReadToEnd()
-        if (-not $p.WaitForExit(10000)) { $p.Kill() }
-        return $out -split "`r?`n"
+        $read = $p.StandardOutput.ReadToEndAsync()
+        if (-not $p.WaitForExit(10000)) {
+            try { $p.Kill() } catch { }
+            Write-TrayLog 'wsl --list --running timed out after 10s'
+            return @()
+        }
+        return $read.Result -split "`r?`n"
     } catch { Write-TrayLog "wsl --list: $_"; return @() }
 }
 

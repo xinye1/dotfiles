@@ -114,7 +114,18 @@ def tray_command_args(ps1_windows_path):
             f'-File "{ps1_windows_path}"')
 
 
-def stop_snippet():
+def ours(ps1):
+    """A Where-Object filter for *this* session's tray running *this* script.
+
+    By script name alone, a stop could reach a tray in another logon session
+    of the same account (the exit event is session-local, the process list is
+    not) and force-close it. .Contains, not -like: a path is not a pattern.
+    """
+    return ("Where-Object { $_.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId -and "
+            f"$_.CommandLine -and $_.CommandLine.Contains({ps_literal(ps1)}) }}")
+
+
+def stop_snippet(ps1):
     """PowerShell that asks a running tray to exit, then makes sure.
 
     Signalling the tray's named event lets it remove its own icon; a killed
@@ -125,8 +136,7 @@ $ev = $null
 if ([Threading.EventWaitHandle]::TryOpenExisting({ps_literal(EXIT_EVENT)}, [ref]$ev)) {{ [void]$ev.Set(); $ev.Dispose() }}
 $deadline = (Get-Date).AddSeconds(5)
 do {{
-    $left = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-              Where-Object {{ $_.CommandLine -like '*ClaudeUsageTray.ps1*' }})
+    $left = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | {ours(ps1)})
     if ($left.Count -eq 0) {{ break }}
     Start-Sleep -Milliseconds 200
 }} while ((Get-Date) -lt $deadline)
@@ -134,8 +144,16 @@ foreach ($p in $left) {{ Stop-Process -Id $p.ProcessId -Force -ErrorAction Silen
 """
 
 
+def start_snippet(app_dir, ps1):
+    """Start the tray exactly as the Startup shortcut does, without needing
+    the shortcut: the README allows deleting it to stop logon starts."""
+    return (f"Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\conhost.exe') "
+            f"-ArgumentList {ps_literal(tray_command_args(ps1))} "
+            f"-WorkingDirectory {ps_literal(app_dir)} -WindowStyle Minimized\n")
+
+
 def install_snippet(lnk, app_dir, ps1, start):
-    s = stop_snippet() + f"""
+    s = stop_snippet(ps1) + f"""
 $sh = New-Object -ComObject WScript.Shell
 $l = $sh.CreateShortcut({ps_literal(lnk)})
 $l.TargetPath = Join-Path $env:SystemRoot 'System32\\conhost.exe'
@@ -146,7 +164,7 @@ $l.Description = 'Claude Code usage in the notification area (dotfiles windows/c
 $l.Save()
 """
     if start:
-        s += f"Start-Process -FilePath {ps_literal(lnk)}\n"
+        s += start_snippet(app_dir, ps1)
     return s
 
 
@@ -162,11 +180,9 @@ Get-ChildItem 'HKCU:\\Software\\Classes\\AppUserModelId' -ErrorAction SilentlyCo
 """
 
 
-def status_snippet():
-    return """
-@(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-  Where-Object { $_.CommandLine -like '*ClaudeUsageTray.ps1*' }) | ForEach-Object { "pid=$($_.ProcessId)" }
-"""
+def status_snippet(ps1):
+    return (f"""@(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | {ours(ps1)}) | """
+            """ForEach-Object { "pid=$($_.ProcessId)" }\n""")
 
 
 def status_report(ps_out, app):
@@ -246,21 +262,22 @@ def main(argv=None):
     lnk_win = f"{startup}\\{SHORTCUT}"
     app = to_wsl(local) / APP_DIR
 
+    ps1_win = f"{app_win}\\{TRAY_PS1.name}"
     if args.stop:
-        run_powershell(stop_snippet())
+        run_powershell(stop_snippet(ps1_win))
         print("install: tray stopped; it starts again at next logon (or --start)")
         return
     if args.start:
         if not (app / TRAY_PS1.name).exists():
             raise SystemExit("install: not installed; run install.py without flags first")
-        run_powershell(f"Start-Process -FilePath {ps_literal(lnk_win)}\n")
+        run_powershell(start_snippet(app_win, ps1_win))
         print("install: tray started")
         return
     if args.status:
-        print(status_report(run_powershell(status_snippet()), app))
+        print(status_report(run_powershell(status_snippet(ps1_win)), app))
         return
     if args.uninstall:
-        run_powershell(stop_snippet() + uninstall_snippet(lnk_win))
+        run_powershell(stop_snippet(ps1_win) + uninstall_snippet(lnk_win))
         for name in OWNED:
             (app / name).unlink(missing_ok=True)
         try:
@@ -277,7 +294,6 @@ def main(argv=None):
     app.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(TRAY_PS1, app / TRAY_PS1.name)
     (app / "config.json").write_text(json.dumps(config, indent=2) + "\n")
-    ps1_win = f"{app_win}\\{TRAY_PS1.name}"
     run_powershell(install_snippet(lnk_win, app_win, ps1_win, not args.no_start))
     print(f"install: tray script and config in {app_win}")
     print(f"install: starts at logon via {lnk_win}")
