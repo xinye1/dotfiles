@@ -231,7 +231,7 @@ python3 "$REPO/tests/claude_usage_test.py" >/dev/null
 # Its Windows tray (PLAYBOOK §9.31): install.py's logic everywhere, and the
 # PowerShell half against fixtures from the real snapshot() wherever
 # powershell.exe is reachable (WSL); a skip elsewhere. Same contract.
-python3 "$REPO/tests/claude_tray_test.py" 2>/dev/null
+python3 "$REPO/tests/claude_tray_test.py" >/dev/null
 
 # herdr's attention plugin, the waybar custom/herdr module and the session
 # backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.

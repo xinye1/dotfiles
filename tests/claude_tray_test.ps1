@@ -208,7 +208,7 @@ Check 'limits that disappear drop out of the state' {
     -not $r.state.ContainsKey('Gone')
 }
 Check 'two crossings merge into one toast, worst first' {
-    $r = Get-Notifications (Snap @(@('Weekly', 71, $Reset), @('Session', 92, $Reset)))   # worst listed second @{} $Now
+    $r = Get-Notifications (Snap @(@('Weekly', 71, $Reset), @('Session', 92, $Reset))) @{} $Now   # worst listed second
     $t = Merge-Notifications $r.events
     (Eq $t.title 'Claude Session limit at 92%') -and $t.warning -and (Eq $t.text "Session limit at 92%`nWeekly limit at 71%")
 }
