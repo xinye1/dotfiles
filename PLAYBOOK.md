@@ -410,6 +410,11 @@ config's *content* on a fresh install beyond seeding it once: `/etc/jellyfin-sta
 the **ntfy topic** — an alert credential — so it is never committed, the same reasoning as
 `~/.config/tp-backup/config` (§4, `systemd/.config/systemd/user/README.md`).
 
+**`windows/` is not in the table either, for the same reason in a different direction.** It
+targets the Windows host of a WSL machine, not `$HOME` on any Linux: `windows/claude-usage/install.py`,
+run from inside WSL, copies the tray script to `%LOCALAPPDATA%\ClaudeUsage` and writes its config
+there (§9.31). `setup.sh` excludes it from the package loop by name.
+
 **Rendered palette files are the standing exception.** Every folded themed package now contains
 ignored `*.gen.*` artefacts, which is untracked content inside a folded directory — the thing the
 rule below forbids. It is tolerable here for one reason only: those files are caught by a glob that
@@ -1071,6 +1076,16 @@ rather than blanking the widget. `tests/claude_usage_test.py` covers it (`ResetF
 environment pins `XDG_STATE_HOME`, or a real floor file on the machine running the suite would leak
 into it.
 
+**`--json` is the second face, for the Windows tray (§9.31).** Same lock, same refresh, same scan,
+same `state.json` — a `--json` run is a full tick — but `snapshot()` goes to stdout instead of
+waybar's Pango. `snapshot()` carries every decision `render()` makes as data (rounded percent and
+its `level_of()` level, labels, the pace window from `pace_window()` with the floor applied, the
+seven local days, model names and order, humanized counts) and leaves only clock- and pixel-bound
+work to the consumer. `level_of()` is now the one home of the 70/90 thresholds for the waybar class,
+the tooltip fill and the tray alike. Model names come from the id alone: the prefix table that used
+to sit in front of `model_display()` named `claude-sonnet-5-5` "Sonnet 5", so the chart drew two
+rows with one name.
+
 **One wall-clock read, and `main(now=…)` is the seam.** Every function in the widget already takes
 `now` as an argument — `render(st, theme, now)`, `scan_jsonl(…, now_epoch)`, `refresh_limits(…,
 now_epoch)`. `main` was the only one calling `datetime.now()`, and it now takes an optional `now`
@@ -1553,6 +1568,160 @@ it. A test server needs its own `XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `HERDR_S
 stop` or `pkill herdr` from a test, and never `setsid` it: setsid forks, `$!` is then the wrong
 process, and the server you thought you stopped keeps running with *your* PATH — which is how a
 stubbed test once sent a real notification.
+
+### 9.31 The Windows tray: WSL decides, PowerShell paints
+
+On a Windows machine where every Claude Code session runs in WSL there is no waybar, so
+`windows/claude-usage/` gives the claude widget (§9.23) a Windows face: a notification-area icon
+showing the worst displayed percent in its level colour, a hover summary (`Session 44% · 3h 13m`,
+one line per limit), a click-open panel with the waybar tooltip's three sections drawn as real
+bars, and toasts at 70/90/100% and on a reset. Right-click: Refresh now, Limits were reset early…,
+Open usage page, Send test notification, Open log, Exit. **The operational cheat sheet — every
+command, option, file and registry key — is `windows/claude-usage/README.md`**; this section is the
+why.
+
+**The split.** `ClaudeUsageTray.ps1` runs `wsl.exe -d <distro> --exec python3 claude_usage.py
+--json` and draws what comes back; every decision stays in Python under `claude_usage_test.py`.
+What the tray computes itself is only what depends on *its* clock: the countdowns and the pace
+marker's position, from the epoch `resets_at`/`window_start` in the snapshot, so an open panel, or a
+snapshot from before WSL went idle, never shows a countdown that has stopped. The panel's "today"
+comes from the same `$Now` — never the wall clock — for §9.23's reason: it is what lets the tests
+pin a fixture's date. `schema` in the snapshot is checked; an unknown one is an error on the icon
+("re-run install.py"), not half a panel.
+
+**Cadence and WSL's lifetime.** A 60 s timer (config `interval`) runs the collector; the API is
+still fetched at most every 300 s inside it, so the tick only buys fresher token charts. The timer
+**never boots WSL**: it asks `wsl.exe --list --running --quiet` first (under `WSL_UTF8=1`, or the
+output is UTF-16), and while the distro is stopped it shows the last snapshot — persisted to
+`last.json`, so a fresh logon has numbers before WSL starts — with the icon greyed and an "idle"
+line. A tray that started the VM every minute would also stop it from ever idling out. "Refresh
+now" may boot it; that is a click, not a timer. `~/.claude` stays read-only (§9.23): the tray
+inherits that from the collector, and the token-expired case shows as stale until a Claude Code
+session in WSL refreshes the token.
+
+**Install, update, remove** — from inside WSL, in the distro to report on:
+
+```sh
+python3 windows/claude-usage/install.py                  # also the update, after a pull
+python3 windows/claude-usage/install.py --palette gruvbox
+python3 windows/claude-usage/install.py --uninstall
+python3 windows/claude-usage/install.py --status | --start | --stop
+```
+
+It copies the `.ps1` to `%LOCALAPPDATA%\ClaudeUsage` (a copy, not a `\\wsl.localhost` path: that
+would boot WSL at logon just to read the script, and RemoteSigned can refuse UNC scripts), writes
+`config.json` beside it (distro, `/usr/bin/python3` — never a venv's — and the absolute path of
+`claude_usage.py` *in this checkout*, so Python-side changes need no reinstall), puts `Claude
+Usage.lnk` in the Startup folder, and restarts the tray. The restart signals the named event
+`Local\ClaudeUsageTray.Exit` so the old tray removes its own icon (a killed one leaves a ghost
+until hovered), then kills whatever is left after 5 s. A `Local\ClaudeUsageTray` mutex keeps it to
+one per session. `--uninstall` deletes only the files it knows it created, then the directory if
+that left it empty.
+
+**Notifications are edge-triggered and remembered.** A limit's band is 0 below 70%, then 70
+(`warning`), 90 (`critical`) and 100 (reached) — the first two straight from the snapshot's
+`level`, so `level_of()` is still the only home of the thresholds. `Get-Notifications` toasts when
+a band rises, including on first sight (so installing at 80% says so once), and toasts "has reset"
+when a limit that had reached a band shows a `resets_at` more than ten minutes later than before
+— the endpoint jitters it by fractions of a second between fetches, so equality would fire a
+reset on every tick. It records the *current* band, falling as well as rising, so an early reset
+(percent drops, `resets_at` unchanged) re-arms the bands. A snapshot carrying an API error changes
+nothing: last-known numbers are not news. State lives in `notify.json`, so a restart neither repeats
+a toast nor forgets one; several crossings in one tick merge into one toast, worst first, because a
+second `ShowBalloonTip` replaces the first.
+
+**Two things about toasts from a tray icon took measurement.** Explorer re-sends a balloon as a
+toast under a synthetic app id, `Microsoft.Explorer.Notification.{hash}`, and with nothing
+registered the toast header prints that id verbatim. A `DisplayName` and `IconUri` under
+`HKCU\Software\Classes\AppUserModelId\<id>` name it — Windows caches the name, so it can take a
+toast or two to appear. `SetCurrentProcessExplicitAppUserModelID` does **not** help (tried).
+The hash covers the executable and the icon's number, so the first `NotifyIcon` of 64-bit
+`powershell.exe` always gets `{B0AA627D-AE34-F5C9-9971-19C8E1D372A3}`; the tray names that one at
+start, and after every toast names whatever Explorer id was stamped since (`Select-ToastSenders`),
+in case another machine hashes differently. `--uninstall` removes only keys whose `DisplayName` is
+the tray's. Any other PowerShell script's first tray icon shares that id, and so the name — an
+accepted cost.
+
+**Keeping the icon out of the overflow.** Windows 11 parks new tray icons in the overflow and
+records each icon's placement under `HKCU\Control Panel\NotifyIconSettings\<id>`; `IsPromoted = 1`
+puts it on the taskbar at once. Explorer writes that entry lazily — measured: not when the icon is
+added or removed, not on opening taskbar Settings; by the next sign-in — so the tray checks on
+every tick until it has decided. It finds its entry by executable plus `InitialTooltip`, which is why
+the icon is first registered as plain "Claude usage" and only then given the live hover text. An
+absent `IsPromoted` means nobody has chosen, and the tray sets 1; a present one (0 or 1) is a
+choice that stands, so hiding it in Settings sticks. Until that first sign-in, dragging the icon out
+of the overflow once is the fix.
+
+**Colours come from `palettes.toml` at install time.** `config.json` carries the chosen palette's
+top-level roles (the one `theme` last applied, else nord — inside WSL `theme` has usually never
+run), so the panel matches the desktop and the repo still carries no hex; `check_hex.py` covers
+the `.ps1` like any other file. It does strip full 8-4-4-4-12 GUIDs before matching — the toast
+sender id below contains one, and its groups read as bare `RRGGBBAA` — and `theme_test.sh` asserts
+that a colour beside a GUID is still caught. A role missing from the config falls back to a .NET *named* colour
+— `FallbackTheme`, the same move as `FALLBACK_THEME`'s Pango names. The panel is always the
+palette's dark, whatever Windows' light/dark setting; the icon is a solid tile, legible on either
+taskbar.
+
+**Launching with no window was the hard part, and two obvious answers are traps.** With the
+default terminal on Windows Terminal — and "let Windows decide" *is* Windows Terminal on Windows 11
+— a `powershell.exe` started from a shortcut opens a Terminal window that `-WindowStyle Hidden`
+cannot hide. So the shortcut targets `conhost.exe powershell.exe -WindowStyle Hidden …`, minimized:
+conhost keeps it in the classic console, which the flag can hide, and the worst case is a taskbar
+blip at logon. Tried and rejected on a managed machine (2026-10-07):
+
+- `conhost.exe --headless` — exits `0x80070005` (access denied); the child never runs.
+- A launcher compiled at install time (`Add-Type -OutputType WindowsApplication`) that starts
+  PowerShell with `CreateNoWindow` — **Defender blocked it on first run as "potentially unwanted
+  software"**, and on a managed machine that is a security alert, not just a failure. An unsigned
+  exe whose job is to start a hidden PowerShell is malware-shaped, whoever wrote it.
+- A VBScript `WScript.Shell.Run …, 0` shim — the same shape to an EDR, and VBScript is a
+  deprecated optional feature on Windows 11.
+
+Do not reintroduce a hidden-launch trick to save the logon blip.
+
+**Windows-side constraints worth knowing before editing the `.ps1`.** There is no Python on the
+host (the `python.exe` on `PATH` is the Store stub), so it is Windows PowerShell **5.1** —
+.NET Framework, WinForms, no `pwsh`. `NotifyIcon.Text` throws past **63** characters there
+(measured); `Get-HoverText` sheds countdowns, then the status line, then truncates. Windows 11 puts
+a new tray icon in the overflow (^) until it is dragged out or enabled under Settings >
+Personalization > Taskbar > Other system tray icons. The panel opens beside the cursor inside the
+screen's working area, so a taskbar on any edge works — this machine's is on the left. Two 5.1
+traps cost a failed run each: **variable names are case-insensitive**, so a local `$ink` *is* the
+`[Drawing.Color]$Ink` parameter and assigning a brush to it throws; and **an empty array returned
+from a function arrives as `$null`**, and `@($null)` is a one-element array, which is why
+`ConvertFrom-Snapshot` filters nulls out of every list. Two more cost the tests a red run:
+**the comma binds tighter than `+`**, so `@('Session', 0, $t + 60)` is a four-element array (the
+`+` appends), and a test passed by accident on it until it was parenthesised; and **PowerShell
+defines a function when execution reaches it**, so a startup statement above a definition fails
+at runtime only — the tray's toast naming did exactly that, logged and silent.
+
+**Tests.** `tests/claude_tray_test.py` covers `install.py` (palette choice, roles, config,
+PowerShell quoting, the shortcut command, `--status`, the uninstall's key filter, and the
+exit-event name, toast name and schema matching the `.ps1`)
+and drives `tests/claude_tray_test.ps1` with fixtures written by the **real** `snapshot()`, so a
+shape change fails at the boundary rather than on the desktop. The PowerShell half needs
+`powershell.exe`, so it runs in WSL and is a reported **skip** on the sway desktop. It paints every
+panel variant to an offscreen bitmap and asserts every draw op lies inside the panel; it walks
+every notification rule; and it parses the tray with PowerShell's own parser to assert no
+top-level statement calls a function defined further down — the startup path is the one part no
+other test runs. That check once passed vacuously: `Resolve-Path` on a `\\wsl.localhost` path
+returns a provider-qualified string `ParseFile` cannot open, and the parse errors were discarded,
+so it scanned an empty script. It now uses `.ProviderPath`, fails on any parse error, and requires
+a non-trivial statement count. Mutation-checked (each turns it red): the 63-character limit, the
+exact distro match, the pace clamp, `now` for a passed reset, the wall-clock "today", the
+snapshot's level from the float, a dropped `window_start`, the reset message on stdout under
+`--json`, an ignored floor, no jitter slack, notifying on stale data, overriding a user's icon
+choice, a ratcheting band, the merge order, and a call above its definition. To look at the
+panel without a desktop session:
+
+```powershell
+powershell -File ClaudeUsageTray.ps1 -Snapshot snap.json -RenderPanel panel.png -RenderIcon icon.png [-Idle]
+```
+
+**When it misbehaves:** `install.py --status`; right-click > Open log
+(`%LOCALAPPDATA%\ClaudeUsage\tray.log`, collector stderr included); run the collector by hand in
+WSL — `python3 waybar/.config/waybar/scripts/claude_usage.py --json`; re-run `install.py` to
+restart it. The README has the full list.
 
 ## 10. Troubleshooting
 

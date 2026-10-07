@@ -73,6 +73,13 @@ triggers, not the full story: read the named section before working in its area.
   `claude_usage.py --limits-reset` after an early limits reset (it restarts the pace markers
   only — the token charts keep their history): it lives in `$XDG_STATE_HOME/claude-usage/`, so
   deleting the cache cannot undo it.
+- **The Windows tray (`windows/claude-usage/`) only paints** — every decision stays in
+  `claude_usage.py`, reached through `wsl.exe … --json`; change behaviour there, not in the `.ps1`.
+  It is Windows PowerShell 5.1 (no Python on the host). Its timer must never boot WSL. **Never add a
+  hidden-launch trick** (compiled launcher, VBScript, `conhost --headless`): Defender flagged the
+  first as malware on this managed machine. `windows/` is not a stow package (§9.31); its
+  operational commands live in `windows/claude-usage/README.md` — keep that in step with
+  `install.py`'s flags.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
   that does not happen. It locks over the solid `$desktop` colour (the wallpaper cache and
   `walls-sync` retired); if an image ever returns it must already be on disk, and every failure
@@ -120,6 +127,7 @@ sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the netw
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
+python3 tests/claude_tray_test.py # Windows tray; PowerShell half skips without WSL interop
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under

@@ -103,6 +103,23 @@ would install to `~/tests/…`. `systemd-system/` mirrors the root filesystem (`
 throughout (PLAYBOOK §5.2). It carries the Jellyfin state dump and the never-sleep-on-AC inhibitor
 this machine's server role depends on.
 
+`windows/` is not a package either: it is for the **Windows host of a WSL machine**, where the
+Claude Code sessions run in WSL and there is no waybar. `windows/claude-usage/` puts the claude
+widget's limits, countdowns and token charts in the Windows notification area — a tray icon with
+the worst percent, a hover summary, a click-open panel, toasts at 70/90/100% — fed by the same
+`claude_usage.py` (`--json`). From inside WSL:
+
+```sh
+python3 windows/claude-usage/install.py              # install / update (re-run after a pull)
+python3 windows/claude-usage/install.py --status     # also --start, --stop, --uninstall
+```
+
+Every operational command is in [`windows/claude-usage/README.md`](windows/claude-usage/README.md).
+
+It needs nothing installed on Windows (Windows PowerShell 5.1 and WinForms ship with it), and it
+never starts WSL on its own: while the distro is stopped it shows the last snapshot, greyed
+(PLAYBOOK §9.31).
+
 `.stowrc` pins `--target=~`. Without it stow targets the repo's *parent*, which is wrong here and
 fails silently: stow exits 0 having linked to the wrong place. Diagnose by checking where the link
 landed, never by exit code.
