@@ -63,7 +63,7 @@ Super+Space / waybar launcher icon
         ▼
   1. load + validate menu.toml   (failure → critical notification, exec plain `fuzzel`)
   2. drop rows whose `when` exits non-zero
-  3. wipe and rewrite  $XDG_RUNTIME_DIR/fuzzel-menu/applications/menu-<id>.desktop
+  3. prune dead palettes' dirs, then write  $XDG_RUNTIME_DIR/fuzzel-menu/<pid>/applications/menu-<id>.desktop
        Type=Application   Name=<group> › <label>   Icon=<icon>   Keywords=<keywords>;
        Exec=<abs path>/menu.py --run <id>
   4. exec fuzzel
@@ -89,6 +89,11 @@ Super+Space / waybar launcher icon
   `power_menu.sh` has it.
 - **Runtime directory.** `$XDG_RUNTIME_DIR` is tmpfs; the directory is rewritten on every press.
   Nothing generated lands in the repo or `~/.local`, nothing is gitignored, nothing goes stale.
+- **One directory per palette (post-merge fix, 2026-10-08).** The directory is
+  `fuzzel-menu/<pid>`, named for `menu.py`'s pid, which `execve` hands on to fuzzel. A second
+  Super+Space therefore never rewrites files a running fuzzel may still be reading. Each press
+  prunes the directories of palettes whose pid has exited (and the original shared
+  `fuzzel-menu/applications`). Frecency is unaffected: fuzzel keys it by desktop-file id, not path.
 - **Lifetime.** `menu.py` `exec`s fuzzel, so no Python process stays resident while the palette is
   open. `--run` is a fresh process per action.
 - **Ids** come from `id`, defaulting to the slug of `<group>-<label>`. They name the generated file,
