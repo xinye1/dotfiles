@@ -38,6 +38,7 @@ DEFAULT_ICON = "system-run"
 SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/bin"
 DEFAULT_DATA_DIRS = "/usr/local/share:/usr/share"
 WHEN_TIMEOUT = 1.0
+STDERR_LINES = 5
 
 
 class ConfigError(Exception):
@@ -216,6 +217,72 @@ def palette(env):
     return argv, dict(env, XDG_DATA_DIRS=f"{root}:{original}")
 
 
+def tail(data):
+    """The last few lines of a captured stream, whatever its encoding."""
+    lines = data.decode("utf-8", "replace").strip().splitlines()
+    return "\n".join(lines[-STDERR_LINES:])
+
+
+def dmenu(lines, prompt, extra=()):
+    """One fuzzel --dmenu pick: the chosen line, or None when dismissed.
+    fuzzel 1.15 does not document its exit status on Esc, so 'nothing on
+    stdout' is the cancel signal, whatever the code (spec §8)."""
+    r = subprocess.run(["fuzzel", "--dmenu", "--prompt", prompt,
+                        "--lines", str(min(len(lines), 15)), *extra],
+                       input="\n".join(lines) + "\n", capture_output=True, text=True)
+    return r.stdout.rstrip("\n") or None
+
+
+def run_action(action, env):
+    """The second step, then the command. Cancelling is not a failure."""
+    aenv, label = action_env(env), action["label"]
+    choice = None
+    if "choices" in action:
+        r = subprocess.run(["sh", "-c", action["choices"]], env=aenv,
+                           stdin=subprocess.DEVNULL, capture_output=True)
+        options = [l for l in r.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
+        if r.returncode != 0 or not options:
+            notify(f'Menu: "{label}" has nothing to choose ({r.returncode})', tail(r.stderr))
+            return 1
+        choice = dmenu(options, f"{label} ")
+        if choice is None:
+            return 0
+    if action.get("confirm") and dmenu(["No", "Yes"], f"{label}? ") != "Yes":
+        return 0
+    command = action["run"]
+    if choice is not None:
+        command = command.replace("{choice}", shlex.quote(choice))
+    if action.get("terminal"):
+        # A newline, not `;`, before the pause: a `run` ending in a comment or
+        # `&` must not swallow it. bash, for `read -n`.
+        script = f'{command}\nprintf "\\n[press a key to close]"; read -rsn1'
+        return execute(["kitty", "--class", "menu-term", "bash", "-c", script], aenv)
+    r = subprocess.run(["sh", "-c", command], env=aenv, stdin=subprocess.DEVNULL,
+                       stderr=subprocess.PIPE)
+    if r.returncode != 0:
+        notify(f'Menu: "{label}" failed ({r.returncode})', tail(r.stderr))
+    return r.returncode
+
+
+def group(name, env):
+    """One group's actions as a dmenu list ($mod+Shift+e), in file order. Not
+    the .desktop mechanism: narrowing XDG_DATA_DIRS to hide the apps would hide
+    the icon themes with them (spec §3.1)."""
+    actions = [a for a in load(config_path()) if a["group"] == name and shown(a, env)]
+    if not actions:
+        notify(f'Menu: no actions in group "{name}"')
+        return 1
+    rows = [f"{a['id']}\t{a['label']}\0icon\x1f{a['icon']}" for a in actions]
+    picked = dmenu(rows, f"{name} ", ("--with-nth=2", "--accept-nth=1"))
+    if picked is None:
+        return 0
+    by_id = {a["id"]: a for a in actions}
+    if picked not in by_id:
+        notify(f"Menu: fuzzel returned an unknown id {picked!r}")
+        return 1
+    return run_action(by_id[picked], env)
+
+
 def main(argv):
     env = dict(os.environ)
     if not argv:
@@ -236,6 +303,18 @@ def main(argv):
         for problem in problems:
             print(f"menu.toml: {problem}", file=sys.stderr)
         return 1 if problems else 0
+    if len(argv) == 2 and argv[0] in ("--run", "--group"):
+        try:
+            if argv[0] == "--group":
+                return group(argv[1], env)
+            actions = {a["id"]: a for a in load(config_path())}
+            if argv[1] not in actions:
+                notify(f"Menu: no action {argv[1]!r}", "menu.toml changed while the palette was open?")
+                return 1
+            return run_action(actions[argv[1]], env)
+        except Exception as e:  # never a silent failure behind a keypress
+            notify("Menu: failed", f"{type(e).__name__}: {e}")
+            return 1
     print("usage: menu.py [--check | --run <id> | --group <name>]", file=sys.stderr)
     return 2
 

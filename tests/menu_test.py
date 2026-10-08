@@ -295,6 +295,147 @@ run = "true"
         validate(self, self.sb.appdir() / "menu-system-lock.desktop")
 
 
+REBOOT = """
+[[action]]
+group = "System"
+label = "Reboot"
+icon = "system-reboot"
+run = 'echo rebooted >> "$HOME/out"'
+confirm = true
+"""
+
+THEME = """
+[[action]]
+group = "Style"
+label = "Theme…"
+choices = "lister"
+run = 'printf "%s\\n" {choice} >> "$HOME/out"'
+"""
+
+
+class RunTest(unittest.TestCase):
+    def setUp(self):
+        self.sb = Sandbox(self)
+
+    def out(self):
+        path = self.sb.home / "out"
+        return path.read_text() if path.exists() else ""
+
+    def lister(self, body):
+        script(self.sb.home / ".local/bin/lister", "#!/bin/sh\n" + body)
+
+    def test_confirm_yes_runs_no_and_esc_do_not(self):  # T5
+        for reply, expected in (("Yes", "rebooted\n"), ("No", ""), ("", "")):
+            with self.subTest(reply=reply or "Esc"):
+                (self.sb.home / "out").unlink(missing_ok=True)
+                r = self.sb.menu("--run", "system-reboot", toml=REBOOT, replies=[reply])
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(self.out(), expected)
+                [pick] = self.sb.calls("fuzzel")
+                self.assertIn("--dmenu", pick["argv"])
+                self.assertEqual(pick["stdin"], "No\nYes\n")
+                self.assertEqual(self.sb.calls("notify-send"), [])
+
+    def test_choices_pick_is_one_quoted_word(self):  # T6, Review Focus 5
+        self.lister("printf '%s\\n' nord '' gruvbox 'x; touch \"$HOME/pwned\"'\n")
+        hostile = 'x; touch "$HOME/pwned"'
+        r = self.sb.menu("--run", "style-theme", toml=THEME, replies=[hostile])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        [pick] = self.sb.calls("fuzzel")
+        self.assertEqual(pick["stdin"], f"nord\ngruvbox\n{hostile}\n")  # blank line dropped
+        self.assertEqual(self.out(), hostile + "\n")
+        self.assertFalse((self.sb.home / "pwned").exists())
+
+    def test_choices_that_fail_or_are_empty_notify_and_run_nothing(self):  # T6
+        for body in ("exit 0\n", "echo oops >&2; exit 4\n"):
+            with self.subTest(body=body):
+                self.lister(body)
+                r = self.sb.menu("--run", "style-theme", toml=THEME)
+                self.assertEqual(r.returncode, 1)
+                self.assertEqual(self.sb.calls("fuzzel"), [])
+                self.assertEqual(len(self.sb.calls("notify-send")), 1)
+                self.assertEqual(self.out(), "")
+
+    def test_esc_at_choices_runs_nothing(self):  # T6
+        self.lister("echo nord\n")
+        r = self.sb.menu("--run", "style-theme", toml=THEME, replies=[""])
+        self.assertEqual((r.returncode, self.out(), self.sb.calls("notify-send")), (0, "", []))
+
+    def test_a_failing_action_raises_one_critical_notification(self):  # T7
+        toml = VALID.replace('"true"', """'for i in 1 2 3 4 5 6 7; do echo "line $i" >&2; done; exit 3'""")
+        r = self.sb.menu("--run", "system-lock", toml=toml)
+        self.assertEqual(r.returncode, 3)
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"], ["-u", "critical", "-a", "menu", 'Menu: "Lock" failed (3)',
+                                        "line 3\nline 4\nline 5\nline 6\nline 7"])
+
+    def test_a_succeeding_action_is_silent(self):  # T7
+        r = self.sb.menu("--run", "system-lock", toml=VALID)
+        self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
+
+    def test_non_utf8_stderr_still_notifies(self):  # Review Focus 4
+        toml = VALID.replace('"true"', """'printf "\\\\377\\\\376 bad\\\\n" >&2; exit 1'""")
+        r = self.sb.menu("--run", "system-lock", toml=toml)
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("bad", note["argv"][5])
+
+    def test_terminal_actions_go_to_a_floating_kitty_and_never_notify(self):  # T7
+        r = self.sb.menu("--run", "system-lock", toml=VALID.replace('"true"', '"false"\nterminal = true'))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        [kitty] = self.sb.calls("kitty")
+        self.assertEqual(kitty["argv"][:4], ["--class", "menu-term", "bash", "-c"])
+        self.assertTrue(kitty["argv"][4].startswith("false\n"))
+        self.assertIn("read -rsn1", kitty["argv"][4])
+        self.assertEqual(kitty["env"]["PATH"], f"{self.sb.home}/.local/bin{ACTION_PATH_TAIL}")
+        self.assertEqual(self.sb.calls("notify-send"), [])
+
+    def test_actions_run_with_the_action_path(self):  # T9, runtime half
+        script(self.sb.home / ".local/bin/homecmd", '#!/bin/sh\necho home >> "$HOME/out"\n')
+        script(self.sb.bin / "shellcmd", "#!/bin/sh\nexit 0\n")
+        ok = self.sb.menu("--run", "system-lock", toml=VALID.replace('"true"', '"homecmd"'))
+        self.assertEqual((ok.returncode, self.out()), (0, "home\n"))
+        bad = self.sb.menu("--run", "system-lock", toml=VALID.replace('"true"', '"shellcmd"'))
+        self.assertEqual(bad.returncode, 127)
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"][4], 'Menu: "Lock" failed (127)')
+
+    def test_an_unknown_id_notifies(self):
+        r = self.sb.menu("--run", "nope", toml=VALID)
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("nope", note["argv"][4])
+
+
+class GroupTest(unittest.TestCase):
+    TOML = VALID + REBOOT + '\n[[action]]\ngroup = "Capture"\nlabel = "Region"\nrun = "true"\n'
+
+    def setUp(self):
+        self.sb = Sandbox(self)
+
+    def test_group_lists_only_its_rows_in_file_order_with_icons(self):  # T4
+        r = self.sb.menu("--group", "System", toml=self.TOML, replies=[""])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        [pick] = self.sb.calls("fuzzel")
+        self.assertEqual(pick["stdin"], "system-lock\tLock\0icon\x1fsystem-lock-screen\n"
+                                        "system-reboot\tReboot\0icon\x1fsystem-reboot\n")
+        for flag in ("--dmenu", "--with-nth=2", "--accept-nth=1"):
+            self.assertIn(flag, pick["argv"])
+        self.assertNotIn("--cache", pick["argv"])
+        self.assertEqual(self.sb.calls("notify-send"), [])
+
+    def test_the_picked_id_runs_through_confirm(self):  # T4
+        r = self.sb.menu("--group", "System", toml=self.TOML, replies=["system-reboot", "Yes"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.sb.home / "out").read_text(), "rebooted\n")
+        self.assertEqual(self.sb.calls("fuzzel")[1]["stdin"], "No\nYes\n")
+
+    def test_an_unknown_group_notifies(self):  # T4
+        r = self.sb.menu("--group", "Nope", toml=self.TOML)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(len(self.sb.calls("notify-send")), 1)
+
+
 class RepoMenuTest(unittest.TestCase):
     def test_every_command_in_the_repo_menu_resolves(self):
         # T10, the rot guard. The deployed layout is built from the repo rather
