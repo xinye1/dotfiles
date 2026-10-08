@@ -304,8 +304,8 @@ What the switch costs, plainly, because the replacement is genuinely smaller: **
 buttons, and no user avatar on the lock screen.** gtklock is a GTK app with a window full of
 widgets; plain swaylock draws one password ring over a solid `$desktop` field (§9.25), and
 nothing else. The power buttons are the only real loss, and they are not lost —
-`$mod+Shift+e` reaches the same suspend/reboot/shutdown actions through `power_menu.sh`, from an
-unlocked session. The clock is on waybar. The avatar has no replacement and none is wanted.
+`$mod+Shift+e` reaches the same suspend/reboot/shutdown actions through the command palette's
+System group (`menu.py --group System`, §7), from an unlocked session. The clock is on waybar. The avatar has no replacement and none is wanted.
 
 `swaylock-effects` (blur, screenshot backgrounds, a clock) was considered and declined. What was
 rejected is *an unofficial fork as a dependency*, and separately *a 22 MB image living in the
@@ -696,7 +696,7 @@ Two distinct traps:
 - **`JetBrainsMono-Regular` is a file-style name**, not a fontconfig family. fuzzel had this. It
   matched by luck. The family is `JetBrains Mono`, with a space.
 - **`JetBrains Mono` ≠ `JetBrainsMono Nerd Font`.** The unpatched family has no icon glyphs. waybar
-  and `power_menu.sh` are full of Nerd Font icons; without the patched font they render
+  is full of Nerd Font icons; without the patched font they render
   via a fontconfig fallback to `Symbols Nerd Font`. That *works*, which is exactly why it went
   unnoticed — but it is a fallback, not a configuration.
 
