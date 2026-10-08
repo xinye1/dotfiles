@@ -166,7 +166,7 @@ U+27F3 and would wreck the character grid; layout per approved mockup
 | Condition | Behaviour |
 |---|---|
 | Token expired / credentials unreadable | No API call; last-known limits, `stale` class + banner |
-| Network error / 5s timeout / 429 / 5xx / unexpected 401·403 | Keep last-known limits, `stale`; retry next tick (no special backoff — tick is already ≥300s) |
+| Network error / 5s timeout / 429 / 5xx / unexpected 401·403 | Keep last-known limits, `stale`; retry next tick (no special backoff — tick is already ≥300s). *Superseded 2026-10-08: the Windows tray ticks every 60s and a 429 can ask for 12+ minutes, so failures now back off and a 429 obeys `Retry-After` (PLAYBOOK §9.23).* |
 | Never logged in, no cache | Icon + `–`, tooltip "not logged in", `stale` |
 | Corrupt state file | Rebuild from scratch, no user-visible error |
 | Malformed JSONL line | Skip line |

@@ -412,6 +412,119 @@ class CredsShapeTest(unittest.TestCase):
             self.assertIsNone(st["limits_error"])
 
 
+def http_error(code, retry_after=None):
+    hdrs = {} if retry_after is None else {"Retry-After": retry_after}
+    return urllib.error.HTTPError(cu.API_URL, code, "err", hdrs, None)
+
+
+class BackoffTest(unittest.TestCase):
+    """A failed fetch holds the next one back; a 429 obeys Retry-After.
+
+    2026-10-08: the endpoint answered 429 with Retry-After: 751 and the tray's
+    60s tick retried on every tick (the old fixed 30s gap), so the widget sat
+    on "stale — HTTP 429" for 50+ minutes, one 429 a minute.
+    """
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.creds = Path(self.td.name) / ".credentials.json"
+        self.creds.write_text(jsonlib.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": 2e12}}))
+        self.boom = mock.MagicMock(side_effect=AssertionError("must not fetch"))
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def fail(self, st, now, exc, force=False):
+        opener = mock.MagicMock(side_effect=exc)
+        cu.refresh_limits(st, self.creds, force, now, urlopen=opener)
+        self.assertEqual(opener.call_count, 1, f"expected an attempt at {now}")
+        if isinstance(exc, urllib.error.HTTPError):
+            exc.close()
+
+    def test_429_waits_for_retry_after(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        self.fail(st, 1000.0, http_error(429, "751"))
+        self.assertEqual(st["limits_retry_at"], 1751.0)
+        for now in (1060.0, 1500.0, 1750.0):   # every tray tick inside the wait
+            cu.refresh_limits(st, self.creds, False, now, urlopen=self.boom)
+        self.boom.assert_not_called()
+        cu.refresh_limits(st, self.creds, False, 1751.0,
+                          urlopen=fake_urlopen({"limits": LIMITS}))
+        self.assertIsNone(st["limits_error"])
+        self.assertEqual((st["limits_failures"], st["limits_retry_at"]), (0, None))
+
+    def test_429_without_retry_after_doubles_from_the_ttl_to_the_cap(self):
+        st, now, waits = {"limits": LIMITS, "limits_fetched_at": 0.0}, 1000.0, []
+        for _ in range(6):
+            self.fail(st, now, http_error(429))
+            waits.append(st["limits_retry_at"] - now)
+            now = st["limits_retry_at"]
+        self.assertEqual(waits, [300, 600, 1200, 1800, 1800, 1800])
+
+    def test_short_retry_after_does_not_undercut_the_backoff(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        self.fail(st, 1000.0, http_error(429, "5"))
+        self.assertEqual(st["limits_retry_at"], 1000.0 + cu.API_TTL)
+
+    def test_network_errors_back_off_gently(self):
+        # Not the server's doing, so no 30-minute waits: 30s doubling, capped
+        # at the ordinary TTL.
+        st, now, waits = {"limits": LIMITS, "limits_fetched_at": 0.0}, 1000.0, []
+        for _ in range(6):
+            self.fail(st, now, urllib.error.URLError("dns"))
+            waits.append(st["limits_retry_at"] - now)
+            now = st["limits_retry_at"]
+        self.assertEqual(waits, [30, 60, 120, 240, 300, 300])
+        self.fail(st, now, http_error(503))     # 5xx is the gentle kind too
+        self.assertEqual(st["limits_error"], "HTTP 503")
+
+    def test_refresh_now_cannot_cut_a_rate_limit_wait_short(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        self.fail(st, 1000.0, http_error(429, "751"))
+        cu.refresh_limits(st, self.creds, True, 1100.0, urlopen=self.boom)
+        self.boom.assert_not_called()
+        self.fail(st, 1751.0, http_error(429), force=True)  # wait over: allowed
+
+    def test_refresh_now_still_retries_a_network_error(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        for i in range(4):                      # backoff now 240s
+            self.fail(st, 1000.0 + 1000 * i, urllib.error.URLError("dns"))
+        self.fail(st, 3040.0, urllib.error.URLError("dns"), force=True)
+
+    def test_state_from_before_the_backoff_keeps_its_old_gap(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0,
+              "limits_attempt_at": 1000.0, "limits_error": "HTTP 429"}
+        cu.refresh_limits(st, self.creds, False, 1010.0, urlopen=self.boom)
+        self.boom.assert_not_called()
+        self.fail(st, 1031.0, http_error(429))
+        self.assertEqual(st["limits_failures"], 1)
+
+    def test_retry_after_parsing(self):
+        now = datetime(2026, 10, 8, 16, 15, 34, tzinfo=timezone.utc).timestamp()
+        cases = {"751": 751.0, " 0 ": 0.0,
+                 "Thu, 08 Oct 2026 16:20:34 GMT": 300.0,
+                 "Thu, 08 Oct 2026 16:10:34 GMT": None,   # in the past
+                 "99999": None, "soon": None, "-5": None, "": None}
+        for raw, want in cases.items():
+            self.assertEqual(cu.retry_after({"Retry-After": raw}, now), want, raw)
+        self.assertIsNone(cu.retry_after({}, now))
+        self.assertIsNone(cu.retry_after(None, now))
+
+    def test_banner_and_snapshot_say_when_the_next_try_is(self):
+        at = NOW.timestamp() + 600
+        st = {"limits": LIMITS, "limits_fetched_at": NOW.timestamp() - 3600,
+              "limits_error": "HTTP 429", "limits_retry_at": at}
+        self.assertIn("HTTP 429, data from 11:00, retry 12:10",
+                      cu.render(st, cu.FALLBACK_THEME, NOW)["tooltip"])
+        self.assertEqual(cu.snapshot(st, NOW)["retry_at"], at)
+        # Once the wait is over, or with no error, there is nothing to announce.
+        for over in ({"limits_retry_at": NOW.timestamp() - 1},
+                     {"limits_error": None}, {"limits_error": "token expired"}):
+            later = {**st, **over}
+            self.assertNotIn("retry", cu.render(later, cu.FALLBACK_THEME, NOW)["tooltip"])
+            self.assertIsNone(cu.snapshot(later, NOW)["retry_at"])
+
 def usage_line(ts, model, mid, rid, tokens=100):
     return jsonlib.dumps({
         "parentUuid": "x", "message": {

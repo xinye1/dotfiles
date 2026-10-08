@@ -191,7 +191,8 @@ class TrayPowerShellTest(unittest.TestCase):
                          "2026-08-20": {"claude-opus-5": 256_200_000}}}
         snaps = {
             "full.json": cu.snapshot(base, NOW),
-            "stale.json": cu.snapshot(dict(base, limits_error="HTTP 429", days={}), NOW),
+            "stale.json": cu.snapshot(dict(base, limits_error="HTTP 429", days={},
+                                           limits_retry_at=NOW.timestamp() + 600), NOW),
             "empty.json": cu.snapshot({"limits_error": "not logged in"}, NOW),
             "bad_schema.json": dict(cu.snapshot(base, NOW), schema=99),
         }
