@@ -250,6 +250,10 @@ python3 "$REPO/tests/menu_test.py" 2>/dev/null
 # the real one would lock the session. A failure aborts.
 sh "$REPO/tests/lock_test.sh" >/dev/null
 
+# Focus-safe capture (capture.py): stubs only; a failure aborts. Its first
+# assertion is the bug it fixes -- grim must run before any picker.
+python3 "$REPO/tests/capture_test.py" 2>/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar
