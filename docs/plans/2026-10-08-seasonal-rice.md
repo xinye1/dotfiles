@@ -314,7 +314,7 @@ list gains `sh tests/lock_test.sh`).
 - [ ] **Step 1:** §9.25 retitled "The lock screen: the palette's wallpaper, guarded, and never the
   network". Keep the history paragraph; add: the slot, the four guards and why each, the 8 MB cap and
   its basis (decode before lock surface), swaylock's own decode fallback, and the
-  `gdk-pixbuf-thumbnailer` timing recipe from spec §9.
+  GdkPixbuf timing recipe (spec §9).
 - [ ] **Step 2:** The other rows: `desktop` = "the fallback behind the wallpaper slot; the lock colour
   when there is no image". README: same facts, short. CLAUDE.md gotcha: "locks over the palette's
   slot image when the guard passes, else `$desktop`"; convention line: "No binaries. Wallpapers are

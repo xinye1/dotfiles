@@ -1200,8 +1200,17 @@ local and non-blocking; any miss is exactly the colour lock:
 
 Behind that, a second fallback that does not depend on the first: an image swaylock cannot decode
 is dropped by `load_image()` and the lock proceeds over `--color` (verified in the v1.8.6 source).
-The 8 MB cap is a heuristic for decode time, not a measurement; if a lock ever feels slow, time a
-decode of the slot (`time gdk-pixbuf-thumbnailer -s 3840 <slot> /tmp/x.png`) and tighten it.
+The 8 MB cap is a heuristic for decode time, not a measurement. If a lock ever feels slow, time a
+decode of the slot and tighten the cap (`gdk-pixbuf-thumbnailer` is not installed here):
+
+```sh
+python3 -c 'import gi,time; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf
+t=time.time(); GdkPixbuf.Pixbuf.new_from_file("/home/xinye/Pictures/wallpapers/gruvbox"); print(time.time()-t)'
+```
+
+Measured 2026-10-08: a 3992x2242 JPEG decodes in 0.11 s, a 6000x4000 one in 0.18 s, and the 22 MB
+5120x2880 PNG the cap refuses in 0.30 s. Pixel count, not bytes, is what a pathological image would
+abuse (a tiny 16k x 16k PNG passes the cap); acceptable for two hand-picked images.
 `tests/lock_test.sh` holds every case against a stub swaylock and was checked by mutation: each
 guard removed in turn turns it red, except `-L slot` and `.`/`..`, which a neighbouring check
 (`readlink` empty, `-f`) already covers.
