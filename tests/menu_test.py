@@ -9,6 +9,7 @@ empty line is Esc (no output, exit 1).
 MENU_BIN points the suite at another copy of menu.py, so the assertions can be
 shown to go red against a broken one (the mutation check in the plan).
 """
+import fcntl
 import json
 import os
 import shlex
@@ -17,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import unittest
 from pathlib import Path
 
@@ -26,9 +28,25 @@ ACTION_PATH_TAIL = ":/usr/local/sbin:/usr/local/bin:/usr/bin"
 
 STUB = r'''#!/usr/bin/env python3
 # A logging stand-in for fuzzel, notify-send, kitty, cliphist and wl-copy.
-import json, os, sys
+import fcntl, json, os, sys
 name = os.path.basename(sys.argv[0])
 args = sys.argv[1:]
+if name == "fuzzel" and os.environ.get("XDG_RUNTIME_DIR"):
+    # Like fuzzel 1.15 (main.c): one instance per display, by flock; a second
+    # one exits 1 at once, printing nothing on stdout.
+    lock = os.path.join(os.environ["XDG_RUNTIME_DIR"],
+                        "fuzzel-%s.lock" % os.environ.get("WAYLAND_DISPLAY", ""))
+    held = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.stderr.write(lock + ": failed to acquire lock: fuzzel already running?\n")
+        sys.exit(1)
+if name == "slurp":
+    sys.stderr.write("selection cancelled\n")
+    sys.exit(1)
+if name == "swaymsg":
+    print("{}")
 reads = ((name == "fuzzel" and ("--dmenu" in args or "-d" in args))
          or name == "wl-copy" or (name == "cliphist" and args[:1] == ["decode"]))
 data = sys.stdin.buffer.read() if reads else b""
@@ -76,7 +94,8 @@ class Sandbox:
         self.run = self.root / "run"
         for d in (self.home / ".local/bin", self.bin, self.run):
             d.mkdir(parents=True)
-        for name in ("fuzzel", "notify-send", "kitty", "cliphist", "wl-copy"):
+        for name in ("fuzzel", "notify-send", "kitty", "cliphist", "wl-copy", "slurp",
+                     "swaymsg", "grim", "swappy"):
             script(self.bin / name, STUB)
         self.toml = self.root / "menu.toml"
         self.log = self.root / "log.jsonl"
@@ -86,7 +105,7 @@ class Sandbox:
         env = {"HOME": str(self.home), "PATH": f"{self.bin}:/usr/bin",
                "XDG_RUNTIME_DIR": str(self.run), "XDG_CACHE_HOME": str(self.home / ".cache"),
                "MENU_TOML": str(self.toml), "STUB_LOG": str(self.log),
-               "STUB_REPLIES": str(self.replies)}
+               "STUB_REPLIES": str(self.replies), "WAYLAND_DISPLAY": "wayland-test"}
         env.update(overrides)
         return {k: v for k, v in env.items() if v is not None}
 
@@ -238,6 +257,7 @@ class PaletteTest(unittest.TestCase):
         root = self.sb.run / "fuzzel-menu"
         self.assertEqual(call["env"]["XDG_DATA_DIRS"], f"{root}:/a/share:/b/share")
         self.assertEqual(call["argv"], ["--cache", str(self.sb.home / ".cache/fuzzel-menu"),
+                                        "--fields", "filename,name,generic,keywords",
                                         "--launch-prefix", "env XDG_DATA_DIRS=/a/share:/b/share"])
 
     def test_unset_data_dirs_restore_to_the_spec_default(self):  # T2
@@ -434,6 +454,66 @@ class GroupTest(unittest.TestCase):
         r = self.sb.menu("--group", "Nope", toml=self.TOML)
         self.assertEqual(r.returncode, 1)
         self.assertEqual(len(self.sb.calls("notify-send")), 1)
+
+
+class FuzzelLockTest(unittest.TestCase):
+    """fuzzel holds a per-display instance lock until it has finished tearing
+    down, and the palette starts `menu.py --run` before then. A second-step
+    fuzzel started in that window exits 1 with empty stdout -- which read as
+    Esc, so Shutdown -> Enter could quietly do nothing (final review #1)."""
+
+    def setUp(self):
+        self.sb = Sandbox(self)
+        self.lockfile = self.sb.run / "fuzzel-wayland-test.lock"
+
+    def hold(self, seconds=None):
+        fd = os.open(self.lockfile, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        if seconds is None:
+            self.addCleanup(os.close, fd)
+        else:
+            timer = threading.Timer(seconds, os.close, (fd,))
+            timer.start()
+            self.addCleanup(timer.join)
+
+    def test_run_waits_for_the_palette_to_let_go(self):
+        self.hold(0.5)
+        r = self.sb.menu("--run", "system-reboot", toml=REBOOT, replies=["Yes"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.sb.home / "out").read_text(), "rebooted\n")
+
+    def test_group_waits_too(self):
+        self.hold(0.5)
+        r = self.sb.menu("--group", "System", toml=REBOOT, replies=["system-reboot", "Yes"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.sb.home / "out").read_text(), "rebooted\n")
+
+    def test_a_fuzzel_that_never_lets_go_is_reported_not_swallowed(self):
+        self.hold()
+        r = self.sb.menu("--run", "system-reboot", toml=REBOOT, replies=["Yes"])
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("fuzzel", note["argv"][4])
+        self.assertFalse((self.sb.home / "out").exists())
+
+
+class CaptureCancelTest(unittest.TestCase):
+    """The palette toasts any non-zero exit, so an action whose own picker is
+    cancelled must exit 0 (spec §4.2). Esc at slurp's selection is that cancel
+    (final review #3)."""
+
+    def test_esc_at_the_selection_exits_0_and_captures_nothing(self):
+        for name in ("screenshot_region.sh", "screenshot_window.sh"):
+            with self.subTest(name):
+                sb = Sandbox(self)
+                (sb.home / ".config/sway").mkdir(parents=True)
+                # Colour roles are irrelevant to a cancelled selection; no hex here.
+                (sb.home / ".config/sway/theme.gen.env").write_text("BG=bg\nACCENT=accent\n")
+                sb.log.write_text("")
+                r = subprocess.run([str(REPO / "sway/.config/sway/scripts" / name)],
+                                   env=sb.env(), capture_output=True, text=True, timeout=10)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(sb.calls("grim") + sb.calls("swappy"), [])
 
 
 class RepoMenuTest(unittest.TestCase):

@@ -151,7 +151,7 @@ fuzzel invocation, second steps included, reads the rendered `colors.gen.ini`.
 | `run` | ✓ | string | `sh -c` command; `{choice}` substituted when `choices` is set |
 | `icon` | | string | freedesktop icon name (resolved in Papirus-Dark, fuzzel's theme). Default `system-run` |
 | `id` | | string | `[a-z0-9-]+`, unique. Default: slug of `<group>-<label>` |
-| `keywords` | | list of strings | Extra search terms (fuzzel searches `Keywords`) |
+| `keywords` | | list of strings | Extra search terms. fuzzel's default search fields omit `Keywords`, so the palette passes `--fields filename,name,generic,keywords` (final-review fix) |
 | `confirm` | | bool | No/Yes second step |
 | `choices` | | string | Command whose stdout lines are the second-step pick |
 | `when` | | string | Shell test; row shown only on exit 0 |
@@ -280,6 +280,12 @@ No new runtime packages.
   toast. Implementation checks; if so, the row's `run` absorbs that one exit code.
 - **fuzzel's exit status on Esc is undocumented** in the 1.15 man page; `menu.py` treats "no
   selection on stdout" as cancel, whatever the code, and T5 pins it.
+- **fuzzel's instance lock (final-review fix).** fuzzel allows one instance per display (flock on
+  `$XDG_RUNTIME_DIR/fuzzel-$WAYLAND_DISPLAY.lock`) and holds it until teardown is finished — after
+  the palette has already started `menu.py --run`. A second-step fuzzel started in that window
+  exits 1 with empty stdout, indistinguishable from Esc by stdout alone, so `--run` and `--group`
+  first wait (≤ 2 s) for the lock to clear, and notify if it never does. Verified live: with the
+  lock held, `fuzzel --dmenu` exits 1 at once with "fuzzel already running?".
 - **Frecency starts empty** — the palette's cache is separate from fuzzel's, so Chrome and kitty
   rise again over a few days. Seeding it from `~/.cache/fuzzel` is possible and not worth the code.
 - **`when` costs a process per row per press.** One row uses it today; at ~30 rows with a few

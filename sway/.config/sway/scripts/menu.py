@@ -17,12 +17,14 @@ A broken part must never make the key do nothing (spec §5): a menu.toml that
 does not load still opens plain fuzzel, and a failing action raises a critical
 notification instead of vanishing into sway's discarded stderr (PLAYBOOK §7).
 """
+import fcntl
 import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -39,6 +41,10 @@ SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/bin"
 DEFAULT_DATA_DIRS = "/usr/local/share:/usr/share"
 WHEN_TIMEOUT = 1.0
 STDERR_LINES = 5
+FUZZEL_WAIT = 2.0
+# fuzzel's own search fields default to filename,name,generic: without
+# keywords, `screenshot` or `restart` would find nothing (spec §4.2).
+FIELDS = "filename,name,generic,keywords"
 
 
 class ConfigError(Exception):
@@ -213,8 +219,40 @@ def palette(env):
     cache = Path(env.get("XDG_CACHE_HOME") or Path(env["HOME"]) / ".cache") / "fuzzel-menu"
     # Without the prefix every app launched from here inherits the action
     # directory, and a launcher started from that app would list our actions.
-    argv = ["fuzzel", "--cache", str(cache), "--launch-prefix", f"env XDG_DATA_DIRS={original}"]
+    argv = ["fuzzel", "--cache", str(cache), "--fields", FIELDS,
+            "--launch-prefix", f"env XDG_DATA_DIRS={original}"]
     return argv, dict(env, XDG_DATA_DIRS=f"{root}:{original}")
+
+
+def wait_for_fuzzel(env):
+    """Wait, up to FUZZEL_WAIT seconds, until no fuzzel holds its instance lock.
+
+    fuzzel allows one instance per display (an flock on
+    $XDG_RUNTIME_DIR/fuzzel-$WAYLAND_DISPLAY.lock) and keeps it until it has
+    finished tearing down -- after it has already started `menu.py --run`. A
+    second-step fuzzel started in that window exits 1 with nothing on stdout,
+    which reads exactly like Esc: Shutdown -> Enter would quietly do nothing.
+    False means it never let go."""
+    runtime, display = env.get("XDG_RUNTIME_DIR"), env.get("WAYLAND_DISPLAY")
+    if not runtime or not display:
+        return True
+    lock = Path(runtime) / f"fuzzel-{display}.lock"
+    deadline = time.monotonic() + FUZZEL_WAIT
+    while True:
+        try:
+            fd = os.open(lock, os.O_RDONLY)
+        except FileNotFoundError:
+            return True
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            pass
+        finally:
+            os.close(fd)  # releases the probe's own lock at once
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
 
 
 def tail(data):
@@ -305,6 +343,10 @@ def main(argv):
         return 1 if problems else 0
     if len(argv) == 2 and argv[0] in ("--run", "--group"):
         try:
+            if not wait_for_fuzzel(env):
+                notify("Menu: fuzzel is still running",
+                       f"another fuzzel held its lock for over {FUZZEL_WAIT:g} s; nothing was run")
+                return 1
             if argv[0] == "--group":
                 return group(argv[1], env)
             actions = {a["id"]: a for a in load(config_path())}
