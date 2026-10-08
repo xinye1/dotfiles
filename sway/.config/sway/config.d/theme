@@ -27,15 +27,18 @@ exec_always ~/.config/sway/scripts/import-gsettings
 #
 # Colours are further down, in the `client.*` block.
 
-gaps inner 0
-gaps outer 0
+# Everyday: 8 between tiles, 4 more at the edges -- 16 and 8 physical px at
+# scale 2, enough for the wallpaper to frame the tiles. $mod+g turns them off
+# and back on (config.d/default); keep its amounts in step with these.
+gaps inner 8
+gaps outer 4
 
 # Border thickness. `pixel N` means "N px border, no titlebar" — using
 # `normal` instead would bring back a titlebar with the window title in it.
 # Floating windows get a thicker border: they overlap other windows rather than
 # sitting in the grid, so they need more to separate them from what's beneath.
-default_border pixel 1
-default_floating_border pixel 2
+default_border pixel 2
+default_floating_border pixel 3
 
 # smart_borders on = hide borders when a workspace holds only ONE window.
 # Safe here because the desktop background is darker than the window background,
@@ -51,7 +54,18 @@ smart_borders on
 # same glyphs waybar uses.
 font pango:JetBrainsMono Nerd Font 10
 
-# Background: solid nord0.
+# Background: the active palette's wallpaper slot, ~/Pictures/wallpapers/<palette>
+# -- a symlink you point at an image; re-point it to change the wallpaper, no
+# repo change. $wallpaper comes from colors.gen.conf, so a palette switch swaps
+# the image with everything else. A missing or unreadable slot (a fresh clone)
+# falls back to the solid $desktop colour: no error, and `sway --validate`
+# passes (measured 2026-10-08). The lock screen reads the same slot, behind a
+# guard (scripts/lock.sh, PLAYBOOK §9.25).
+#
+#   ln -sfn <image> ~/Pictures/wallpapers/gruvbox    then $mod+Shift+c
+#
+# Keep images in that folder and under 8 MB, or the lock screen will refuse
+# them and lock over the colour (the desktop does not mind either way).
 #
 # Stock ran `exec ~/.azotebg`, an untracked loose script that pkill'd and
 # respawned swaybg pointing at a 3.3M png inside ~/.config/sway.
@@ -60,24 +74,21 @@ font pango:JetBrainsMono Nerd Font 10
 # is still exactly one swaybg process, but sway replaces it on reload instead of
 # stacking duplicates, and there is no loose script or tracked binary involved.
 #
-# For an image instead:  output * bg ~/Pictures/wallpapers/<file> fill
-#
 # Note azote (the GUI wallpaper picker) rewrites ~/.azotebg and starts swaybg
 # when used. A swaybg instance will paint over this — `pkill swaybg` to undo.
 #
-# The desktop is deliberately one shade DARKER than the window background
-# (nord0 #2E3440). That single difference does a lot of work: the gaps become
-# visible channels between tiles rather than dead space, the waybar reads as a
-# distinct surface without needing an edge rule of its own, and a lone window
-# stays legible even with smart_borders on.
+# $desktop is deliberately one shade DARKER than the window background
+# (nord0 #2E3440): it is the fallback field, the letterbox colour around an
+# image that does not fill, and the lock colour when there is no image. When
+# it shows, the gaps read as channels between tiles rather than dead space and
+# a lone window stays legible even with smart_borders on.
 #
 # $desktop (#272B33 for Nord) is a darkened nord0, not a canonical Nord value —
 # the one deliberate exception to the "pick a role from the palette" rule, and
 # it earns its place.
 #
-# For a plain Nord desktop instead:  output * bg #2E3440 solid_color
-# For an image:                      output * bg ~/Pictures/wallpapers/<f> fill
-output * bg $desktop solid_color
+# For a plain colour desktop instead:  output * bg $desktop solid_color
+output * bg $wallpaper fill $desktop
 
 # Title format for windows
 for_window [shell="xdg_shell"] title_format "%title (%app_id)"
