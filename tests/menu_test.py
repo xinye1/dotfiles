@@ -184,6 +184,117 @@ class CliphistPickTest(unittest.TestCase):
         self.assertEqual(len(sb.calls("wl-copy")), 1)
 
 
+TWO = VALID + """
+[[action]]
+group = "Capture"
+label = "Region → clipboard"
+icon = "camera-photo"
+keywords = ["screenshot", "grab"]
+run = "true"
+"""
+
+
+def validate(test, path):
+    tool = shutil.which("desktop-file-validate")
+    test.assertIsNotNone(tool, "desktop-file-validate missing: install desktop-file-utils")
+    r = subprocess.run([tool, str(path)], capture_output=True, text=True)
+    test.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+def exec_argv(entry):
+    line = next(l for l in entry.splitlines() if l.startswith("Exec="))
+    return shlex.split(line[len("Exec="):])
+
+
+class PaletteTest(unittest.TestCase):
+    def setUp(self):
+        self.sb = Sandbox(self)
+
+    def test_one_valid_desktop_file_per_action(self):  # T1
+        self.sb.menu(toml=TWO)
+        entries = self.sb.entries()
+        self.assertEqual(set(entries), {"menu-system-lock.desktop",
+                                        "menu-capture-region-clipboard.desktop"})
+        text = entries["menu-capture-region-clipboard.desktop"]
+        for line in ("Type=Application", "Name=Capture › Region → clipboard",
+                     "Icon=camera-photo", "Keywords=screenshot;grab;"):
+            self.assertIn(line + "\n", text)
+        self.assertEqual(exec_argv(text), [str(MENU), "--run", "capture-region-clipboard"])
+        for name in entries:
+            validate(self, self.sb.appdir() / name)
+
+    def test_rows_that_disappear_are_removed(self):  # T1
+        self.sb.menu(toml=TWO)
+        self.sb.menu(toml=VALID)
+        self.assertEqual(set(self.sb.entries()), {"menu-system-lock.desktop"})
+
+    def test_an_explicit_id_names_the_file(self):
+        self.sb.menu(toml=VALID + 'id = "lock"\n')
+        self.assertEqual(set(self.sb.entries()), {"menu-lock.desktop"})
+
+    def test_fuzzel_gets_the_actions_and_apps_get_the_original_dirs(self):  # T2
+        self.sb.menu(toml=VALID, XDG_DATA_DIRS="/a/share:/b/share")
+        [call] = self.sb.calls("fuzzel")
+        root = self.sb.run / "fuzzel-menu"
+        self.assertEqual(call["env"]["XDG_DATA_DIRS"], f"{root}:/a/share:/b/share")
+        self.assertEqual(call["argv"], ["--cache", str(self.sb.home / ".cache/fuzzel-menu"),
+                                        "--launch-prefix", "env XDG_DATA_DIRS=/a/share:/b/share"])
+
+    def test_unset_data_dirs_restore_to_the_spec_default(self):  # T2
+        self.sb.menu(toml=VALID, XDG_DATA_DIRS=None)
+        [call] = self.sb.calls("fuzzel")
+        self.assertEqual(call["argv"][-1], "env XDG_DATA_DIRS=/usr/local/share:/usr/share")
+        self.assertTrue(call["env"]["XDG_DATA_DIRS"].endswith(":/usr/local/share:/usr/share"))
+
+    def test_when_hides_only_on_a_clean_no(self):  # T3
+        tests = {"yes": "true", "no": "false", "slow": "sleep 3", "missing": "nosuchcommand",
+                 "chatty": "echo noise; echo more >&2; true"}
+        toml = "".join(f'[[action]]\ngroup = "W"\nlabel = "{k}"\nrun = "true"\nwhen = "{v}"\n\n'
+                       for k, v in tests.items())
+        self.sb.menu(toml=toml)
+        self.assertEqual(set(self.sb.entries()),
+                         {f"menu-w-{k}.desktop" for k in ("yes", "slow", "missing", "chatty")})
+
+    def test_a_broken_menu_toml_still_opens_plain_fuzzel(self):  # T8
+        self.sb.menu(toml="[[action]\n")
+        [call] = self.sb.calls("fuzzel")
+        self.assertEqual(call["argv"], [])
+        self.assertIsNone(call["env"]["XDG_DATA_DIRS"])
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"][:4], ["-u", "critical", "-a", "menu"])
+        self.assertIn("plain launcher", note["argv"][4])
+
+    def test_no_runtime_dir_still_opens_plain_fuzzel(self):  # Review Focus 3
+        self.sb.menu(toml=VALID, XDG_RUNTIME_DIR=None)
+        [call] = self.sb.calls("fuzzel")
+        self.assertEqual(call["argv"], [])
+        self.assertEqual(len(self.sb.calls("notify-send")), 1)
+        self.assertEqual(self.sb.entries(), {})
+
+    def test_desktop_metacharacters_survive(self):  # Review Focus 1
+        toml = r"""
+[[action]]
+group = "Odd"
+label = '50% off \ back'
+keywords = ["semi;colon"]
+run = "true"
+"""
+        self.sb.menu(toml=toml)
+        [(name, text)] = self.sb.entries().items()
+        self.assertIn("Name=Odd › 50% off \\\\ back\n", text)
+        self.assertIn("Keywords=semi\\;colon;\n", text)
+        validate(self, self.sb.appdir() / name)
+
+    def test_a_script_path_with_a_space_is_quoted_in_exec(self):  # Review Focus 2
+        spaced = self.sb.root / "my scripts" / "menu.py"
+        spaced.parent.mkdir()
+        shutil.copy(MENU, spaced)
+        self.sb.menu(toml=VALID, script=spaced)
+        text = self.sb.entries()["menu-system-lock.desktop"]
+        self.assertEqual(exec_argv(text), [str(spaced), "--run", "system-lock"])
+        validate(self, self.sb.appdir() / "menu-system-lock.desktop")
+
+
 class RepoMenuTest(unittest.TestCase):
     def test_every_command_in_the_repo_menu_resolves(self):
         # T10, the rot guard. The deployed layout is built from the repo rather

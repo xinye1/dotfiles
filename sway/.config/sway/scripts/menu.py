@@ -36,6 +36,8 @@ DEFAULT_ICON = "system-run"
 # PATH, and --check resolves against it: a check run anywhere judges exactly
 # what a keypress will see (spec §3.3).
 SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/bin"
+DEFAULT_DATA_DIRS = "/usr/local/share:/usr/share"
+WHEN_TIMEOUT = 1.0
 
 
 class ConfigError(Exception):
@@ -131,8 +133,99 @@ def check(actions, env):
     return problems
 
 
+def notify(summary, body=""):
+    """A critical notification, and the same words on stderr."""
+    try:
+        subprocess.run(["notify-send", "-u", "critical", "-a", "menu", summary, body],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    print(f"menu: {summary}" + (f": {body}" if body else ""), file=sys.stderr)
+
+
+def execute(argv, env):
+    """exec argv[0] -- found on menu.py's own PATH -- with env as its environment.
+    Returns only on failure."""
+    exe = shutil.which(argv[0])
+    if exe is None:
+        notify(f"Menu: {argv[0]} not found", f"{argv[0]} is not on PATH")
+        return 1
+    os.execve(exe, argv, env)
+
+
+def shown(action, env):
+    """A row hides only when its `when` test cleanly says no. A test that hangs
+    or cannot execute (126/127) shows it: hiding would be the silent rot this
+    palette exists to avoid, and a really-broken action then fails loudly."""
+    if "when" not in action:
+        return True
+    try:
+        code = subprocess.run(["sh", "-c", action["when"]], env=action_env(env),
+                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=WHEN_TIMEOUT).returncode
+    except (subprocess.TimeoutExpired, OSError):
+        return True
+    return code in (0, 126, 127)
+
+
+def _string(value):
+    """A Desktop Entry string: backslash, newline and tab escaped."""
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t")
+
+
+def _exec_arg(arg):
+    """One Exec argument: double-quoted with " ` $ \\ escaped, % doubled."""
+    return '"' + re.sub(r'(["`$\\])', r"\\\1", arg).replace("%", "%%") + '"'
+
+
+def desktop_entry(action, exe):
+    lines = ["[Desktop Entry]", "Type=Application",
+             f"Name={_string(action['group'])} › {_string(action['label'])}",
+             f"Icon={_string(action['icon'])}",
+             # The Exec value is a string too, so its quoting is escaped again.
+             "Exec=" + _string(f"{_exec_arg(exe)} --run {action['id']}")]
+    if action.get("keywords"):
+        lines.append("Keywords=" + "".join(_string(k).replace(";", "\\;") + ";"
+                                           for k in action["keywords"]))
+    return "\n".join(lines) + "\n"
+
+
+def write_entries(actions, appdir, exe):
+    """Rewrite the directory from scratch, so a removed row cannot linger."""
+    if appdir.exists():
+        shutil.rmtree(appdir)
+    appdir.mkdir(parents=True)
+    for action in actions:
+        (appdir / f"menu-{action['id']}.desktop").write_text(desktop_entry(action, exe))
+
+
+def palette(env):
+    """fuzzel's argv and environment for the palette."""
+    base = env.get("XDG_RUNTIME_DIR")
+    if not base:
+        raise RuntimeError("XDG_RUNTIME_DIR is not set")
+    root = Path(base) / "fuzzel-menu"
+    actions = [a for a in load(config_path()) if shown(a, env)]
+    write_entries(actions, root / "applications", str(SCRIPT))
+    original = env.get("XDG_DATA_DIRS") or DEFAULT_DATA_DIRS
+    cache = Path(env.get("XDG_CACHE_HOME") or Path(env["HOME"]) / ".cache") / "fuzzel-menu"
+    # Without the prefix every app launched from here inherits the action
+    # directory, and a launcher started from that app would list our actions.
+    argv = ["fuzzel", "--cache", str(cache), "--launch-prefix", f"env XDG_DATA_DIRS={original}"]
+    return argv, dict(env, XDG_DATA_DIRS=f"{root}:{original}")
+
+
 def main(argv):
     env = dict(os.environ)
+    if not argv:
+        try:
+            fuzzel_argv, fuzzel_env = palette(env)
+        except Exception as e:  # anything at all: the key must still open something
+            notify("Menu: palette unavailable, plain launcher instead",
+                   f"{type(e).__name__}: {e}")
+            fuzzel_argv, fuzzel_env = ["fuzzel"], env
+        return execute(fuzzel_argv, fuzzel_env)
     if argv == ["--check"]:
         try:
             actions = load(config_path())
