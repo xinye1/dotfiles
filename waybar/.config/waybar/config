@@ -7,6 +7,12 @@
     // (stacked "\n" formats, or "rotate": 270 for long text) or thi2 is ignored.
     "width": 45,
     "spacing": 0, // Gaps between modules (in px)
+    // Floats: 12px off the left, top and bottom edges -- sway's outer 4 + inner 8,
+    // so the bar sits in the same channel geometry as the tiles. Square corners
+    // to match sway's windows, which cannot be rounded (seasonal-rice spec §5).
+    "margin-left": 12,
+    "margin-top": 12,
+    "margin-bottom": 12,
     // colors.gen.json, rendered by ~/.local/bin/theme — because its calendar
     // tooltip carries inline Pango colours and JSON has no variables.
     //
