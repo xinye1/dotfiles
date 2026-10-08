@@ -291,6 +291,16 @@ class PaletteTest(unittest.TestCase):
         self.assertEqual(len(self.sb.calls("notify-send")), 1)
         self.assertEqual(self.sb.entries(), {})
 
+    def test_a_fuzzel_that_cannot_be_executed_notifies(self):  # CodeRabbit, PR #44
+        # Found on PATH and executable, but not a program: os.execve raises
+        # ENOEXEC. That used to escape as a traceback sway throws away.
+        (self.sb.bin / "fuzzel").write_bytes(b"\x00\x01 not a program")
+        r = self.sb.menu(toml=VALID)
+        self.assertEqual(r.returncode, 1)
+        self.assertNotIn("Traceback", r.stderr)
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"][4], "Menu: cannot start fuzzel")
+
     def test_desktop_metacharacters_survive(self):  # Review Focus 1
         toml = r"""
 [[action]]

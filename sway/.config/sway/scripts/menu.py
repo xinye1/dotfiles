@@ -158,7 +158,11 @@ def execute(argv, env):
     if exe is None:
         notify(f"Menu: {argv[0]} not found", f"{argv[0]} is not on PATH")
         return 1
-    os.execve(exe, argv, env)
+    try:
+        os.execve(exe, argv, env)
+    except OSError as e:  # found but not runnable: a traceback here goes nowhere
+        notify(f"Menu: cannot start {argv[0]}", f"{type(e).__name__}: {e}")
+        return 1
 
 
 def shown(action, env):
