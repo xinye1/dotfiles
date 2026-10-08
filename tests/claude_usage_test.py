@@ -454,6 +454,20 @@ class BackoffTest(unittest.TestCase):
         self.assertIsNone(st["limits_error"])
         self.assertEqual((st["limits_failures"], st["limits_retry_at"]), (0, None))
 
+    def test_forced_429_inside_the_ttl_still_binds_a_later_refresh(self):
+        # Success, then a forced fetch that gets 429; an ordinary tick inside
+        # the TTL clears the display error. A later Refresh now must still
+        # wait out Retry-After (review finding on the first version).
+        st = {"limits": LIMITS, "limits_fetched_at": 1000.0}
+        self.fail(st, 1040.0, http_error(429, "751"), force=True)
+        cu.refresh_limits(st, self.creds, False, 1100.0, urlopen=self.boom)
+        self.assertIsNone(st["limits_error"])
+        cu.refresh_limits(st, self.creds, True, 1400.0, urlopen=self.boom)
+        self.boom.assert_not_called()
+        cu.refresh_limits(st, self.creds, True, 1791.0,
+                          urlopen=fake_urlopen({"limits": LIMITS}))
+        self.assertFalse(st["limits_rate_limited"])
+
     def test_429_without_retry_after_doubles_from_the_ttl_to_the_cap(self):
         st, now, waits = {"limits": LIMITS, "limits_fetched_at": 0.0}, 1000.0, []
         for _ in range(6):

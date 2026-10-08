@@ -268,9 +268,11 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     if force:
         if now_epoch - st.get("limits_forced_at", 0) < FORCE_DEBOUNCE:
             return
-        if st.get("limits_error") == "HTTP 429" and now_epoch < retry_at:
+        if st.get("limits_rate_limited") and now_epoch < retry_at:
             # Refresh now must not cut a rate-limit wait short: a click that
-            # gets through only earns another 429 and a longer wait.
+            # gets through only earns another 429 and a longer wait. Its own
+            # flag, not limits_error: an ordinary tick inside the TTL clears
+            # the display error while the server's wait still runs.
             return
         st["limits_forced_at"] = now_epoch
     elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
@@ -293,6 +295,7 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         wait = retry_after(e.headers, now_epoch) if rate_limited else None
         failures = int(st.get("limits_failures") or 0) + 1
         st["limits_failures"] = failures
+        st["limits_rate_limited"] = rate_limited
         st["limits_retry_at"] = now_epoch + next_retry(failures, rate_limited, wait)
         if isinstance(e, urllib.error.HTTPError):
             st["limits_error"] = f"HTTP {e.code}"
@@ -303,6 +306,7 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         st["limits_fetched_at"] = now_epoch
         st["limits_error"] = None
         st["limits_failures"] = 0
+        st["limits_rate_limited"] = False
         st["limits_retry_at"] = None
 
 
