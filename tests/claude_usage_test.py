@@ -519,7 +519,8 @@ class BackoffTest(unittest.TestCase):
         cases = {"751": 751.0, " 0 ": 0.0,
                  "Thu, 08 Oct 2026 16:20:34 GMT": 300.0,
                  "Thu, 08 Oct 2026 16:10:34 GMT": None,   # in the past
-                 "99999": None, "soon": None, "-5": None, "": None}
+                 "99999": 3600.0,   # capped at RETRY_AFTER_MAX, not dropped
+                 "soon": None, "-5": None, "": None}
         for raw, want in cases.items():
             self.assertEqual(cu.retry_after({"Retry-After": raw}, now), want, raw)
         self.assertIsNone(cu.retry_after({}, now))

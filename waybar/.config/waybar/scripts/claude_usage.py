@@ -29,7 +29,7 @@ API_TTL = 300          # the endpoint rate-limits aggressively; never poll faste
 FORCE_DEBOUNCE = 30    # click-spam must not be able to 429 the widget stale
 FETCH_TIMEOUT = 5
 BACKOFF_CAP = 1800     # longest wait between failed fetches when a 429 carries no Retry-After
-RETRY_AFTER_MAX = 3600  # a Retry-After beyond this is treated as garbage, not obeyed
+RETRY_AFTER_MAX = 3600  # a longer Retry-After is obeyed only up to this
 WINDOW_DAYS = 8        # scan/prune horizon; charts render 7 of these
 BAR_CELLS = 16
 PACE_MARK = "│"        # U+2502: an ordinary box-drawing char, not a PUA glyph
@@ -217,8 +217,10 @@ def fetch_limits(token, urlopen=None):
 
 def retry_after(headers, now_epoch):
     """Seconds a 429's Retry-After asks for, or None. RFC 9110 allows a delay
-    in seconds or an HTTP date; anything unparseable, negative or absurd is
-    None, so a bad header falls back to the backoff rather than to no wait."""
+    in seconds or an HTTP date. A wait past RETRY_AFTER_MAX is capped there,
+    not dropped: retrying sooner than the server asked only earns more 429s.
+    Anything unparseable or in the past is None, so a bad header falls back
+    to the backoff rather than to no wait."""
     raw = headers.get("Retry-After") if headers is not None else None
     if not raw:
         return None
@@ -230,7 +232,7 @@ def retry_after(headers, now_epoch):
             secs = email.utils.parsedate_to_datetime(raw).timestamp() - now_epoch
         except (TypeError, ValueError, IndexError, OverflowError):
             return None
-    return secs if 0 <= secs <= RETRY_AFTER_MAX else None
+    return min(secs, RETRY_AFTER_MAX) if secs >= 0 else None
 
 
 def next_retry(failures, rate_limited, server_wait):
