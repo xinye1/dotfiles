@@ -130,6 +130,7 @@ sh tests/lock_test.sh         # stub swaylock; never locks; also run by theme_te
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 python3 tests/menu_test.py    # the Super+Space palette; also run by theme_test.sh
+python3 tests/capture_test.py # focus-safe capture; also run by theme_test.sh
 python3 tests/claude_tray_test.py # Windows tray; PowerShell half skips without WSL interop
 ```
 
@@ -174,6 +175,11 @@ are throwaway, so nothing reaches the desktop. Actions run with a **fixed** `PAT
 (`~/.local/bin` + system dirs), not the session's, which has no `~/.local/bin`; `menu.py --check`
 resolves against that same `PATH`, and the suite's rot guard runs it over the repo's `menu.toml`.
 Point `MENU_BIN` at a copy to check the assertions can still fail (PLAYBOOK §7).
+
+**Run `tests/capture_test.py` after any edit to `capture.py`.** Every tool it runs is a stub on a
+PATH holding **only** the stub directory (with `/usr/bin` on it, the installed satty answered the
+"not installed" tests). The stubs log call order; the first assertion is the bug the tool exists
+for: grim before any picker. `CAPTURE_BIN` points it at a copy for mutation checks (§9.32).
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload) and

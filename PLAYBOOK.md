@@ -488,7 +488,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
 | Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 6/2 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
-| Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §9.13 |
+| Screenshot | `Print` / `Ctrl+Print` / `Shift+Print` | Region / focused window / display. Shot first at the keypress, then cropped in satty (`scripts/capture.py`) — §9.32. `$mod+Print` starts or stops a recording |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
 | App placement | `config.d/application_defaults` | `assign` (not `for_window … move`) so windows don't flash on the wrong workspace first. X11 apps need `class`, Wayland apps `app_id` |
@@ -869,9 +869,9 @@ binding in `default` is therefore not yet defined, and sway rejects the whole co
 Invalid border color $accent
 ```
 
-This is why the screenshot bindings call `scripts/screenshot_region.sh` instead of inlining
-`slurp -c $accent`: the script sources `~/.config/sway/theme.gen.env` at *runtime*, sidestepping parse
-order completely. Any future binding that needs a colour should do the same rather than move files
+This is why the old screenshot bindings called a script instead of inlining `slurp -c $accent`,
+and why `scripts/capture.py` (which replaced them, §9.32) reads `~/.config/sway/theme.gen.env` at
+*runtime* for its recording box: that sidesteps parse order completely. Any future binding that needs a colour should do the same rather than move files
 around to fix the sort order.
 
 ### 9.14 Moving a config block wholesale loses whatever stayed behind
@@ -1795,6 +1795,34 @@ powershell -File ClaudeUsageTray.ps1 -Snapshot snap.json -RenderPanel panel.png 
 (`%LOCALAPPDATA%\ClaudeUsage\tray.log`, collector stderr included); run the collector by hand in
 WSL — `python3 waybar/.config/waybar/scripts/claude_usage.py --json`; re-run `install.py` to
 restart it. The README has the full list.
+
+### 9.32 Capture: shoot first, select on the freeze
+
+`scripts/capture.py` owns every screenshot, OCR, QR and recording
+(`docs/specs/2026-10-08-focus-safe-capture-design.md`). It replaced three `screenshot_*.sh` scripts
+that ran **slurp first and grim after the selection**. slurp's overlay takes the keyboard (kitty gets
+FocusOut, so termtris pauses and hides its board) and covers waybar (layer `top`, so the pointer
+leaves the widget and the claude tooltip closes); by the time grim ran, both were gone.
+
+**The rule: grim runs before any picker.** A Print key is a sway binding and moves no focus, so the
+shot taken at the keypress still has the tooltip and the bricks. Choosing the region happens
+afterwards, in satty, fullscreen on that frozen image: Enter copies and saves to
+`~/Pictures/Screenshots/`, Esc discards and exits 0. `tests/capture_test.py` asserts the order in
+every mode; its first test is this bug.
+
+- **Palette rows pass `--after-palette`.** They wait for fuzzel's instance lock (the palette is on
+  screen until it lets go, §7) plus 150 ms of repaint, so the palette is not in the shot. A Print key
+  is still the way to catch something transient; `Display in 5 s` gives time to re-create it.
+- **Recording** (`$mod+Print`, or the palette) runs wf-recorder detached with VAAPI H.264, its pid in
+  `$XDG_RUNTIME_DIR/capture/recording.pid`. `custom/recording` shows a red dot on signal 10
+  (`pkill -RTMIN+10 -x waybar`; `-x` per §9.29). A pid whose process is gone is removed on the next
+  status read, so the dot cannot outlive the recorder. Region recording still uses slurp, so it is
+  not focus-safe; *Record display* is.
+- **No satty** → the shot is copied to the clipboard whole, with a notification; the key still
+  captures, still at the keypress.
+
+Smoke after touching it: hover the claude widget and press Print (the tooltip is in the image);
+Ctrl+Print mid-termtris (the bricks are); OCR some terminal text; `$mod+Print` twice.
 
 ## 10. Troubleshooting
 
