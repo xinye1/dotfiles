@@ -543,10 +543,32 @@ being parsed before `config.d/theme` (§9.6).
 The one worth knowing before you can read any of it: **`$mod+Return`** opens a terminal.
 
 **A binding is for something done often.** Switching palettes is not, so it has none — `theme
-<name>` at a shell is the interface. The previous binding was `$mod+Shift+t exec theme toggle`,
+<name>` at a shell, or `Style › Theme…` in the command palette, is the interface. The previous binding was `$mod+Shift+t exec theme toggle`,
 which stopped working when `toggle` was dropped and failed *silently*, because a sway `exec` sends
 stderr nowhere. That is the second cost of a binding for a rare operation: nobody notices it
 rotted.
+
+**The command palette is `$mod+space`** (`sway/.config/sway/scripts/menu.py`, actions in
+`sway/.config/sway/menu.toml`; design in `docs/specs/2026-10-08-command-palette-design.md`). One
+fuzzel window lists every app *and* every desktop action (`System › Reboot`, `Capture › Region →
+clipboard`, `Style › Theme…`), searched together and ranked by use: Omarchy's Super+Space,
+rebuilt on fuzzel. Each action is written as a `.desktop` file into `$XDG_RUNTIME_DIR/fuzzel-menu`
+and fuzzel's ordinary launcher runs over it, so launching an app is exactly what `$mod+d` does.
+`$mod+Shift+e` and waybar's power button show the System group alone. `focus mode_toggle`, which
+`$mod+space` used to be, is now `$mod+Alt+space`.
+
+The palette is where rare operations live. The rule above still holds for *keys*, and its reason,
+silent rot, is answered here rather than ignored: a failing action raises a critical notification
+carrying its stderr, and `menu.py --check` (run by `tests/menu_test.py` and `check_consumers.sh`)
+fails the moment a command an action names stops resolving. Actions run with a fixed `PATH`,
+`~/.local/bin` plus the system directories, because the session's own `PATH` has no
+`~/.local/bin` (only `.bashrc` adds it). `--check` resolves against that same `PATH`, so a check
+run from a terminal judges what a keypress sees.
+
+`$mod+d` stays plain fuzzel on purpose: if the palette is ever broken, the way to open a terminal
+and fix it must not depend on it. A `menu.toml` that fails to load still opens plain fuzzel, with a
+notification saying why. The palette retires with the Omarchy migration (D1); `menu.toml` is then
+the list of personal actions to recreate as Omarchy menu extensions.
 
 ---
 

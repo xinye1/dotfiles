@@ -38,6 +38,21 @@ if have sway; then
     fi
 fi
 
+# --- menu (the Super+Space palette) ---
+# Every command the DEPLOYED menu.toml names must resolve in the PATH actions
+# actually run with -- not this shell's, which has ~/.local/bin and more
+# (PLAYBOOK §7). menu.py --check never uses its inherited PATH.
+menu="$HOME/.config/sway/scripts/menu.py"
+if [ -x "$menu" ]; then
+    if out=$("$menu" --check 2>&1); then
+        ok "menu.toml: every action's command resolves"
+    else
+        no "menu.toml: every action's command resolves" "$(printf '%s' "$out" | head -2)"
+    fi
+else
+    no "menu.toml: every action's command resolves" "no $menu — run \`stow sway\`"
+fi
+
 # --- kitty ---
 # kitty 0.48 has no --debug-config, but its config parser is importable and
 # `kitty +runpy` runs a snippet against it without opening a window or needing

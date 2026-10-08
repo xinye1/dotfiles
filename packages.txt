@@ -1,6 +1,7 @@
 autotiling
 brightnessctl
 cliphist
+desktop-file-utils
 fd
 fuzzel
 fzf
