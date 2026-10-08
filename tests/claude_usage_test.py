@@ -468,6 +468,36 @@ class BackoffTest(unittest.TestCase):
                           urlopen=fake_urlopen({"limits": LIMITS}))
         self.assertFalse(st["limits_rate_limited"])
 
+    def test_a_clock_stepped_back_does_not_freeze_the_widget(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        self.fail(st, 100000.0, http_error(429))
+        # the clock jumps back a day: the 300s wait now looks a day long
+        self.fail(st, 100000.0 - 86400, http_error(429))
+        # and a success stamped "in the future" does not block fetches either
+        st = {"limits": LIMITS, "limits_fetched_at": 200000.0}
+        cu.refresh_limits(st, self.creds, False, 100000.0,
+                          urlopen=fake_urlopen({"limits": LIMITS}))
+        self.assertEqual(st["limits_fetched_at"], 100000.0)
+
+    def test_retry_after_zero_gets_the_ttl_backoff(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0}
+        self.fail(st, 1000.0, http_error(429, "0"))
+        self.assertEqual(st["limits_retry_at"], 1000.0 + cu.API_TTL)
+
+    def test_a_change_of_failure_kind_restarts_the_run(self):
+        st = {"limits": LIMITS, "limits_fetched_at": 0.0,
+              "limits_failures": 200, "limits_rate_limited": False}
+        self.fail(st, 1000.0, http_error(429))
+        self.assertEqual((st["limits_failures"], st["limits_retry_at"]),
+                         (1, 1000.0 + cu.API_TTL))
+
+    def test_corrupt_backoff_fields_do_not_blank_the_widget(self):
+        st = {"limits": LIMITS, "limits_fetched_at": "x", "limits_retry_at": "soon",
+              "limits_attempt_at": [], "limits_forced_at": None,
+              "limits_failures": "many", "limits_rate_limited": False}
+        self.fail(st, 1000.0, http_error(500))
+        self.assertEqual(st["limits_failures"], 1)
+
     def test_429_without_retry_after_doubles_from_the_ttl_to_the_cap(self):
         st, now, waits = {"limits": LIMITS, "limits_fetched_at": 0.0}, 1000.0, []
         for _ in range(6):
@@ -520,7 +550,8 @@ class BackoffTest(unittest.TestCase):
                  "Thu, 08 Oct 2026 16:20:34 GMT": 300.0,
                  "Thu, 08 Oct 2026 16:10:34 GMT": None,   # in the past
                  "99999": 3600.0,   # capped at RETRY_AFTER_MAX, not dropped
-                 "soon": None, "-5": None, "": None, "²": None, "١٢": None}
+                 "soon": None, "-5": None, "": None, "²": None, "١٢": None,
+                 "Thu, 08 Oct 2026 16:20:34 -0000": 300.0}   # naive -> UTC
         for raw, want in cases.items():
             self.assertEqual(cu.retry_after({"Retry-After": raw}, now), want, raw)
         self.assertIsNone(cu.retry_after({}, now))

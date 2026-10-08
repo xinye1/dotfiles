@@ -229,9 +229,12 @@ def retry_after(headers, now_epoch):
         secs = float(raw)
     else:
         try:
-            secs = email.utils.parsedate_to_datetime(raw).timestamp() - now_epoch
+            when = email.utils.parsedate_to_datetime(raw)
         except (TypeError, ValueError, IndexError, OverflowError):
             return None
+        if when.tzinfo is None:  # "-0000" parses naive; HTTP dates are UTC
+            when = when.replace(tzinfo=timezone.utc)
+        secs = when.timestamp() - now_epoch
     return min(secs, RETRY_AFTER_MAX) if secs >= 0 else None
 
 
@@ -250,6 +253,12 @@ def next_retry(failures, rate_limited, server_wait):
     return min(API_TTL, FORCE_DEBOUNCE * step)
 
 
+def _num(v, default):
+    """A number from the state file, or `default`: a hand-edited or corrupted
+    backoff field must not blank the widget with a TypeError."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+
+
 def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     token, err, meta = read_credentials(creds_path, now_epoch)
     if meta:
@@ -264,11 +273,17 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
         return
     # When the next attempt is allowed. A state file from before the backoff
     # has only limits_attempt_at; its old fixed FORCE_DEBOUNCE gap stands in.
-    retry_at = st.get("limits_retry_at")
+    retry_at = _num(st.get("limits_retry_at"), None)
     if retry_at is None:
-        retry_at = st.get("limits_attempt_at", 0) + FORCE_DEBOUNCE
+        retry_at = _num(st.get("limits_attempt_at"), 0) + FORCE_DEBOUNCE
+    if retry_at - now_epoch > max(BACKOFF_CAP, RETRY_AFTER_MAX):
+        # Further off than any wait we grant: the clock stepped back (a WSL
+        # resume resync, NTP). Holding it would freeze the widget for as long
+        # as the step; one attempt re-arms a real wait if the server wants it.
+        retry_at = now_epoch
+    fetched_age = now_epoch - _num(st.get("limits_fetched_at"), 0)
     if force:
-        if now_epoch - st.get("limits_forced_at", 0) < FORCE_DEBOUNCE:
+        if 0 <= now_epoch - _num(st.get("limits_forced_at"), 0) < FORCE_DEBOUNCE:
             return
         if st.get("limits_rate_limited") and now_epoch < retry_at:
             # Refresh now must not cut a rate-limit wait short: a click that
@@ -277,7 +292,7 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
             # the display error while the server's wait still runs.
             return
         st["limits_forced_at"] = now_epoch
-    elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
+    elif 0 <= fetched_age < API_TTL:  # negative: the clock stepped back
         # limits_fetched_at only moves on success, so landing here means the
         # data on screen is inside the TTL — current by policy. A transient
         # failure since then is water under the bridge; leaving its error set
@@ -295,7 +310,10 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     except Exception as e:
         rate_limited = isinstance(e, urllib.error.HTTPError) and e.code == 429
         wait = retry_after(e.headers, now_epoch) if rate_limited else None
-        failures = int(st.get("limits_failures") or 0) + 1
+        # One run per kind: a night of network errors must not start a 429's
+        # backoff at the cap, nor a 429 run inflate a later network wait.
+        same_kind = st.get("limits_rate_limited") == rate_limited
+        failures = (int(_num(st.get("limits_failures"), 0)) if same_kind else 0) + 1
         st["limits_failures"] = failures
         st["limits_rate_limited"] = rate_limited
         st["limits_retry_at"] = now_epoch + next_retry(failures, rate_limited, wait)
