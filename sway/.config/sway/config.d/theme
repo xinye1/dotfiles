@@ -62,10 +62,13 @@ font pango:JetBrainsMono Nerd Font 10
 # passes (measured 2026-10-08). The lock screen reads the same slot, behind a
 # guard (scripts/lock.sh, PLAYBOOK §9.25).
 #
-#   ln -sfn <image> ~/Pictures/wallpapers/gruvbox    then $mod+Shift+c
+#   ln -sfn ~/Pictures/wallpapers/<file> ~/Pictures/wallpapers/gruvbox
+#   then $mod+Shift+c
 #
-# Keep images in that folder and under 8 MB, or the lock screen will refuse
-# them and lock over the colour (the desktop does not mind either way).
+# Keep images IN that folder, on local disk, and under 8 MB. The lock screen
+# refuses anything else and locks over the colour; and sway itself calls
+# access() on the slot while parsing this file, so a slot into a dead network
+# mount could stall the compositor at reload or login.
 #
 # Stock ran `exec ~/.azotebg`, an untracked loose script that pkill'd and
 # respawned swaybg pointing at a 3.3M png inside ~/.config/sway.

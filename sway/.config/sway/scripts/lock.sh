@@ -76,8 +76,11 @@ done
 #
 #   PALETTE is a plain word      no ../ and no ':' -- swaylock reads --image as
 #                                [[<output>]:]<path>
-#   the slot is a symlink whose  a sibling in this folder, so never inside an
-#   target is a bare name        rclone/FUSE mount whose stat could hang
+#   the slot is a symlink whose  a sibling in this folder (bare, or this folder's
+#   target is a bare name        own absolute path) -- never a link into another
+#                                tree, e.g. an rclone/FUSE mount whose stat could
+#                                hang. That holds while ~/Pictures/wallpapers is
+#                                itself local: keep it so.
 #   that sibling is a regular,   not itself a link out of the folder; and
 #   readable file under 8 MB     small, because swaylock decodes it BEFORE the
 #                                lock surface exists (main.c load_image)
@@ -88,6 +91,9 @@ image=()
 walls=$HOME/Pictures/wallpapers
 if [[ ${PALETTE-} =~ ^[a-z0-9_-]+$ ]] && [[ $walls != *:* ]] && [ -L "$walls/$PALETTE" ]; then
     target=$(readlink -- "$walls/$PALETTE")
+    # `ln -sfn ~/Pictures/wallpapers/x.jpg …` stores the absolute path; that is
+    # the same sibling, so strip the folder by string alone -- no stat.
+    [[ $target == "$walls/"* ]] && target=${target#"$walls/"}
     if [[ -n $target && $target != */* && $target != . && $target != .. ]] \
        && [ ! -L "$walls/$target" ] && [ -f "$walls/$target" ] && [ -r "$walls/$target" ]; then
         size=$(stat -c %s -- "$walls/$target" 2>/dev/null)

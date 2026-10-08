@@ -95,6 +95,15 @@ expect_no_image "sibling that is itself a link -> colour lock"
 fresh nord; img a.jpg; chmod 000 "$W/a.jpg"; ln -s a.jpg "$W/nord"
 if [ "$(id -u)" = 0 ]; then ok "unreadable target (skipped as root)"; else expect_no_image "unreadable target -> colour lock"; fi
 
+# 14. the natural `ln -sfn ~/Pictures/wallpapers/a.jpg …/nord` -- an absolute
+# target inside the folder is the same sibling, by string alone
+fresh nord; img a.jpg; ln -s "$W/a.jpg" "$W/nord"
+expect_image "absolute target inside the folder -> --image"
+fresh nord; mkdir "$W/sub"; img sub/a.jpg; ln -s "$W/sub/a.jpg" "$W/nord"
+expect_no_image "absolute target in a subfolder -> colour lock"
+fresh nord; head -c 1024 /dev/zero >"$sandbox/out.jpg"; ln -s "$sandbox/out.jpg" "$W/nord"
+expect_no_image "absolute target outside the folder -> colour lock"
+
 # 12. target is a directory with a plain name (no dots to give it away)
 fresh nord; mkdir "$W/d"; ln -s d "$W/nord"; expect_no_image "target is a directory -> colour lock"
 

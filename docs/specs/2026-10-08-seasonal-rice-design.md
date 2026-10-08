@@ -107,9 +107,11 @@ alpha to stay legible over a busy image; decide by looking at a real lock, not i
   corners kept (`border-radius: 0`), so the bar matches sway's windows. The bar keeps `@bg`; the
   wallpaper now shows *around* it rather than the bar sitting on `$desktop`.
 
-**[needs-prototype] P2:** the exclusive zone. With a 12px margin, tiles should start 12px (outer 4 +
-inner 8) right of the bar. Verify by screenshot that the bar-to-tile gap equals the tile-to-tile
-gap; if waybar's exclusive zone excludes the margin, set `margin-right` or adjust.
+**[needs-prototype] P2:** the exclusive zone. Expected geometry, in logical px: screen edge → bar
+12 (the margin); bar → first tile 12 (sway's outer 4 + inner 8 — waybar's exclusive zone already
+includes the anchored-edge margin); tile → tile 8 (inner only). Verify those three by screenshot;
+only if bar → tile is not 12 adjust (`margin-right` or gaps). *Amended after final review: an
+earlier wording compared bar → tile with tile → tile, which differ by design.*
 
 ## §6 Testing
 

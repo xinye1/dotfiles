@@ -267,7 +267,7 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
 | `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the solid `$desktop` colour the desktop itself shows (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the palette's wallpaper slot when its guard passes, else the solid `$desktop` colour (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
@@ -1175,7 +1175,11 @@ exactly the shape the app misses.
 ### 9.25 The lock screen: the palette's wallpaper, guarded, and never the network
 
 **Since 2026-10-08 each palette has a wallpaper slot**, `~/Pictures/wallpapers/<palette>`: a
-symlink the user points at an image (`ln -sfn <image> ~/Pictures/wallpapers/gruvbox`). The desktop
+symlink the user points at an image *in the same folder*
+(`ln -sfn ~/Pictures/wallpapers/<file> ~/Pictures/wallpapers/gruvbox`; a bare or this-folder
+absolute target both pass the lock's guard). Keep the images on local disk for the desktop's sake
+too: sway calls `access()` on the slot in the compositor while parsing the config, so a slot into a
+dead network mount could stall sway itself at reload or login. The desktop
 shows it (`output * bg $wallpaper fill $desktop` in `config.d/theme`, `$wallpaper` rendered into
 `colors.gen.conf`), and so does the lock screen, which is Omarchy's idea too: the lock screen is the
 desktop's own background, not a separate collection. A missing slot is not an error anywhere — the
@@ -1190,7 +1194,7 @@ local and non-blocking; any miss is exactly the colour lock:
 | Check | Why |
 |---|---|
 | `PALETTE` (from `theme.gen.env`) is `^[a-z0-9_-]+$`, and the slot path has no `:` | no `../`; swaylock reads `--image` as `[[<output>]:]<path>`, so a colon would be taken as an output name |
-| the slot is a symlink whose target is a bare name (no `/`, not `.`/`..`) | the image is a sibling in this folder, so never inside an rclone/FUSE mount whose `stat` could hang |
+| the slot is a symlink whose target is a bare name, or this folder's own absolute path to one (no other `/`, not `.`/`..`) | the image is a sibling in this folder, so never a link into another tree such as an rclone/FUSE mount whose `stat` could hang — which holds while `~/Pictures/wallpapers` is itself local (rclone is in use on this machine; never mount there) |
 | that sibling is not itself a link, and is a readable regular file | the bare-name rule cannot be stepped around with a second link |
 | it is under 8 MB | swaylock decodes the image *before* the lock surface exists (`load_image()` runs during argument parsing, v1.8.6 `main.c`), so a big image delays the lock that runs before suspend. A 22 MB PNG is refused by design |
 

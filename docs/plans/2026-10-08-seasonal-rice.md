@@ -329,8 +329,8 @@ list gains `sh tests/lock_test.sh`).
   back on a clean `main`. Then in `~/repos/dotfiles`: `git pull`, `theme` (re-applies the remembered
   palette, renders `PALETTE`), and the CLAUDE.md sway checks: `sway --validate`, `pgrep -xc swayidle`
   = 1 (twice), supervised waybar. `sh tests/check_consumers.sh`.
-- [ ] **Step 3: P2** — screenshot; the bar-to-tile gap must equal tile-to-tile gap (12 logical px).
-  If not, adjust `margin-right` / gaps and amend spec §5.
+- [ ] **Step 3: P2** — screenshot and measure (logical px): edge → bar 12, bar → first tile 12,
+  tile → tile 8 (spec §5 P2). Only if bar → tile is off, adjust `margin-right` / gaps and amend spec §5.
 - [ ] **Step 4:** `$mod+g` once → tiles flush (screenshot), again → 8/4 restored (screenshot matches Step 3). `$mod+f1` with the slot set → the image lock (the user unlocks with their password).
 
 ### Task 6 (user, outside the repo): pick the wallpapers
