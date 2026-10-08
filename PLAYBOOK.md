@@ -1024,7 +1024,18 @@ exactly the failure mode [claudebar](https://github.com/mryll/claudebar) has (it
 token refreshes back into `.credentials.json`) and exactly what this widget rejects as a design.
 Cadences follow from the endpoint being undocumented and rate-limiting aggressively: `API_TTL=300`
 (never poll faster), `FORCE_DEBOUNCE=30` (click-spam on `--refresh` must not be able to 429 the
-widget stale), `FETCH_TIMEOUT=5` (a stale bar beats a frozen one). `custom/claude`'s
+widget stale), `FETCH_TIMEOUT=5` (a stale bar beats a frozen one). **A failed fetch backs off,
+and a 429 obeys `Retry-After`.** On 2026-10-08 the endpoint answered 429 with `Retry-After: 751`.
+The old rule allowed a new attempt 30s after any failure, and the Windows tray (§9.31) ticks
+every 60s, so every tick retried. That was one 429 a minute, and the tray showed "stale — HTTP 429"
+for over 50 minutes: retrying inside the window is what kept it rate-limited. Now each failure
+sets `limits_retry_at` and counts `limits_failures`, and nothing fetches before `limits_retry_at`.
+A 429 waits the larger of `Retry-After` (capped at `RETRY_AFTER_MAX=3600`) and `API_TTL`
+doubling up to `BACKOFF_CAP=1800`. Any other failure (network, 5xx, bad JSON) waits 30s doubling
+up to `API_TTL`. Success resets both fields. "Refresh now" still retries a network error after its
+debounce, but it cannot cut a 429's wait short. The stale banner, in waybar and the tray, ends in
+`, retry HH:MM` while a wait is pending (`snapshot()`'s additive `retry_at`; no schema bump).
+`BackoffTest` pins this down. `custom/claude`'s
 `exec-on-event: false` in waybar's config exists for the same reason — the default `true` re-execs
 the script on every click, racing the `--refresh` already in flight — and inside the script,
 `fcntl.flock` on `~/.cache/claude-usage/lock` makes the interval run, a clicked `--refresh`, and

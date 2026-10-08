@@ -128,6 +128,7 @@ function ConvertFrom-Snapshot([string]$Json) {
         level        = [string](Get-OptionalValue $o 'level' 'stale')
         error        = Get-OptionalValue $o 'error'
         fetched_at   = & $num (Get-OptionalValue $o 'fetched_at')
+        retry_at     = & $num (Get-OptionalValue $o 'retry_at')
         limits       = $limits
         days         = & $series (Get-OptionalValue $o 'days' @()) 'date'
         models       = & $series (Get-OptionalValue $o 'models' @()) 'name'
@@ -284,7 +285,10 @@ function Get-PanelLayout($Snap, $Theme, $Fonts, [double]$Scale, [double]$Now, [b
     $banners = @()
     if ($Fault) { $banners += , @("$([char]0x26A0) $Fault", $Theme.critical) }
     if ($null -ne $Snap -and $Snap.error) {
-        $banners += , @("$([char]0x26A0) stale $([char]0x2014) $($Snap.error), data from $(Format-Clock $Snap.fetched_at)", $Theme.warning)
+        # retry_at is set only while a failed fetch's backoff holds the next one
+        # back (a 429 waits for its Retry-After); a panel left open past it drops it.
+        $retry = if ($null -ne $Snap.retry_at -and $Snap.retry_at -gt $Now) { ", retry $(Format-Clock $Snap.retry_at)" } else { '' }
+        $banners += , @("$([char]0x26A0) stale $([char]0x2014) $($Snap.error), data from $(Format-Clock $Snap.fetched_at)$retry", $Theme.warning)
     }
     if ($Idle) {
         $what = if ($null -ne $Snap) { "showing data from $(Format-Clock $Snap.generated_at)" } else { 'right-click the icon, Refresh now, to start it' }

@@ -11,6 +11,7 @@ only.
 """
 import fcntl
 import hashlib
+import email.utils
 import json
 import os
 import re
@@ -27,6 +28,8 @@ API_URL = "https://api.anthropic.com/api/oauth/usage"
 API_TTL = 300          # the endpoint rate-limits aggressively; never poll faster
 FORCE_DEBOUNCE = 30    # click-spam must not be able to 429 the widget stale
 FETCH_TIMEOUT = 5
+BACKOFF_CAP = 1800     # longest wait between failed fetches when a 429 carries no Retry-After
+RETRY_AFTER_MAX = 3600  # a longer Retry-After is obeyed only up to this
 WINDOW_DAYS = 8        # scan/prune horizon; charts render 7 of these
 BAR_CELLS = 16
 PACE_MARK = "│"        # U+2502: an ordinary box-drawing char, not a PUA glyph
@@ -212,6 +215,50 @@ def fetch_limits(token, urlopen=None):
     return cleaned
 
 
+def retry_after(headers, now_epoch):
+    """Seconds a 429's Retry-After asks for, or None. RFC 9110 allows a delay
+    in seconds or an HTTP date. A wait past RETRY_AFTER_MAX is capped there,
+    not dropped: retrying sooner than the server asked only earns more 429s.
+    Anything unparseable or in the past is None, so a bad header falls back
+    to the backoff rather than to no wait."""
+    raw = headers.get("Retry-After") if headers is not None else None
+    if not raw:
+        return None
+    raw = raw.strip()
+    if raw.isascii() and raw.isdigit():  # str.isdigit() alone accepts "²"
+        secs = float(raw)
+    else:
+        try:
+            when = email.utils.parsedate_to_datetime(raw)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+        if when.tzinfo is None:  # "-0000" parses naive; HTTP dates are UTC
+            when = when.replace(tzinfo=timezone.utc)
+        secs = when.timestamp() - now_epoch
+    return min(secs, RETRY_AFTER_MAX) if secs >= 0 else None
+
+
+def next_retry(failures, rate_limited, server_wait):
+    """Seconds to wait after the `failures`-th failure in a row.
+
+    A 429 backs off from API_TTL and doubles up to BACKOFF_CAP, and never
+    retries sooner than the server's Retry-After: retrying every tick while
+    rate limited is what kept the widget stale (§9.23). Any other failure
+    (network, 5xx, bad JSON) is presumably the machine's or a blip, so it
+    starts at FORCE_DEBOUNCE and stops growing at the ordinary API_TTL.
+    """
+    step = 2 ** min(failures - 1, 10)
+    if rate_limited:
+        return max(min(BACKOFF_CAP, API_TTL * step), server_wait or 0)
+    return min(API_TTL, FORCE_DEBOUNCE * step)
+
+
+def _num(v, default):
+    """A number from the state file, or `default`: a hand-edited or corrupted
+    backoff field must not blank the widget with a TypeError."""
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+
+
 def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     token, err, meta = read_credentials(creds_path, now_epoch)
     if meta:
@@ -224,34 +271,63 @@ def refresh_limits(st, creds_path, force, now_epoch, urlopen=None):
     if err:
         st["limits_error"] = err
         return
+    # When the next attempt is allowed. A state file from before the backoff
+    # has only limits_attempt_at; its old fixed FORCE_DEBOUNCE gap stands in.
+    retry_at = _num(st.get("limits_retry_at"), None)
+    if retry_at is None:
+        retry_at = _num(st.get("limits_attempt_at"), 0) + FORCE_DEBOUNCE
+    if retry_at - now_epoch > max(BACKOFF_CAP, RETRY_AFTER_MAX):
+        # Further off than any wait we grant: the clock stepped back (a WSL
+        # resume resync, NTP). Holding it would freeze the widget for as long
+        # as the step; one attempt re-arms a real wait if the server wants it.
+        retry_at = now_epoch
+    fetched_age = now_epoch - _num(st.get("limits_fetched_at"), 0)
     if force:
-        if now_epoch - st.get("limits_forced_at", 0) < FORCE_DEBOUNCE:
+        if 0 <= now_epoch - _num(st.get("limits_forced_at"), 0) < FORCE_DEBOUNCE:
+            return
+        if st.get("limits_rate_limited") and now_epoch < retry_at:
+            # Refresh now must not cut a rate-limit wait short: a click that
+            # gets through only earns another 429 and a longer wait. Its own
+            # flag, not limits_error: an ordinary tick inside the TTL clears
+            # the display error while the server's wait still runs.
             return
         st["limits_forced_at"] = now_epoch
-    elif now_epoch - st.get("limits_fetched_at", 0) < API_TTL:
+    elif 0 <= fetched_age < API_TTL:  # negative: the clock stepped back
         # limits_fetched_at only moves on success, so landing here means the
         # data on screen is inside the TTL — current by policy. A transient
         # failure since then is water under the bridge; leaving its error set
         # would fly "⚠ stale" over minutes-old data for the rest of the TTL.
         st["limits_error"] = None
         return
-    elif now_epoch - st.get("limits_attempt_at", 0) < FORCE_DEBOUNCE:
-        # A fetch just ran and failed (e.g. a forced one whose signal re-exec
-        # lands here); without this gate every click during an outage would
-        # make one API attempt, bypassing the debounce entirely.
+    elif now_epoch < retry_at:
+        # A fetch failed recently and its backoff has not run out. This also
+        # stops a failed forced fetch's signal re-exec from making a second
+        # attempt; without it every click during an outage costs one call.
         return
     st["limits_attempt_at"] = now_epoch
     try:
         st["limits"] = fetch_limits(token, urlopen)
-    except urllib.error.HTTPError as e:
-        st["limits_error"] = f"HTTP {e.code}"
-        print(f"claude_usage: {e}", file=sys.stderr)
-    except Exception as e:  # URLError, timeout, bad JSON, missing limits[]
-        st["limits_error"] = "network error"
+    except Exception as e:
+        rate_limited = isinstance(e, urllib.error.HTTPError) and e.code == 429
+        wait = retry_after(e.headers, now_epoch) if rate_limited else None
+        # One run per kind: a night of network errors must not start a 429's
+        # backoff at the cap, nor a 429 run inflate a later network wait.
+        same_kind = st.get("limits_rate_limited") == rate_limited
+        failures = (int(_num(st.get("limits_failures"), 0)) if same_kind else 0) + 1
+        st["limits_failures"] = failures
+        st["limits_rate_limited"] = rate_limited
+        st["limits_retry_at"] = now_epoch + next_retry(failures, rate_limited, wait)
+        if isinstance(e, urllib.error.HTTPError):
+            st["limits_error"] = f"HTTP {e.code}"
+        else:  # URLError, timeout, bad JSON, missing limits[]
+            st["limits_error"] = "network error"
         print(f"claude_usage: {e}", file=sys.stderr)
     else:
         st["limits_fetched_at"] = now_epoch
         st["limits_error"] = None
+        st["limits_failures"] = 0
+        st["limits_rate_limited"] = False
+        st["limits_retry_at"] = None
 
 
 def read_reset_floor(path):
@@ -579,6 +655,21 @@ def _pct_color(pct, theme):
     return theme["indicator" if level == "normal" else level]
 
 
+def pending_retry(st, now):
+    """Epoch of the next fetch attempt while one is being held back, else None.
+    Only for a failed fetch: a credentials error is not cured by waiting."""
+    at, err = st.get("limits_retry_at"), st.get("limits_error") or ""
+    fetch_err = err == "network error" or err.startswith("HTTP ")
+    if fetch_err and isinstance(at, (int, float)) and at > now.timestamp():
+        return at
+    return None
+
+
+def retry_clock(st, now):
+    at = pending_retry(st, now)
+    return datetime.fromtimestamp(at).astimezone().strftime("%H:%M") if at else None
+
+
 def render(st, theme, now):
     limits = st.get("limits") or []
     err = st.get("limits_error")
@@ -611,8 +702,10 @@ def render(st, theme, now):
         fetched = st.get("limits_fetched_at")
         age = (datetime.fromtimestamp(fetched).astimezone().strftime("%H:%M")
                if fetched else "never")
+        retry = retry_clock(st, now)
         lines += ["", f'<span color="{theme["warning"]}">⚠ stale — '
-                      f'{pango_escape(err)}, data from {age}</span>']
+                      f'{pango_escape(err)}, data from {age}'
+                      + (f', retry {retry}' if retry else "") + '</span>']
 
     if limits:
         lines += ["", f'<span color="{sect}"><b>LIMITS</b></span>']
@@ -744,6 +837,7 @@ def snapshot(st, now):
         "level": "stale" if err else level_of(max(shown, default=0)),
         "error": err,
         "fetched_at": st.get("limits_fetched_at"),
+        "retry_at": pending_retry(st, now),
         "limits": rows,
         "days": [],
         "models": [],

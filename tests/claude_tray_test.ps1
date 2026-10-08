@@ -77,7 +77,7 @@ Check 'parse days and models' {
     (Eq @($full.days).Count 7) -and (Eq $full.days[6].date '2026-08-22') -and
     (Eq $full.days[6].human '57.7M') -and (Eq $full.models[0].name 'Opus 5')
 }
-Check 'parse stale' { (Eq $stale.error 'HTTP 429') -and (Eq $stale.level 'stale') -and (Eq @($stale.days).Count 0) }
+Check 'parse stale' { (Eq $stale.error 'HTTP 429') -and (Eq $stale.level 'stale') -and (Eq @($stale.days).Count 0) -and (Eq $stale.retry_at ($Now + 600)) }
 Check 'parse never-logged-in' { (Eq @($empty.limits).Count 0) -and ($null -eq $empty.fetched_at) }
 Check 'unknown schema refused' {
     try { [void](Fixture 'bad_schema.json'); $false } catch { $_.Exception.Message -like '*schema 99*' }
@@ -319,6 +319,12 @@ Check 'stale panel shows the banner and no charts' {
     $l = Paint $stale $false ''
     $t = Texts $l
     (@($t | Where-Object { $_ -like '*stale*HTTP 429*' }).Count -eq 1) -and ($t -notcontains 'TOKENS BY DAY') -and (Inside $l)
+}
+Check 'stale banner names the next try, until it has passed' {
+    $want = "*HTTP 429, data from $(Format-Clock $stale.fetched_at), retry $(Format-Clock $stale.retry_at)"
+    $now_ = @(Texts (Paint $stale $false '') | Where-Object { $_ -like $want }).Count -eq 1
+    $late = Get-PanelLayout $stale $theme $fonts 1.0 ($Now + 601) $false ''
+    $now_ -and -not (Texts $late | Where-Object { $_ -like '*retry*' })
 }
 Check 'idle with no data says how to start it' {
     $l = Paint $null $true ''
