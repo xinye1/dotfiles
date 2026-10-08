@@ -26,7 +26,7 @@
 
     "custom/launcher": {
         "format":"<span size='x-large'></span>",
-        "on-click": "fuzzel",
+        "on-click": "~/.config/sway/scripts/menu.py",
         "tooltip": false
     },
 
@@ -221,7 +221,7 @@
 
     "custom/power": {
         "format":"⏻",
-        "on-click": "exec ~/.config/sway/scripts/power_menu.sh",
+        "on-click": "exec ~/.config/sway/scripts/menu.py --group System",
         "tooltip": false
     },
 }

@@ -28,12 +28,17 @@ set $right l
 # so isolation was never the differentiator people expect.
 set $term kitty
 
-# Application launcher. The only one: nwg-drawer's app grid on $mod+Shift+d
+# Application launcher: plain fuzzel. nwg-drawer's app grid on $mod+Shift+d
 # was retired on 2026-09-28 (PLAYBOOK §4.1).
 set $launcher fuzzel
 
-# Power Menu
-set $powermenu ~/.config/sway/scripts/power_menu.sh
+# The command palette (Super+Space): apps and desktop actions in one fuzzel,
+# defined in ~/.config/sway/menu.toml (PLAYBOOK §7). $launcher stays plain
+# fuzzel on $mod+d: the fallback if the palette itself is ever broken.
+set $palette ~/.config/sway/scripts/menu.py
+
+# Power menu: the palette's System group on its own.
+set $powermenu ~/.config/sway/scripts/menu.py --group System
 
 ### Key bindings
 #
@@ -50,6 +55,9 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
 
     # Start your launcher
     bindsym $mod+d exec $launcher
+
+    # Open the command palette (Omarchy's key for it)
+    bindsym $mod+space exec $palette
 
     # Lock screen
     bindsym $mod+f1 exec ~/.config/sway/scripts/lock.sh
@@ -165,8 +173,9 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # Toggle between tiling and floating mode
     bindsym $mod+Shift+space floating toggle
 
-    # Swap focus between the tiling area and the floating area
-    bindsym $mod+space focus mode_toggle
+    # Swap focus between the tiling area and the floating area. Was $mod+space,
+    # which is now the command palette.
+    bindsym $mod+Alt+space focus mode_toggle
 
     # Move focus to the parent container
     bindsym $mod+a focus parent
@@ -288,8 +297,9 @@ set $powermenu ~/.config/sway/scripts/power_menu.sh
     # says nothing.
     bindsym $mod+o exec google-chrome-stable
 
-    # Launch the clipboard manager
-    bindsym $mod+Ctrl+v exec cliphist list | fuzzel -d -w 90 -l 30 -p "Select an entry to copy it to your clipboard buffer:"| cliphist decode | wl-copy
+    # Launch the clipboard manager. A script, shared with the palette's
+    # "Clipboard › History", so that Esc exits 0 there.
+    bindsym $mod+Ctrl+v exec ~/.config/sway/scripts/cliphist_pick.sh
     # Delete an entry from the clipboard manager. In a script because its
     # picker is tinted $critical, and this file is parsed before config.d/theme
     # defines any colour — see the header of cliphist_delete.sh.

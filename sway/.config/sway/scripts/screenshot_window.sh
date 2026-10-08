@@ -21,11 +21,12 @@ set -eu
 # slurp exits non-zero when the selection is cancelled with Escape. Bail out
 # rather than handing grim an empty geometry: `grim -g "" -` does not fail, it
 # writes an empty stream, and swappy opened an editor over nothing every time
-# Escape was pressed. Same bail as screenshot_region.sh, for the same reason.
+# Escape was pressed. Same bail as screenshot_region.sh, for the same reason, and the same
+# exit 0: the command palette toasts any non-zero exit (spec §4.2).
 geom=$(swaymsg -t get_tree \
        | jq -r '.. | select(.pid? and .visible?) | .rect | "\(.x),\(.y) \(.width)x\(.height)"' \
-       | slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 1
-[ -n "$geom" ] || exit 1
+       | slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 0
+[ -n "$geom" ] || exit 0
 
 # Via a file rather than `grim … - | swappy -f -`: in a pipeline swappy starts
 # regardless, so a grim that fails halfway still puts an empty editor on the

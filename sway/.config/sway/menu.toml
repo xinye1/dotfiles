@@ -1,0 +1,208 @@
+# The command palette's actions: Super+Space (~/.config/sway/scripts/menu.py).
+# Design: docs/specs/2026-10-08-command-palette-design.md.
+#
+# One [[action]] per row, shown as "<group> › <label>". Keys:
+#   group, label, run  required. `run` is an `sh -c` command.
+#   icon               freedesktop icon name (Papirus-Dark resolves it). Default system-run.
+#                      Never a Nerd Font glyph.
+#   id                 [a-z0-9-]+, default the slug of group-label. It keys the rank
+#                      fuzzel keeps, so set it before renaming a label to keep that rank.
+#   keywords           extra search words
+#   confirm = true     a No/Yes step first
+#   choices            a command whose output lines are offered; the pick fills {choice}
+#   when               a shell test; the row shows only when it exits 0
+#   terminal = true    run in a floating kitty that waits for a key
+# An unknown key is an error, never ignored.
+#
+# Actions run with a FIXED PATH: ~/.local/bin, then /usr/local/sbin:/usr/local/bin:/usr/bin.
+# The session's own PATH has no ~/.local/bin; this is what lets `theme` work from here.
+# An action that opens its own picker must exit 0 when that picker is cancelled,
+# or Esc raises a failure notification.
+#
+# `menu.py --check` (tests/menu_test.py, check_consumers.sh) fails when a command
+# named here stops resolving.
+
+# --- System (also $mod+Shift+e and waybar's power button, in this order) ---
+
+[[action]]
+group = "System"
+label = "Lock"
+icon = "system-lock-screen"
+run = "~/.config/sway/scripts/lock.sh"
+
+[[action]]
+group = "System"
+label = "Suspend"
+icon = "system-suspend"
+run = "systemctl suspend"
+confirm = true
+# Hidden when suspend is masked, as power_menu.sh did.
+when = '[ "$(systemctl is-enabled suspend.target 2>/dev/null)" != masked ]'
+
+[[action]]
+group = "System"
+label = "Log out"
+icon = "system-log-out"
+run = "swaymsg exit"
+confirm = true
+
+[[action]]
+group = "System"
+label = "Reboot"
+icon = "system-reboot"
+keywords = ["restart"]
+run = "systemctl reboot"
+confirm = true
+
+[[action]]
+group = "System"
+label = "Reboot to UEFI"
+icon = "system-reboot"
+keywords = ["bios", "firmware"]
+run = "systemctl reboot --firmware-setup"
+confirm = true
+
+[[action]]
+group = "System"
+label = "Shutdown"
+icon = "system-shutdown"
+keywords = ["power off"]
+run = "systemctl poweroff"
+confirm = true
+
+# --- Capture ---
+
+[[action]]
+group = "Capture"
+label = "Region → edit"
+icon = "applets-screenshooter"
+keywords = ["screenshot"]
+run = "~/.config/sway/scripts/screenshot_region.sh"
+
+[[action]]
+group = "Capture"
+label = "Region → clipboard"
+icon = "applets-screenshooter"
+keywords = ["screenshot"]
+run = "~/.config/sway/scripts/screenshot_region.sh --clipboard"
+
+[[action]]
+group = "Capture"
+label = "Window → edit"
+icon = "applets-screenshooter"
+keywords = ["screenshot"]
+run = "~/.config/sway/scripts/screenshot_window.sh"
+
+[[action]]
+group = "Capture"
+label = "Display → edit"
+icon = "applets-screenshooter"
+keywords = ["screenshot"]
+run = "~/.config/sway/scripts/screenshot_display.sh"
+
+# --- Clipboard ---
+
+[[action]]
+group = "Clipboard"
+label = "History"
+icon = "edit-paste"
+keywords = ["paste", "cliphist"]
+run = "~/.config/sway/scripts/cliphist_pick.sh"
+
+[[action]]
+group = "Clipboard"
+label = "Delete an entry"
+icon = "edit-delete"
+keywords = ["cliphist"]
+run = "~/.config/sway/scripts/cliphist_delete.sh"
+
+# --- Notifications ---
+
+[[action]]
+group = "Notifications"
+label = "Toggle Do Not Disturb"
+icon = "notifications-disabled"
+keywords = ["dnd"]
+run = "makoctl mode -t do-not-disturb"
+
+[[action]]
+group = "Notifications"
+label = "Restore last"
+icon = "notifications"
+run = "makoctl restore"
+
+[[action]]
+group = "Notifications"
+label = "Dismiss all"
+icon = "edit-clear-all"
+run = "makoctl dismiss --all"
+
+# --- Windows and keys ---
+
+[[action]]
+group = "Windows"
+label = "Switch window"
+icon = "view-restore"
+run = "~/.config/sway/scripts/window_switcher.sh"
+
+[[action]]
+group = "Windows"
+label = "Toggle gaps"
+icon = "view-restore"
+run = "swaymsg gaps inner current toggle 12"
+
+[[action]]
+group = "Keys"
+label = "Show keybindings"
+icon = "preferences-desktop-keyboard-shortcuts"
+keywords = ["cheatsheet", "shortcuts"]
+run = "~/.config/waybar/scripts/keyhint.py"
+
+# --- Style ---
+
+[[action]]
+group = "Style"
+label = "Theme…"
+icon = "preferences-desktop-theme"
+keywords = ["palette", "colours", "colors"]
+choices = "theme --list"
+run = "theme {choice}"
+
+# --- Dev ---
+
+[[action]]
+group = "Dev"
+label = "Claude: limits were reset early"
+icon = "edit-undo"
+confirm = true
+# -x is load-bearing: without it the signal also kills waybar's supervisor (PLAYBOOK §9.29).
+run = "~/.config/waybar/scripts/claude_usage.py --limits-reset && pkill -RTMIN+8 -x waybar"
+
+[[action]]
+group = "Dev"
+label = "Backups: status"
+icon = "drive-harddisk"
+keywords = ["restic", "tp-backup"]
+run = "tp-backup status"
+terminal = true
+
+[[action]]
+group = "Dev"
+label = "herdr: back up sessions now"
+icon = "document-save"
+run = "herdr-session-backup"
+
+# --- Sway ---
+
+[[action]]
+group = "Sway"
+label = "Reload config"
+icon = "view-refresh"
+run = "sway --validate -c ~/.config/sway/config && swaymsg reload"
+
+[[action]]
+group = "Sway"
+label = "Displays: re-apply kanshi"
+icon = "preferences-desktop-display"
+keywords = ["monitor", "kanshi"]
+run = "kanshictl reload"

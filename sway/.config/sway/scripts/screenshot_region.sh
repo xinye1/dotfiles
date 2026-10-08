@@ -16,7 +16,9 @@ set -eu
 # slurp exits non-zero when the selection is cancelled with Escape. Bail out
 # rather than handing grim an empty geometry, which the previous inline
 # `grim -g "$(slurp)"` did.
-geom=$(slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 1
+# Exit 0, not 1: a cancel is not a failure, and the command palette raises a
+# failure notification on any non-zero exit (menu.toml, spec §4.2).
+geom=$(slurp -b "${BG}cc" -c "$ACCENT" -s "${ACCENT}22" -B "${BG}66") || exit 0
 
 if [ "${1:-}" = "--clipboard" ]; then
     grim -g "$geom" - | wl-copy

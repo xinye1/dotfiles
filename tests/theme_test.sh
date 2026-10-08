@@ -241,6 +241,11 @@ python3 "$REPO/tests/herdr_test.py" 2>/dev/null
 # this also asserts it lists every bind line in the repo's sway package.
 python3 "$REPO/tests/keyhint_test.py" 2>/dev/null
 
+# The Super+Space command palette (menu.py, menu.toml). Stubs only; a failure
+# aborts. Includes the rot guard: every command menu.toml names must resolve in
+# the PATH actions really run with, not this shell's (spec §3.3).
+python3 "$REPO/tests/menu_test.py" 2>/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar

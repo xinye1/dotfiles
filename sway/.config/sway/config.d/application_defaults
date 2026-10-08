@@ -48,3 +48,6 @@ assign [app_id="thunar"]         workspace number 3
 # app_id is Wayland-native; X11 apps under XWayland expose `class` instead.
 assign [class="Google-chrome"]   workspace number 2
 assign [class="Thunar"]          workspace number 3
+
+# The command palette's terminal actions (menu.toml `terminal = true`).
+for_window [app_id="menu-term"] floating enable, resize set width 50 ppt height 50 ppt

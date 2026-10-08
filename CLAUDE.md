@@ -127,6 +127,7 @@ sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the netw
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
+python3 tests/menu_test.py    # the Super+Space palette; also run by theme_test.sh
 python3 tests/claude_tray_test.py # Windows tray; PowerShell half skips without WSL interop
 ```
 
@@ -165,6 +166,13 @@ eight days taking no snapshot (2026-08-28..09-03) on a case nobody had run: a wo
 is the `gate-fixtures` trap, and this one was built by proving 5 of its 7 checks fail against a copy
 with the guard removed.
 
+**Run `tests/menu_test.py` after any edit to `menu.py`, `menu.toml` or `cliphist_pick.sh`.**
+fuzzel, notify-send, kitty, cliphist and wl-copy are logging stubs and `HOME`/`XDG_RUNTIME_DIR`
+are throwaway, so nothing reaches the desktop. Actions run with a **fixed** `PATH`
+(`~/.local/bin` + system dirs), not the session's, which has no `~/.local/bin`; `menu.py --check`
+resolves against that same `PATH`, and the suite's rot guard runs it over the repo's `menu.toml`.
+Point `MENU_BIN` at a copy to check the assertions can still fail (PLAYBOOK §7).
+
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload) and
 `pgrep -xc waybar_run.sh` (same, and every `waybar`'s `PPid` must be that supervisor — never 1,
@@ -190,7 +198,8 @@ startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you to
   carries both globs — and are gitignored; editing one is pointless. The seven files
   read at hardcoded paths can't carry the marker and are listed individually in `.gitignore` —
   that list is structural, not growing (§2.3).
-- **Switching is `theme <name>`** (`bin/.local/bin/theme`), deliberately unbound (§7). Never
+- **Switching is `theme <name>`** (`bin/.local/bin/theme`; also `Style › Theme…`
+  in the palette), deliberately unbound (§7). Never
   switch by editing configs, and never introduce a theme stow package — a second package writing
   into a folded target would unfold it (§5.2).
 - **Switching is not a repo change.** The active palette lives in `$XDG_STATE_HOME/theme/palette`;
