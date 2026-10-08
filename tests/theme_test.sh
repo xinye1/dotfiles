@@ -246,6 +246,10 @@ python3 "$REPO/tests/keyhint_test.py" 2>/dev/null
 # the PATH actions really run with, not this shell's (spec §3.3).
 python3 "$REPO/tests/menu_test.py" 2>/dev/null
 
+# The lock screen's wallpaper guard (PLAYBOOK §9.25). A stub swaylock only;
+# the real one would lock the session. A failure aborts.
+sh "$REPO/tests/lock_test.sh" >/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar
