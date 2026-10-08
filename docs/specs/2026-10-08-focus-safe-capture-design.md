@@ -96,7 +96,7 @@ while recording) or its negation.
 |---|---|
 | Esc in satty or slurp | Nothing saved, exit 0, no toast (the palette's §4.2 contract) |
 | grim fails, or no focused output/window | Critical notification, exit 1. Window mode with nothing focused shoots the display and says so |
-| satty missing | Critical notification naming the package. **Print falls back to `grim -g "$(slurp)" - \| wl-copy`**, so the key still captures (not focus-safe, and the notification says so) |
+| satty missing | Critical notification naming the package. **The shot already taken is copied to the clipboard whole** (`wl-copy --type image/png`), so the key still captures, and still focus-safely (planning amendment: the earlier draft re-ran slurp, the old focus-stealing path) |
 | tesseract / zbarimg / wf-recorder missing | Critical notification naming the package, exit 1 |
 | OCR finds no text, QR finds no code | Normal-urgency notification, exit 0, clipboard untouched |
 | Record while recording | `record-toggle` stops it. Palette rows are gated by `when`, so a second recorder is never started |
@@ -155,7 +155,6 @@ three scripts are deleted. Apply with `sway --validate` → `swaymsg reload` →
   needs its own press.
 - **Recording is not focus-safe by nature**: slurp's region pick takes focus before recording starts,
   so a game would pause first. Record display (no slurp) avoids that.
-- **The satty-missing fallback is the old focus-stealing behaviour**: better than nothing, and the
-  notification says so.
+- **The satty-missing fallback copies the whole screen**: no crop, but still taken at the keypress.
 - **Shelf life:** like the palette, this retires at the Omarchy migration (D1). Omarchy 4 ships its
   own capture (Omasnap/Tensaku).
