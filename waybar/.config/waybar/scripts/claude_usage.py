@@ -225,7 +225,7 @@ def retry_after(headers, now_epoch):
     if not raw:
         return None
     raw = raw.strip()
-    if raw.isdigit():
+    if raw.isascii() and raw.isdigit():  # str.isdigit() alone accepts "²"
         secs = float(raw)
     else:
         try:
