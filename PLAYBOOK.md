@@ -175,7 +175,7 @@ isolation.
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
-| `desktop` | the wallpaper-less background, one shade below `bg`; also the swaylock screen (§9.25) |
+| `desktop` | one shade below `bg`: the fallback behind the wallpaper slot, the letterbox around an image, and the lock colour when there is no usable image (§9.25) |
 
 **`muted` and `dim` are not shades of one idea, and the split is the whole point.** `muted` says
 "this is chrome" — a border, a rule, a weekday header — and is allowed to be almost invisible.
@@ -302,8 +302,8 @@ for the bug that prompted it.
 
 What the switch costs, plainly, because the replacement is genuinely smaller: **no clock, no power
 buttons, and no user avatar on the lock screen.** gtklock is a GTK app with a window full of
-widgets; plain swaylock draws one password ring over a solid `$desktop` field (§9.25), and
-nothing else. The power buttons are the only real loss, and they are not lost —
+widgets; plain swaylock draws one password ring over the palette's wallpaper, or a solid `$desktop`
+field when there is none (§9.25), and nothing else. The power buttons are the only real loss, and they are not lost —
 `$mod+Shift+e` reaches the same suspend/reboot/shutdown actions through the command palette's
 System group (`menu.py --group System`, §7), from an unlocked session. The clock is on waybar. The avatar has no replacement and none is wanted.
 
@@ -311,7 +311,8 @@ System group (`menu.py --group System`, §7), from an unlocked session. The cloc
 rejected is *an unofficial fork as a dependency*, and separately *a 22 MB image living in the
 repo*, which is what the gtklock wallpaper was. A background image as such was never the
 objection — `--image` is stock swaylock, and the lock screen carried palette-matched wallpapers
-from `~/Pictures` for a while (§9.25) before going back to the solid colour. Configuration lives in
+from `~/Pictures` for a while, went back to the solid colour, and since 2026-10-08 shows the
+palette's one hand-picked image again (§9.25). Configuration lives in
 `sway/.config/sway/scripts/lock.sh` rather than `~/.config/swaylock/config`, because a static config
 file cannot follow a palette switch and a script sourcing `theme.gen.env` at lock time can (§9.13).
 
@@ -486,7 +487,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
-| Gaps toggle | `$mod+g` | `gaps inner current toggle 12` — for screen sharing and screenshots |
+| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 8/4 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
 | Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §9.13 |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
@@ -1171,11 +1172,37 @@ dispositions written up in `docs/specs/2026-08-22-claude-usage-widget-design.rev
 on this repo: work here lands in small PRs that are often merged the moment they go green, which is
 exactly the shape the app misses.
 
-### 9.25 The lock screen: a solid colour, and never the network
+### 9.25 The lock screen: the palette's wallpaper, guarded, and never the network
 
-`lock.sh` locks over the solid **`$desktop`** colour — the same field the desktop itself shows
-(`output * bg $desktop solid_color` in `config.d/theme`), which is Omarchy's idea too: the lock
-screen is the desktop's own background, not a separate collection. **Until 2026-09-28 it picked a
+**Since 2026-10-08 each palette has a wallpaper slot**, `~/Pictures/wallpapers/<palette>`: a
+symlink the user points at an image (`ln -sfn <image> ~/Pictures/wallpapers/gruvbox`). The desktop
+shows it (`output * bg $wallpaper fill $desktop` in `config.d/theme`, `$wallpaper` rendered into
+`colors.gen.conf`), and so does the lock screen, which is Omarchy's idea too: the lock screen is the
+desktop's own background, not a separate collection. A missing slot is not an error anywhere — the
+desktop falls back to `$desktop` (measured: `sway --validate` passes, swaybg runs colour-only) and
+so does the lock. The images live outside the repo (no binaries), so a fresh clone shows the colour
+until the slots exist.
+
+**The lock only uses the slot behind a guard**, because the lock is the one consumer that must
+never stall. `lock.sh` passes `--image <slot> --scaling fill` only when every check holds, each
+local and non-blocking; any miss is exactly the colour lock:
+
+| Check | Why |
+|---|---|
+| `PALETTE` (from `theme.gen.env`) is `^[a-z0-9_-]+$`, and the slot path has no `:` | no `../`; swaylock reads `--image` as `[[<output>]:]<path>`, so a colon would be taken as an output name |
+| the slot is a symlink whose target is a bare name (no `/`, not `.`/`..`) | the image is a sibling in this folder, so never inside an rclone/FUSE mount whose `stat` could hang |
+| that sibling is not itself a link, and is a readable regular file | the bare-name rule cannot be stepped around with a second link |
+| it is under 8 MB | swaylock decodes the image *before* the lock surface exists (`load_image()` runs during argument parsing, v1.8.6 `main.c`), so a big image delays the lock that runs before suspend. A 22 MB PNG is refused by design |
+
+Behind that, a second fallback that does not depend on the first: an image swaylock cannot decode
+is dropped by `load_image()` and the lock proceeds over `--color` (verified in the v1.8.6 source).
+The 8 MB cap is a heuristic for decode time, not a measurement; if a lock ever feels slow, time a
+decode of the slot (`time gdk-pixbuf-thumbnailer -s 3840 <slot> /tmp/x.png`) and tighten it.
+`tests/lock_test.sh` holds every case against a stub swaylock and was checked by mutation: each
+guard removed in turn turns it red, except `-L slot` and `.`/`..`, which a neighbouring check
+(`readlink` empty, `-f`) already covers.
+
+**From 2026-09-28 to 2026-10-08 it locked over the solid `$desktop` colour. Until 2026-09-28 it picked a
 random palette-matched image from `~/Pictures/walls/<palette>/`**, a ~320 MB cache that
 `bin/.local/bin/walls-sync` (547 lines) mirrored from [dharmx/walls](https://github.com/dharmx/walls),
 with a resolution floor, a header parser and a fail-safe chain of its own. All of that retired for
@@ -1184,8 +1211,8 @@ one lock-screen picture. `~/Pictures/walls` is safe to delete: nothing reads it 
 **The rule that survives is the one the wallpaper work was built around: *the lock screen must
 never touch the network.*** It is asked for when the idle timer fires, before suspend, and at
 `$mod+f1` — on a train, on dead wifi, halfway through a resume — and a lock that waits on a socket
-is a lock that does not happen. If an image ever comes back, it must be on disk before the lock is
-asked for, and every way of not finding it must end in the solid colour with the screen locked.
+is a lock that does not happen. The image that came back obeys it: it must be on disk before the
+lock is asked for, and every way of not finding it ends in the solid colour with the screen locked.
 
 **The colour fail-safe stays bare, deliberately.** When a role fails to parse — no `theme.gen.env`
 on a fresh clone, or a half-written one — `lock.sh` does `exec swaylock "$@"` with *no flags at

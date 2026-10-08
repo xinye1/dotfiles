@@ -81,10 +81,11 @@ triggers, not the full story: read the named section before working in its area.
   operational commands live in `windows/claude-usage/README.md` — keep that in step with
   `install.py`'s flags.
 - **`lock.sh` must never touch the network**, at any cost: a lock that waits on a socket is a lock
-  that does not happen. It locks over the solid `$desktop` colour (the wallpaper cache and
-  `walls-sync` retired); if an image ever returns it must already be on disk, and every failure
-  must fall back to the solid colour with the screen still locking. The bare `exec swaylock "$@"`
-  colour fail-safe stays flagless (§9.25).
+  that does not happen. It locks over the palette's wallpaper slot only behind a local guard
+  (bare sibling name, not a link, readable, < 8 MB — swaylock decodes before locking), and every
+  failure falls back to the solid `$desktop` colour with the screen still locking. Run
+  `sh tests/lock_test.sh` after any edit; it uses a stub, never the real swaylock. The bare
+  `exec swaylock "$@"` colour fail-safe stays flagless (§9.25).
 - tmux formats: wrap **every** dynamic value in `#{qh:…}` (trim runs before escape, the only safe
   order), and a hand-written `status-format[0]` needs `#[list=on]`/`#[nolist]` or every `align=`
   is ignored (§9.19, §9.20).
@@ -125,6 +126,7 @@ sh tests/theme_test.sh        # sandboxed; never touches the live desktop
 sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
+sh tests/lock_test.sh         # stub swaylock; never locks; also run by theme_test.sh
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 python3 tests/menu_test.py    # the Super+Space palette; also run by theme_test.sh
@@ -208,4 +210,4 @@ startup-only assertion (`check_sway_exec.py`); run it for any `exec` line you to
 - **`theme` must run before `stow` on a fresh clone** (`setup.sh` encodes the order) and after
   adding a themed file to an unfolded package (§3.3). Applying is idempotent; re-running repairs
   a deleted or edited artefact.
-- No binaries. The two wallpapers live in `~/Pictures/wallpapers`, not here.
+- No binaries. Wallpapers are slots — `~/Pictures/wallpapers/<palette>` symlinks — not files here (§9.25).
