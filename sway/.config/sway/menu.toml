@@ -70,35 +70,77 @@ keywords = ["power off"]
 run = "systemctl poweroff"
 confirm = true
 
-# --- Capture ---
+# --- Capture (capture.py) ---
+# The shot is taken first -- for these rows, the moment the palette has gone --
+# and cropped afterwards in satty, so nothing a focus change does can spoil it
+# (docs/specs/2026-10-08-focus-safe-capture-design.md). Print, Ctrl+Print and
+# Shift+Print do the same without a palette in between.
 
 [[action]]
 group = "Capture"
-label = "Region → edit"
+label = "Region"
 icon = "applets-screenshooter"
-keywords = ["screenshot"]
-run = "~/.config/sway/scripts/screenshot_region.sh"
+keywords = ["screenshot", "crop"]
+run = "~/.config/sway/scripts/capture.py region --after-palette"
 
 [[action]]
 group = "Capture"
-label = "Region → clipboard"
+label = "Focused window"
 icon = "applets-screenshooter"
 keywords = ["screenshot"]
-run = "~/.config/sway/scripts/screenshot_region.sh --clipboard"
+run = "~/.config/sway/scripts/capture.py window --after-palette"
 
 [[action]]
 group = "Capture"
-label = "Window → edit"
+label = "Display"
 icon = "applets-screenshooter"
 keywords = ["screenshot"]
-run = "~/.config/sway/scripts/screenshot_window.sh"
+run = "~/.config/sway/scripts/capture.py display --after-palette"
 
 [[action]]
 group = "Capture"
-label = "Display → edit"
-icon = "applets-screenshooter"
-keywords = ["screenshot"]
-run = "~/.config/sway/scripts/screenshot_display.sh"
+label = "Display in 5 s"
+icon = "alarm-clock"
+keywords = ["screenshot", "timer", "delay"]
+run = "~/.config/sway/scripts/capture.py display --after-palette --delay 5"
+
+[[action]]
+group = "Capture"
+label = "Text from region (OCR)"
+icon = "edit-find"
+keywords = ["ocr", "copy text"]
+run = "~/.config/sway/scripts/capture.py ocr --after-palette"
+
+[[action]]
+group = "Capture"
+label = "QR code from region"
+icon = "view-barcode-qr"
+keywords = ["qr", "barcode"]
+run = "~/.config/sway/scripts/capture.py qr --after-palette"
+
+[[action]]
+group = "Capture"
+label = "Record region"
+icon = "media-record"
+keywords = ["video", "screencast"]
+when = "~/.config/sway/scripts/capture.py record-status --idle"
+run = "~/.config/sway/scripts/capture.py record region"
+
+[[action]]
+group = "Capture"
+label = "Record display"
+icon = "media-record"
+keywords = ["video", "screencast"]
+when = "~/.config/sway/scripts/capture.py record-status --idle"
+run = "~/.config/sway/scripts/capture.py record display"
+
+[[action]]
+group = "Capture"
+label = "Stop recording"
+icon = "media-playback-stop"
+keywords = ["video", "screencast"]
+when = "~/.config/sway/scripts/capture.py record-status --quiet"
+run = "~/.config/sway/scripts/capture.py record-stop"
 
 # --- Clipboard ---
 

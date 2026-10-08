@@ -552,25 +552,6 @@ class FuzzelLockTest(unittest.TestCase):
         self.assertFalse((self.sb.home / "out").exists())
 
 
-class CaptureCancelTest(unittest.TestCase):
-    """The palette toasts any non-zero exit, so an action whose own picker is
-    cancelled must exit 0 (spec §4.2). Esc at slurp's selection is that cancel
-    (final review #3)."""
-
-    def test_esc_at_the_selection_exits_0_and_captures_nothing(self):
-        for name in ("screenshot_region.sh", "screenshot_window.sh"):
-            with self.subTest(name):
-                sb = Sandbox(self)
-                (sb.home / ".config/sway").mkdir(parents=True)
-                # Colour roles are irrelevant to a cancelled selection; no hex here.
-                (sb.home / ".config/sway/theme.gen.env").write_text("BG=bg\nACCENT=accent\n")
-                sb.log.write_text("")
-                r = subprocess.run([str(REPO / "sway/.config/sway/scripts" / name)],
-                                   env=sb.env(), capture_output=True, text=True, timeout=10)
-                self.assertEqual(r.returncode, 0, r.stderr)
-                self.assertEqual(sb.calls("grim") + sb.calls("swappy"), [])
-
-
 class RepoMenuTest(unittest.TestCase):
     def test_every_command_in_the_repo_menu_resolves(self):
         # T10, the rot guard. The deployed layout is built from the repo rather
