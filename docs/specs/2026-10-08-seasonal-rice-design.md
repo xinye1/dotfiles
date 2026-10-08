@@ -157,5 +157,6 @@ the guard, the 8 MB rule) and §3.1's `desktop` row, CLAUDE.md's `lock.sh` gotch
 - The 8 MB cap is a heuristic for decode latency, not a measurement; a 7 MB PNG still decodes slower
   than a 2 MB JPEG. The test suite's stub cannot measure this; if locks feel slow, time a decode of
   the slot directly (e.g. `python3 -c 'import gi,time; gi.require_version("GdkPixbuf","2.0"); from gi.repository import GdkPixbuf; t=time.time(); GdkPixbuf.Pixbuf.new_from_file("<slot>"); print(time.time()-t)'`) and tighten the cap.
-- Gaps cost ~24 physical px per tile edge in daily use. `$mod+g` doesn't remove them; set
-  `gaps inner 0` in `config.d/theme` to revert.
+- Gaps cost ~24 physical px per tile edge in daily use. `$mod+g` toggles the current workspace's
+  gaps to zero and back (§5); to drop them for good, set `gaps inner 0` / `gaps outer 0` in
+  `config.d/theme`.
