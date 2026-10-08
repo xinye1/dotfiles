@@ -1,6 +1,6 @@
 # Seasonal rice: per-palette wallpapers, gaps, a floating bar — design
 
-**Date:** 2026-10-08 · **Status:** approved (2026-10-08) · **Scope:** make the two-palette desktop *visibly*
+**Date:** 2026-10-08 · **Status:** approved (2026-10-08); amended in planning (§3 P1, §5 `$mod+g`) · **Scope:** make the two-palette desktop *visibly*
 two-season: a wallpaper per palette on the desktop and the lock screen, gaps and 2px borders as
 the everyday layout, and a floating waybar. The r/unixporn shoot that motivated it (§7) commits
 nothing.
@@ -26,7 +26,7 @@ small enough to retire with them; the wallpapers themselves carry over.
 - **Slot** — `~/Pictures/wallpapers/<palette>`: a symlink, owned by the user, naming that palette's
   image. One per palette (`nord`, `gruvbox`). The slot is the contract; the image behind it is taste.
 - **Everyday layout** — what the desktop looks like when nobody is taking a screenshot.
-- **Presentation gap** — the wider gap `$mod+g` toggles to, for screenshots.
+- **Presentation gap** — a wider gap (12) set by hand with `swaymsg` for screenshots; not bound.
 - **Staging** — arranging the desktop for the shoot (§7). Nothing staged is committed.
 
 ## §2 Decisions (Xinye, 2026-10-08)
@@ -65,8 +65,9 @@ desktop, not an error. The extensionless slot name is fine because gdk-pixbuf sn
 is letterboxed. The comment block in `config.d/theme` (lines 54–83) is rewritten to describe the
 slot rather than the solid field.
 
-**[needs-prototype] P1:** confirm `sway --validate` and a live reload both accept a *missing* slot
-(the man page covers "cannot be accessed" at runtime; validation behaviour is unverified).
+**P1, resolved 2026-10-08:** a *missing* slot passes `sway --validate` (exit 0), and live sway spawns
+`swaybg -o * -c <desktop>` — colour only, no error. An extensionless symlink to a PNG loads as an
+image (`swaybg … -i <slot> -m fill -c <desktop>`).
 
 ## §4 The wallpaper on the lock screen
 
@@ -97,8 +98,11 @@ alpha to stay legible over a busy image; decide by looking at a real lock, not i
 - `config.d/theme`: `gaps inner 8`, `gaps outer 4`, `default_border pixel 2`. The tuning comments
   stay; the "current" markers move. `default_floating_border` goes from 2 to 3 so floats still out-
   weigh tiles.
-- `config.d/default:217`: the stale comment ("returns to the `gaps inner 2`") is corrected to 8.
-  `$mod+g` stays a toggle to 12 — the presentation gap.
+- `$mod+g` becomes **gaps off/on**. sway's toggle is `*prop = *prop ? 0 : amount`
+  (`sway/commands/gaps.c:107`), so with a non-zero default it can only toggle *to zero* — the old
+  "toggle to 12" reading is impossible once gaps are on. Binding: `gaps inner current toggle 8,
+  gaps outer current toggle 4` (the stale `gaps inner 2` comment at `config.d/default:217` goes with
+  it). The presentation gap for the shoot is set directly: `swaymsg gaps inner current set 12`.
 - waybar `config`: `"margin-left": 12, "margin-top": 12, "margin-bottom": 12`. `style.css`: square
   corners kept (`border-radius: 0`), so the bar matches sway's windows. The bar keeps `@bg`; the
   wallpaper now shows *around* it rather than the bar sitting on `$desktop`.
