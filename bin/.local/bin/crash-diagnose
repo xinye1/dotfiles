@@ -109,7 +109,15 @@ def run(argv, timeout=INFO_TIMEOUT, env=None):
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        proc.communicate()
+        # Not communicate(): a descendant in another session (a CLI that starts a
+        # daemon, anything that setsid-forks) can still hold the pipes, and reading
+        # them to EOF would block forever (PLAYBOOK §9.32). Reap, close, move on.
+        proc.wait()
+        for pipe in (proc.stdout, proc.stderr):
+            try:
+                pipe.close()
+            except OSError:
+                pass
         return None, "", ""
     return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 

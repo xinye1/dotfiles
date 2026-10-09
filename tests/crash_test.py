@@ -76,6 +76,17 @@ elif name == "coredumpctl":
     elif verb == "info":
         if os.environ.get("STUB_INFO") == "timeout":
             time.sleep(60)
+        if os.environ.get("STUB_INFO") == "daemon":
+            # A CLI that auto-starts a daemon: a grandchild in its own session keeps
+            # the inherited stdout/stderr pipes open after this process exits.
+            kid = os.fork()
+            if kid == 0:
+                os.setsid()
+                time.sleep(30)
+                os._exit(0)
+            open(os.path.join(fx, "daemon.pid"), "w").write(str(kid))
+            sys.stdout.flush()
+            sys.exit(0)
         emit("info.txt")
     else:
         gdb = os.environ.get("STUB_GDB", "")
@@ -295,6 +306,25 @@ class ReportTest(unittest.TestCase):  # D4
         text = self.diagnose(STUB_INFO="timeout", CRASH_DIAGNOSE_INFO_TIMEOUT="1")
         self.assertIn("missing: coredumpctl info -- it did not finish in 1 s", text)
         self.assertTrue([c for c in self.sb.calls("herdr") if c["argv"][:2] == ["pane", "run"]])
+
+    def test_a_pipe_held_by_a_detached_grandchild_cannot_hang_run(self):  # PLAYBOOK §9.32
+        import signal
+
+        def reap():
+            try:
+                os.kill(int((self.sb.fx / "daemon.pid").read_text()), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        self.addCleanup(reap)
+        start = time.monotonic()
+        try:
+            self.sb.tool("diagnose", "222", timeout=15, STUB_INFO="daemon",
+                         CRASH_DIAGNOSE_INFO_TIMEOUT="1")
+            text = self.sb.report()
+        except subprocess.TimeoutExpired:
+            self.fail("diagnose hung on a pipe a detached grandchild still holds")
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertIn("missing: coredumpctl info -- it did not finish in 1 s", text)
 
     def test_gdb_timeout_kills_gdb_and_says_no_symbolised_backtrace(self):
         start = time.monotonic()
