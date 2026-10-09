@@ -67,12 +67,13 @@
     /* Avoid rounded borders under each workspace name */
     border: none;
     border-radius: 0;
-    /* No edge rule needed: the bar floats (margins in config), so what is
-       around it is the wallpaper slot or, without one, the $desktop colour a
-       shade darker than this bar (sway's config.d/theme) -- the boundary reads
-       on its own either way. Square, like sway's windows. If the margins ever
-       go and the background is set back to @bg, the bar merges into a
-       maximised window again — `border-right: 1px solid @muted;` is the fix. */
+    /* No edge rule needed: the bar sits flush against the screen edge, and
+       sway's gaps keep every tile off it, so the strip beside the bar is the
+       wallpaper slot or, without one, the $desktop colour a shade darker than
+       this bar (sway's config.d/theme) -- the boundary reads on its own. If
+       gaps ever go to 0 and the background is set back to @bg, the bar merges
+       into a maximised window again — `border-right: 1px solid @muted;` is the
+       fix. */
 }
 
 /* Every modules */

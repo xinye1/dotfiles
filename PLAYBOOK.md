@@ -487,7 +487,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
-| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 8/4 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
+| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 6/2 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
 | Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §9.13 |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
@@ -761,7 +761,7 @@ Three separate surprises, all hit while tuning the borders:
   a maximised window and the bar most need distinguishing. Set to `off`.
 
 For a single window on a workspace, the visible margin is `outer + inner` (with `outer 4 inner 8`,
-measured 12 px on all sides).
+measured 12 px on all sides; today's `outer 2 inner 6` gives 8, and 6 between tiles).
 
 ### 9.9 GTK apps need restarting after a theme change
 
