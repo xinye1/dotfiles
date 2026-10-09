@@ -340,9 +340,13 @@ def record_stop():
         return 0
     pid, path = rec
     os.kill(pid, signal.SIGINT)  # wf-recorder finalises the file on SIGINT
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + float(os.environ.get("CAPTURE_STOP_GRACE", "10"))
     while alive(pid) and time.monotonic() < deadline:
         time.sleep(0.1)
+    if alive(pid):  # keep tracking it: dropping the pidfile would let a second recorder start
+        notify("Capture: recorder did not stop", f"wf-recorder (pid {pid}) is still running; "
+               "press Super+Print again")
+        return 1
     pidfile().unlink(missing_ok=True)
     signal_waybar()
     if Path(path).exists() and Path(path).stat().st_size > 0:

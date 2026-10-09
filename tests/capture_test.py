@@ -65,6 +65,11 @@ elif name in ("tesseract", "zbarimg"):
 elif name == "wf-recorder":
     if mode == "fail":
         sys.stderr.write("wf-recorder: no gpu\n"); sys.exit(1)
+    if mode == "stubborn":  # a hung encoder: ignores SIGINT, keeps writing
+        open(args[args.index("-f") + 1], "wb").write(b"MP4-partial")
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        while True:
+            time.sleep(0.05)
     def stop(*_):
         if mode != "nofile":
             open(args[args.index("-f") + 1], "wb").write(b"MP4")
@@ -396,6 +401,19 @@ class RecordTest(unittest.TestCase):  # K6
         self.assertNotEqual(note["argv"][4], "Recording saved")
         self.assertIn("failed", note["argv"][4].lower())
         self.assertEqual(r.returncode, 1)
+
+    def test_a_recorder_that_ignores_stop_stays_tracked(self):  # CodeRabbit #48
+        # Deleting the pidfile here would orphan a still-running recorder: the
+        # dot goes off, the palette offers "Record" again, and a second one starts.
+        self.sb.capture("record", "display", STUB_WF_RECORDER="stubborn")
+        pid = int((self.sb.run / "capture" / "recording.pid").read_text().split()[0])
+        self.addCleanup(lambda: os.kill(pid, signal.SIGKILL))
+        r = self.sb.capture("record-stop", CAPTURE_STOP_GRACE="0.5")
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("did not stop", note["argv"][4])
+        self.assertTrue((self.sb.run / "capture" / "recording.pid").exists())
+        self.assertEqual(self.status()["class"], "recording")
 
     def test_a_recorder_that_appears_while_slurp_is_open_wins(self):  # finding 4
         rival = subprocess.Popen([str(self.sb.bin / "wf-recorder"), "-f", str(self.sb.root / "rival.mp4")],
