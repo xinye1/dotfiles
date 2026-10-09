@@ -140,12 +140,16 @@ elif name == "pacman":
     if mode() == "unowned":
         sys.stderr.write(f"error: No package owns {args[-1]}\n"); sys.exit(1)
     print(f"{args[-1]} is owned by waybar 0.15.0-3")
+elif name == "makoctl":
+    # `list -j` as mako 1.11 prints it; `dismiss` is only logged.
+    if args[:1] == ["list"] and not emit("mako-list.json"):
+        print("[\n]")
 elif name == "systemctl":
     print("HOME=/x\nWAYLAND_DISPLAY=wayland-from-manager\nSWAYSOCK=/run/user/x/sway.sock")
 '''
 
 TOOLS = ("journalctl", "coredumpctl", "notify-send", "herdr", "kitty", "claude", "pacman",
-         "systemctl")
+         "systemctl", "makoctl")
 
 
 def entry(pid=222, uid=ME, exe="/usr/bin/waybar", comm="waybar", ts=T0, sig=("6", "SIGABRT"),
@@ -623,6 +627,42 @@ class WatchUidTest(unittest.TestCase):  # D1
         sb.fixture("follow.jsonl", "not json\n[1]\n" + json.dumps(entry()) + "\n")
         sb.tool("watch")
         self.assertEqual(len(sb.toasts()), 1)
+
+
+def toast(nid, app, actions=None):
+    """A `makoctl list -j` row (mako 1.11)."""
+    return {"id": nid, "app_name": app, "app_icon": "", "category": None, "desktop_entry": None,
+            "summary": f"fixture {nid}", "body": "", "urgency": "normal",
+            "actions": {"default": "Diagnose with Claude"} if actions is None else actions}
+
+
+class StaleToastTest(unittest.TestCase):  # final review #4
+    """A restarted watcher's predecessor raised toasts nobody listens to any more
+    (KillMode=process: its notify-send writes a click into a dead pipe)."""
+
+    def test_watch_start_dismisses_the_crash_toasts_and_only_those(self):
+        sb = Sandbox(self)
+        # 9: diagnose's own "claude not found; the report is …" toast, no action:
+        # nobody waits on it, and it still says something worth reading.
+        sb.fixture("mako-list.json", json.dumps([toast(5, "crash"), toast(6, "foot"),
+                                                 toast(7, "crash"), toast(8, "crash-reporter"),
+                                                 toast(9, "crash", actions={})]))
+        sb.fixture("follow.jsonl", json.dumps(entry()) + "\n")
+        sb.tool("watch")
+        mako = sb.calls("makoctl")
+        self.assertTrue(mako, "watch never asked mako what it shows")
+        self.assertEqual(mako[0]["argv"], ["list", "-j"])
+        dismissed = [c for c in mako if c["argv"][:1] == ["dismiss"]]
+        self.assertEqual([c["argv"] for c in dismissed], [["dismiss", "-n", "5"], ["dismiss", "-n", "7"]])
+        [own] = sb.toasts()
+        self.assertLess(max(c["t"] for c in dismissed), own["t"], "dismissed its own new toast?")
+
+    def test_no_makoctl_still_watches_and_says_so(self):
+        sb = Sandbox(self, tools=[t for t in TOOLS if t != "makoctl"])
+        sb.fixture("follow.jsonl", json.dumps(entry()) + "\n")
+        r = sb.tool("watch")
+        self.assertEqual(len(sb.toasts()), 1)
+        self.assertIn("makoctl", r.stderr)
 
 
 class CoalesceTest(unittest.TestCase):  # D2

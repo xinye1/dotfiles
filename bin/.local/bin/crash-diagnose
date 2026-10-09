@@ -495,11 +495,37 @@ class Toasts:
             thread.join(max(0.0, deadline - time.monotonic()))
 
 
+def dismiss_stale_toasts():
+    """Close the crash toasts a previous watcher raised. KillMode=process lets
+    their notify-send outlive it, so a click on one writes into a dead pipe and
+    nothing happens, though the toast looks live; closing it ends that wait too.
+    The crashes stay in the palette list. Only app-name `crash` with the click
+    action: nothing else on screen is touched, not even diagnose's own toasts
+    (no action; "the report is …" is still worth reading)."""
+    rc, out, err = run(["makoctl", "list", "-j"], timeout=5)
+    try:
+        shown = json.loads(out) if rc == 0 else None
+    except ValueError:
+        shown = None
+    if not isinstance(shown, list):
+        why = err.strip() or ("timed out" if rc is None else f"exit {rc}")
+        print(f"crash-diagnose: stale crash toasts left open: makoctl list: {why[-200:]}",
+              file=sys.stderr)
+        return
+    for toast in shown:
+        if isinstance(toast, dict) and toast.get("app_name") == "crash" and \
+                "default" in (toast.get("actions") or {}) and isinstance(toast.get("id"), int):
+            run(["makoctl", "dismiss", "-n", str(toast["id"])], timeout=5)
+
+
 def watch():
     proc = subprocess.Popen(["journalctl", "-f", "-n", "0", "-o", "json", "--no-pager",
                              f"--output-fields={','.join(WATCH_FIELDS)}",
                              f"MESSAGE_ID={MESSAGE_ID}"],
                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+    # After journalctl starts: a crash meanwhile waits in its pipe, and its toast
+    # is raised after this, so it can never be one of the dismissed.
+    dismiss_stale_toasts()
     toasts = Toasts()
     for line in proc.stdout:
         try:
