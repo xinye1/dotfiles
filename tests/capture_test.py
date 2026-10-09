@@ -43,17 +43,25 @@ elif name == "swaymsg":
     else:
         print(os.environ.get("STUB_TREE", "{}"))
 elif name == "satty":
+    if mode == "fail":
+        sys.stderr.write("satty: boom\n"); sys.exit(1)
     if mode == "enter":
         open(args[args.index("--output-filename") + 1], "wb").write(b"PNG")
 elif name == "slurp":
     if mode == "esc":
         sys.exit(1)
+    if os.environ.get("STUB_SLURP_PIDFILE"):  # a rival recorder appears while the user picks
+        open(os.environ["STUB_SLURP_PIDFILE"], "w").write(os.environ["STUB_SLURP_PIDDATA"])
     print("10,20 300x200")
 elif name in ("tesseract", "zbarimg"):
     sys.stdout.write(mode)
 elif name == "wf-recorder":
+    if mode == "fail":
+        sys.stderr.write("wf-recorder: no gpu\n"); sys.exit(1)
     def stop(*_):
-        open(args[args.index("-f") + 1], "wb").write(b"MP4"); sys.exit(0)
+        if mode != "nofile":
+            open(args[args.index("-f") + 1], "wb").write(b"MP4")
+        sys.exit(0)
     signal.signal(signal.SIGINT, stop)
     while True:
         time.sleep(0.05)
@@ -178,11 +186,27 @@ class ScreenshotTest(unittest.TestCase):
         [note] = self.sb.calls("notify-send")
         self.assertIn("no focused window", note["argv"][4])
 
+    def test_the_no_window_toast_comes_after_grim(self):  # finding 6
+        self.sb.capture("window", STUB_TREE=json.dumps({"type": "root", "nodes": []}))
+        names = [c["name"] for c in self.sb.calls() if c["name"] in ("grim", "notify-send")]
+        self.assertEqual(names, ["grim", "notify-send"])
+        self.sb.capture("window", STUB_TREE=json.dumps({"type": "root", "nodes": []}), STUB_GRIM="fail")
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("grim failed", note["argv"][4])
+
     def test_enter_saves_and_esc_saves_nothing_silently(self):  # K4
         r = self.sb.capture("region", STUB_SATTY="enter")
         self.assertEqual((r.returncode, len(self.sb.shots())), (0, 1))
         r = self.sb.capture("region", STUB_SATTY="")
         self.assertEqual((r.returncode, len(self.sb.shots()), self.sb.calls("notify-send")), (0, 1, []))
+
+    def test_satty_failure_is_reported_but_esc_stays_silent(self):  # finding 2
+        r = self.sb.capture("region", STUB_SATTY="fail")
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("satty failed", note["argv"][4])
+        self.assertIn("boom", note["argv"][5])
+        self.assertEqual(list((self.sb.run / "capture").glob("shot-*")), [])
 
     def test_the_runtime_shot_is_removed(self):
         self.sb.capture("display")
@@ -209,7 +233,15 @@ class ScreenshotTest(unittest.TestCase):
         self.sb.capture("display", "--delay", "1")
         self.assertGreaterEqual(time.monotonic() - start, 1.0)
         [note] = self.sb.calls("notify-send")
-        self.assertIn("Capturing in 1 s", note["argv"][4])
+        self.assertIn("Capturing in 1 s", note["argv"])
+
+    def test_the_countdown_toast_expires_before_the_shot(self):  # finding 1
+        self.sb.capture("display", "--delay", "2")
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"][note["argv"].index("-t") + 1], "1000")
+        self.sb.capture("display", "--delay", "1")  # never a zero (= no expiry) timeout
+        [note] = self.sb.calls("notify-send")
+        self.assertEqual(note["argv"][note["argv"].index("-t") + 1], "1")
 
 
 class AfterPaletteTest(unittest.TestCase):  # K8
@@ -262,6 +294,12 @@ class ReadRegionTest(unittest.TestCase):  # K5
         self.assertEqual((r.returncode, self.sb.calls("tesseract"), self.sb.calls("notify-send")),
                          (0, [], []))
 
+    def test_satty_failure_in_the_crop_is_reported(self):  # finding 2
+        r = self.sb.capture("ocr", STUB_SATTY="fail", STUB_TESSERACT="x")
+        self.assertEqual((r.returncode, self.sb.calls("tesseract")), (1, []))
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("satty failed", note["argv"][4])
+
     def test_missing_reader_names_the_package(self):
         sb = Sandbox(self, tools=[t for t in TOOLS if t != "tesseract"])
         r = sb.capture("ocr")
@@ -285,16 +323,12 @@ class RecordTest(unittest.TestCase):  # K6
         self.assertEqual(self.sb.calls("pkill")[0]["argv"], ["-RTMIN+10", "-x", "waybar"])
         time.sleep(0.3)
         self.assertEqual(self.status()["class"], "recording")
-        self.assertEqual(self.sb.capture("record-status", "--quiet").returncode, 0)
-        self.assertEqual(self.sb.capture("record-status", "--idle").returncode, 1)
         r = self.sb.capture("record-stop")
         self.assertEqual(r.returncode, 0, r.stderr)
         [note] = self.sb.calls("notify-send")
         self.assertEqual(note["argv"][4], "Recording saved")
         self.assertTrue(Path(note["argv"][5]).exists())
         self.assertEqual(self.status(), {"text": ""})
-        self.assertEqual(self.sb.capture("record-status", "--quiet").returncode, 1)
-        self.assertEqual(self.sb.capture("record-status", "--idle").returncode, 0)
 
     def test_region_uses_slurp_and_esc_records_nothing(self):
         r = self.sb.capture("record", "region", STUB_SLURP="esc")
@@ -321,6 +355,76 @@ class RecordTest(unittest.TestCase):  # K6
         self.sb.capture("record-toggle")
         self.assertEqual(self.status(), {"text": ""})
 
+    def test_a_recorder_that_dies_at_once_is_reported_and_leaves_no_pidfile(self):  # finding 3
+        r = self.sb.capture("record", "display", STUB_WF_RECORDER="fail")
+        self.assertEqual(r.returncode, 1)
+        [note] = self.sb.calls("notify-send")
+        self.assertIn("recording failed", note["argv"][4].lower())
+        self.assertIn("no gpu", note["argv"][5])
+        self.assertFalse((self.sb.run / "capture" / "recording.pid").exists())
+        self.assertEqual(self.sb.calls("pkill"), [])
+
+    def test_stop_does_not_claim_a_save_that_left_no_file(self):  # finding 3
+        self.sb.capture("record", "display", STUB_WF_RECORDER="nofile")
+        time.sleep(0.3)
+        r = self.sb.capture("record-stop")
+        [note] = self.sb.calls("notify-send")
+        self.assertNotEqual(note["argv"][4], "Recording saved")
+        self.assertIn("failed", note["argv"][4].lower())
+        self.assertEqual(r.returncode, 1)
+
+    def test_a_recorder_that_appears_while_slurp_is_open_wins(self):  # finding 4
+        rival = subprocess.Popen([str(self.sb.bin / "wf-recorder"), "-f", str(self.sb.root / "rival.mp4")],
+                                 env=self.sb.env())
+        self.addCleanup(rival.wait)
+        self.addCleanup(rival.terminate)
+        time.sleep(0.3)
+        pidfile = self.sb.run / "capture" / "recording.pid"
+        r = self.sb.capture("record", "region", STUB_SLURP_PIDFILE=str(self._mkpid(pidfile)),
+                            STUB_SLURP_PIDDATA=f"{rival.pid}\n{self.sb.root}/rival.mp4\n")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(self.sb.calls("wf-recorder"), [])
+        self.assertIn("already recording", self.sb.calls("notify-send")[0]["argv"][4])
+        self.assertEqual(pidfile.read_text().split()[0], str(rival.pid))
+
+    def _mkpid(self, pidfile):
+        pidfile.parent.mkdir(parents=True, exist_ok=True)
+        return pidfile
+
+    def test_a_reused_pid_is_not_the_recorder_and_is_never_signalled(self):  # finding 7
+        stranger = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(stranger.wait)
+        self.addCleanup(stranger.kill)
+        pidfile = self.sb.run / "capture" / "recording.pid"
+        pidfile.parent.mkdir(parents=True)
+        pidfile.write_text(f"{stranger.pid}\n/x.mp4\n")
+        self.assertEqual(self.status(), {"text": ""})
+        self.assertFalse(pidfile.exists())
+        pidfile.write_text(f"{stranger.pid}\n/x.mp4\n")
+        self.sb.capture("record-stop")
+        time.sleep(0.2)
+        self.assertIsNone(stranger.poll())
+
+    def test_the_recorder_uses_the_first_render_node(self):  # finding 9
+        dri = self.sb.root / "dri"
+        dri.mkdir()
+        for n in ("renderD130", "renderD129", "card0"):
+            (dri / n).write_text("")
+        self.sb.capture("record", "display", CAPTURE_DRI_DIR=str(dri))
+        time.sleep(0.3)
+        [rec] = self.sb.calls("wf-recorder")
+        self.assertEqual(rec["argv"][rec["argv"].index("-d") + 1], str(dri / "renderD129"))
+        self.sb.capture("record-stop")
+
+    def test_with_no_render_node_it_falls_back_to_renderD128(self):  # finding 9
+        empty = self.sb.root / "nodri"
+        empty.mkdir()
+        self.sb.capture("record", "display", CAPTURE_DRI_DIR=str(empty))
+        time.sleep(0.3)
+        [rec] = self.sb.calls("wf-recorder")
+        self.assertEqual(rec["argv"][rec["argv"].index("-d") + 1], "/dev/dri/renderD128")
+        self.sb.capture("record-stop")
+
     def test_a_stale_pid_reads_as_idle_and_is_removed(self):
         gone = subprocess.Popen(["true"])
         gone.wait()
@@ -343,6 +447,26 @@ class MenuRowsTest(unittest.TestCase):
         for row in shots:
             with self.subTest(row["label"]):
                 self.assertIn("--after-palette", row["run"])
+
+
+    def test_record_rows_gate_on_the_pidfile_without_starting_python(self):  # finding 5
+        import tomllib
+        rows = {r["label"]: r for r in tomllib.loads(
+            (REPO / "sway/.config/sway/menu.toml").read_text())["action"]}
+        sb = Sandbox(self)
+        pidfile = sb.run / "capture" / "recording.pid"
+        for label, shown_when_recording in (("Record region", False), ("Record display", False),
+                                            ("Stop recording", True)):
+            when = rows[label]["when"]
+            with self.subTest(label):
+                self.assertNotIn("capture.py", when)
+                for recording in (False, True):
+                    pidfile.parent.mkdir(exist_ok=True)
+                    pidfile.unlink(missing_ok=True)
+                    if recording:
+                        pidfile.write_text("123\n/x.mp4\n")
+                    code = subprocess.run(["/bin/sh", "-c", when], env={"XDG_RUNTIME_DIR": str(sb.run)}).returncode
+                    self.assertEqual(code == 0, recording == shown_when_recording, (recording, code))
 
 
 if __name__ == "__main__":

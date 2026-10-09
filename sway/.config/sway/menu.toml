@@ -123,7 +123,7 @@ group = "Capture"
 label = "Record region"
 icon = "media-record"
 keywords = ["video", "screencast"]
-when = "~/.config/sway/scripts/capture.py record-status --idle"
+when = '[ ! -s "$XDG_RUNTIME_DIR/capture/recording.pid" ]'
 run = "~/.config/sway/scripts/capture.py record region"
 
 [[action]]
@@ -131,7 +131,7 @@ group = "Capture"
 label = "Record display"
 icon = "media-record"
 keywords = ["video", "screencast"]
-when = "~/.config/sway/scripts/capture.py record-status --idle"
+when = '[ ! -s "$XDG_RUNTIME_DIR/capture/recording.pid" ]'
 run = "~/.config/sway/scripts/capture.py record display"
 
 [[action]]
@@ -139,7 +139,7 @@ group = "Capture"
 label = "Stop recording"
 icon = "media-playback-stop"
 keywords = ["video", "screencast"]
-when = "~/.config/sway/scripts/capture.py record-status --quiet"
+when = '[ -s "$XDG_RUNTIME_DIR/capture/recording.pid" ]'
 run = "~/.config/sway/scripts/capture.py record-stop"
 
 # --- Clipboard ---

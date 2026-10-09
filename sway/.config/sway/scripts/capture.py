@@ -11,7 +11,7 @@ chosen afterwards in satty, on the frozen image.
   capture.py region|window|display [--after-palette] [--delay N]
   capture.py ocr|qr [--after-palette]
   capture.py record region|display
-  capture.py record-stop | record-toggle | record-status [--quiet | --idle]
+  capture.py record-stop | record-toggle | record-status
 
 A cancelled pick (Esc in satty or slurp) exits 0: the command palette raises a
 failure notification on any non-zero exit (palette spec §4.2).
@@ -31,9 +31,17 @@ FUZZEL_WAIT = 2.0
 REPAINT = 0.15
 WAYBAR_SIGNAL = 10
 # Settled by the plan's Task 1 probe on this machine's Intel GPU.
-RECORD_CODEC = ["-c", "h264_vaapi", "-d", "/dev/dri/renderD128"]
+RECORD_CODEC = ["-c", "h264_vaapi"]
+RECORD_SETTLE = 0.3  # how long wf-recorder gets to die on a bad GPU/option before we call it started
 # satty: Enter copies and saves, then exits; Esc just exits (its default).
 SATTY_ENTER = ["--actions-on-enter", "save-to-clipboard,save-to-file,exit"]
+
+
+def render_node():
+    """The first /dev/dri/renderD* node, else renderD128 (CAPTURE_DRI_DIR is the test seam)."""
+    dri = Path(os.environ.get("CAPTURE_DRI_DIR", "/dev/dri"))
+    nodes = sorted(dri.glob("renderD*"))
+    return str(nodes[0]) if nodes else "/dev/dri/renderD128"
 
 
 def home():
@@ -50,9 +58,10 @@ def stamp():
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def notify(summary, body="", urgency="critical"):
+def notify(summary, body="", urgency="critical", expire_ms=None):
+    expire = ["-t", str(expire_ms)] if expire_ms else []
     try:
-        subprocess.run(["notify-send", "-u", urgency, "-a", "capture", summary, body],
+        subprocess.run(["notify-send", "-u", urgency, "-a", "capture", *expire, summary, body],
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
@@ -114,22 +123,37 @@ def wait_for_fuzzel():
 
 def shoot(mode, path):
     """grim, now, before anything can move focus. Returns False after notifying."""
+    fell_back = False
     if mode == "window":
         rect = focused_rect()
         if rect:
             return run_grim(["-g", rect], path)
-        notify("Capture: no focused window", "captured the whole display instead", "normal")
+        fell_back = True
     output = focused_output()
     if not output:
         notify("Capture: no focused output", "nothing was captured")
         return False
-    return run_grim(["-o", output], path)
+    if not run_grim(["-o", output], path):
+        return False
+    if fell_back:  # after grim, or the toast lands in the very picture
+        notify("Capture: no focused window", "captured the whole display instead", "normal")
+    return True
 
 
 def run_grim(args, path):
     r = subprocess.run(["grim", *args, str(path)], stderr=subprocess.PIPE, text=True)
     if r.returncode != 0 or not path.exists():
         notify("Capture: grim failed", (r.stderr or "").strip()[-300:])
+        return False
+    return True
+
+
+def run_satty(argv):
+    """Run satty; a non-zero exit is a failure worth a toast. Esc is satty's
+    `exit` action and exits 0, so a cancelled pick stays silent."""
+    r = subprocess.run(argv, stderr=subprocess.PIPE, text=True)
+    if r.returncode != 0:
+        notify("Capture: satty failed", (r.stderr or "").strip()[-300:])
         return False
     return True
 
@@ -143,8 +167,7 @@ def edit(shot, crop):
             "--copy-command", "wl-copy", *SATTY_ENTER]
     if crop:
         argv += ["--initial-tool", "crop"]
-    subprocess.run(argv)
-    return 0
+    return 0 if run_satty(argv) else 1
 
 
 def fallback(shot):
@@ -181,9 +204,10 @@ def read_region(kind):
     try:
         if not shoot("display", shot):
             return 1
-        subprocess.run(["satty", "--filename", str(shot), "--fullscreen", "--initial-tool", "crop",
-                        "--output-filename", str(crop),
-                        "--actions-on-enter", "save-to-file,exit"])
+        if not run_satty(["satty", "--filename", str(shot), "--fullscreen", "--initial-tool", "crop",
+                          "--output-filename", str(crop),
+                          "--actions-on-enter", "save-to-file,exit"]):
+            return 1
         if not crop.exists():
             return 0  # Esc: nothing chosen
         if kind == "ocr":
@@ -212,13 +236,16 @@ def pidfile():
 
 
 def alive(pid):
+    """The process exists AND is a wf-recorder: a reused pid is a stranger,
+    which must neither keep the waybar dot lit nor ever receive our SIGINT."""
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+        comm = Path(f"/proc/{pid}/comm").read_text().strip()
+    except (ProcessLookupError, FileNotFoundError):
         return False
     except PermissionError:
-        return True
-    return True
+        return False
+    return comm == "wf-recorder"
 
 
 def recording():
@@ -277,10 +304,22 @@ def record(kind):
     target = home() / "Videos" / "Recordings"
     target.mkdir(parents=True, exist_ok=True)
     path = target / f"{stamp()}.mp4"
-    log = open(runtime() / "recording.log", "w")
-    proc = subprocess.Popen(["wf-recorder", *RECORD_CODEC, *where, "-f", str(path)],
-                            stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                            start_new_session=True)
+    if recording():  # one appeared while slurp had the screen
+        notify("Capture: already recording", "stop it first (Super+Print)", "normal")
+        return 1
+    # "w": the failure toast below quotes this log's tail, so a stale run's log is not needed.
+    logpath = runtime() / "recording.log"
+    with open(logpath, "w") as log:
+        proc = subprocess.Popen(["wf-recorder", *RECORD_CODEC, "-d", render_node(), *where,
+                                 "-f", str(path)],
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                start_new_session=True)
+    time.sleep(RECORD_SETTLE)
+    if proc.poll() is not None:
+        notify("Capture: recording failed to start",
+               logpath.read_text(errors="replace").strip()[-300:])
+        path.unlink(missing_ok=True)
+        return 1
     pidfile().write_text(f"{proc.pid}\n{path}\n")
     signal_waybar()
     return 0
@@ -299,18 +338,17 @@ def record_stop():
         time.sleep(0.1)
     pidfile().unlink(missing_ok=True)
     signal_waybar()
-    notify("Recording saved", path, "normal")
-    return 0
+    if Path(path).exists() and Path(path).stat().st_size > 0:
+        notify("Recording saved", path, "normal")
+        return 0
+    notify("Capture: recording failed", f"no video was written to {path}")
+    return 1
 
 
-def record_status(flag):
-    """waybar JSON; or, for menu.toml `when` tests, an exit code: --quiet is 0
-    while recording, --idle is 0 while not (a `when` cannot start with `!`)."""
+def record_status():
+    """waybar JSON. (menu.toml's record rows test the pidfile with sh instead:
+    python startup is ~60 ms per row on every palette open.)"""
     rec = recording()
-    if flag == "--quiet":
-        return 0 if rec else 1
-    if flag == "--idle":
-        return 1 if rec else 0
     if rec:
         print(json.dumps({"text": "●", "class": "recording",
                           "tooltip": f"Recording to {rec[1]}\nSuper+Print to stop"}))
@@ -322,7 +360,7 @@ def record_status(flag):
 USAGE = ("usage: capture.py region|window|display [--after-palette] [--delay N]\n"
          "       capture.py ocr|qr [--after-palette]\n"
          "       capture.py record region|display | record-stop | record-toggle"
-         " | record-status [--quiet | --idle]")
+         " | record-status")
 
 
 def main(argv):
@@ -338,7 +376,7 @@ def main(argv):
             if "--after-palette" in rest:
                 wait_for_fuzzel()
             if delay:
-                notify(f"Capturing in {delay} s", "", "low")
+                notify(f"Capturing in {delay} s", "", "low", max((delay - 1) * 1000, 1))
                 time.sleep(delay)
             return read_region(mode) if mode in ("ocr", "qr") else screenshot(mode)
         if mode == "record" and rest in (["region"], ["display"]):
@@ -347,8 +385,8 @@ def main(argv):
             return record_stop()
         if mode == "record-toggle" and not rest:
             return record_stop() if recording() else record("region")
-        if mode == "record-status" and rest in ([], ["--quiet"], ["--idle"]):
-            return record_status(rest[0] if rest else None)
+        if mode == "record-status" and not rest:
+            return record_status()
     except Exception as e:  # a key must never fail in silence
         notify("Capture failed", f"{type(e).__name__}: {e}")
         return 1

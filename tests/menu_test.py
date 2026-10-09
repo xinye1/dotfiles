@@ -96,7 +96,7 @@ class Sandbox:
         for d in (self.home / ".local/bin", self.bin, self.run):
             d.mkdir(parents=True)
         for name in ("fuzzel", "notify-send", "kitty", "cliphist", "wl-copy", "slurp",
-                     "swaymsg", "grim", "swappy"):
+                     "swaymsg", "grim"):
             script(self.bin / name, STUB)
         self.toml = self.root / "menu.toml"
         self.log = self.root / "log.jsonl"
