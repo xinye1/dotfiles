@@ -335,6 +335,23 @@ class ReportTest(unittest.TestCase):  # D4
         self.assertNotIn(ENVIRON["GH_TOKEN"], text)
         self.assertIn("token=[redacted]", text)
 
+    def test_the_journal_keeps_the_lines_before_the_crash(self):  # final review #5
+        # 500 lines either side: the newest 200 before the crash and the oldest
+        # 200 after it, not the last 400 overall (all post-crash noise).
+        from datetime import datetime, timezone
+
+        def line(offset_s, label):
+            when = datetime.fromtimestamp(T0 / 1e6 + offset_s, timezone.utc)
+            return f"{when.isoformat(timespec='microseconds')} host app[7]: {label}\n"
+        self.sb.fixture("journal.txt",
+                        "".join(line(-(500 - i) * 0.2, f"pre {i:04d}") for i in range(500))
+                        + "".join(line(i * 0.2, f"post {i:04d}") for i in range(500)))
+        text = self.diagnose()
+        kept = {label: f": {label}\n" in text for label in
+                ("pre 0299", "pre 0300", "pre 0499", "post 0000", "post 0199", "post 0200")}
+        self.assertEqual(kept, {"pre 0299": False, "pre 0300": True, "pre 0499": True,
+                                "post 0000": True, "post 0199": True, "post 0200": False})
+
     def test_the_entry_is_read_with_all_fields(self):
         self.diagnose()
         [query] = [c for c in self.sb.calls("journalctl") if f"COREDUMP_PID=222" in c["argv"]]

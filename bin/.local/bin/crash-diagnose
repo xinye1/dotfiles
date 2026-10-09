@@ -249,6 +249,23 @@ def scrub(report, entry):
     return report
 
 
+def journal_window(lines, crash_s):
+    """At most JOURNAL_MAX_LINES: the newest half before the crash and the oldest
+    half after it, so post-crash noise cannot push out what led up to it. A line
+    without a timestamp (a continuation) stays with the line before it."""
+    before, after = [], []
+    side = before
+    for line in lines:
+        try:
+            side = before if datetime.fromisoformat(line.split(" ", 1)[0]).timestamp() < crash_s \
+                else after
+        except ValueError:
+            pass
+        side.append(line)
+    half = JOURNAL_MAX_LINES // 2
+    return before[-half:] + after[:half]
+
+
 def build_report(entry, env):
     pid = text(entry.get("COREDUMP_PID"))
     comm = text(entry.get("COREDUMP_COMM")) or "?"
@@ -318,11 +335,11 @@ def build_report(entry, env):
     out += ["## Journal", "", "This user's journal, 2 minutes either side of the crash.", ""]
     if ts:
         t = ts // 1_000_000
-        rc, lines, err = run(["journalctl", "--no-pager", "-q", "-o", "short-iso",
+        rc, lines, err = run(["journalctl", "--no-pager", "-q", "-o", "short-iso-precise",
                               f"_UID={os.getuid()}", f"--since=@{t - JOURNAL_SPAN_S}",
                               f"--until=@{t + JOURNAL_SPAN_S}"], timeout=INFO_TIMEOUT, env=env)
         if rc == 0 and lines.strip():
-            out.append(fenced("\n".join(lines.splitlines()[-JOURNAL_MAX_LINES:])))
+            out.append(fenced("\n".join(journal_window(lines.splitlines(), ts / 1e6))))
         else:
             out.append(missing("journal", (err.strip() or "no lines")[-300:] if rc is not None
                                else f"journalctl did not finish in {INFO_TIMEOUT:g} s"))
