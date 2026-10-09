@@ -20,6 +20,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -408,6 +409,22 @@ class RunTest(unittest.TestCase):
 
     def test_a_succeeding_action_is_silent(self):  # T7
         r = self.sb.menu("--run", "system-lock", toml=VALID)
+        self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
+
+    def test_a_background_child_holding_stderr_does_not_hang_the_palette(self):
+        # wl-copy (the clipboard picker, capture's OCR) forks to serve the
+        # clipboard and keeps the action's stderr; a pipe read to EOF hung here.
+        pidfile = self.sb.root / "kid.pid"
+        def reap():
+            try:
+                os.kill(int(pidfile.read_text()), 9)
+            except (OSError, ValueError):
+                pass
+        self.addCleanup(reap)
+        toml = VALID.replace('"true"', f"""'sleep 30 >/dev/null & echo $! > {pidfile}'""")
+        t = time.monotonic()
+        r = self.sb.menu("--run", "system-lock", toml=toml)
+        self.assertLess(time.monotonic() - t, 10)
         self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
 
     def test_non_utf8_stderr_still_notifies(self):  # Review Focus 4

@@ -150,10 +150,17 @@ def run_grim(args, path):
 
 def run_satty(argv):
     """Run satty; a non-zero exit is a failure worth a toast. Esc is satty's
-    `exit` action and exits 0, so a cancelled pick stays silent."""
-    r = subprocess.run(argv, stderr=subprocess.PIPE, text=True)
+    `exit` action and exits 0, so a cancelled pick stays silent.
+
+    stdout and stderr go to a file, never a pipe: satty's Enter runs wl-copy,
+    which forks to serve the clipboard and keeps both, so whoever reads a pipe
+    to EOF (this script, or the palette) hangs until the next copy. The file also keeps what satty said when a save
+    fails and the user can only Esc out (satty then exits 0)."""
+    logpath = runtime() / "satty.log"
+    with open(logpath, "w") as log:
+        r = subprocess.run(argv, stdout=log, stderr=log)
     if r.returncode != 0:
-        notify("Capture: satty failed", (r.stderr or "").strip()[-300:])
+        notify("Capture: satty failed", logpath.read_text(errors="replace").strip()[-300:])
         return False
     return True
 

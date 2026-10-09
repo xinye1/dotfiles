@@ -11,6 +11,7 @@ CAPTURE_BIN points the suite at another copy (the mutation check).
 import fcntl
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -47,6 +48,12 @@ elif name == "satty":
         sys.stderr.write("satty: boom\n"); sys.exit(1)
     if mode == "enter":
         open(args[args.index("--output-filename") + 1], "wb").write(b"PNG")
+    if mode == "daemon":  # like satty's wl-copy: a child that outlives satty and keeps its stderr
+        import subprocess
+        kid = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                               start_new_session=True)
+        open(os.environ["STUB_DAEMON_PIDFILE"], "w").write(str(kid.pid))
+        sys.stderr.write("satty: could not save\n")
 elif name == "slurp":
     if mode == "esc":
         sys.exit(1)
@@ -207,6 +214,23 @@ class ScreenshotTest(unittest.TestCase):
         self.assertIn("satty failed", note["argv"][4])
         self.assertIn("boom", note["argv"][5])
         self.assertEqual(list((self.sb.run / "capture").glob("shot-*")), [])
+
+    def test_a_child_that_outlives_satty_does_not_hang_capture(self):
+        # satty's Enter runs wl-copy, which forks to serve the clipboard and keeps
+        # satty's stderr. A pipe on that stderr hung capture.py until the next copy.
+        pidfile = self.sb.root / "daemon.pid"
+        def reap():
+            try:
+                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        self.addCleanup(reap)
+        t = time.monotonic()
+        r = self.sb.capture("region", STUB_SATTY="daemon", STUB_DAEMON_PIDFILE=str(pidfile))
+        self.assertLess(time.monotonic() - t, 10)
+        self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
+        # ...and what satty said is kept, so a save that failed behind Esc can be read
+        self.assertIn("could not save", (self.sb.run / "capture" / "satty.log").read_text())
 
     def test_the_runtime_shot_is_removed(self):
         self.sb.capture("display")
