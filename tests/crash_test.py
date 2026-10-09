@@ -3,7 +3,7 @@
 
 Design: docs/specs/2026-10-08-crash-diagnose-design.md (§6 is this file's table,
 D1-D8). Every tool crash-diagnose runs -- journalctl, coredumpctl, notify-send,
-herdr, kitty, claude, pacman, systemctl -- is a logging stub, and PATH holds
+herdr, kitty, claude, pacman, systemctl, makoctl -- is a logging stub, and PATH holds
 ONLY the stub directory, so nothing here can reach the live herdr server (which
 runs every Claude pane), mako, the journal or systemd. HOME and XDG_STATE_HOME
 are throwaway and every HERDR_* variable is dropped.

@@ -1879,7 +1879,12 @@ time), History (how many crashes of that executable), the crash-time stack, a gd
 journal entry and the journal lines around it. It **never** contains `COREDUMP_ENVIRON` (no field
 name, no value) or the core file. Beyond the field allowlist, any environment value whose name looks
 like a secret (`TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE`, value of 8+ characters) is redacted
-wherever it turns up: a journal line, a command line. **Backtraces show frames, not argument
+wherever it turns up: a journal line, a command line. A third pass runs over the whole rendered
+report, whatever section a string came from: any verbatim `KEY=VALUE` line of the process
+environment becomes `KEY=[redacted]`, and secret *shapes* go on sight, env or not (`sk-ant-…`,
+`gh[pousr]_…`, `AKIA…`, a JWT, a PEM private key through its END line, or to the end of the report
+if the journal window cut it off). `~/.local/state/crash-reports/` is 0700 (chmod'ed if an older
+run made it with the umask). **Backtraces show frames, not argument
 values**: gdb runs with `set print frame-arguments presence`, because its default prints a `char *`
 argument's contents, which no scrub can know; every frame keeps its function name and its arguments
 show as `...`. Honest caveats (spec §8):
@@ -1922,6 +1927,28 @@ show as `...`. Honest caveats (spec §8):
 - `run()` never reads a child's pipes to EOF after a timeout: a descendant in another session can
   hold them (the same trap as §9.32's wl-copy). It kills the group, reaps and closes.
 
+**Toast lifetimes** (final review, 2026-10-09). A `-t 0` toast's `notify-send --wait` never returns
+by itself. When `-r` replaces a toast, the watcher terminates the notify-send that raised it (the
+toast stays on screen; killing a client never closes a notification), so there is one live client
+per executable group; a click already in the old pipe is still diagnosed once, the newest. Each
+clicked `diagnose` is reaped by a small thread (no zombie per click), and on exit the watcher waits
+5 s in all for live toasts, not 5 s each. **A watcher restart closes its predecessor's toasts**:
+`KillMode=process` lets their notify-send outlive it, so a click would write into a dead pipe and
+do nothing while the toast looks live. At start (after journalctl is running, so no new toast can
+be caught) `watch` reads `makoctl list -j` (mako 1.11: a JSON array of `{id, app_name, actions, …}`)
+and runs `makoctl dismiss -n <id>` for each toast with app-name `crash` **and** the `default` click
+action; diagnose's own action-less toasts ("…the report is <path>") and every other app's are left
+alone. Dismissing ends the old notify-send's `--wait` too.
+
+**The journal section** keeps what led up to the crash: at most the newest 200 lines before the
+crash timestamp and the oldest 200 after (`short-iso-precise`, split to the microsecond). A core
+kept with `Storage=journal` (corefile `journal`) gets a gdb backtrace like a `present` one.
+
+**Known and accepted** (final review): the `-p` id `readline()` in the watcher blocks until
+notify-send prints the id, bounded by the D-Bus call timeout; `entry_for(pid)` takes the newest
+entry for that pid, so after pid reuse an old list line diagnoses the newer crash of that pid; if
+`herdr tab create` succeeds and `pane run` fails, the empty tab stays open and kitty opens as well.
+
 **Operating it.** `systemctl --user status crash-watch`; the watcher's own log is `journalctl --user
 -u crash-watch` (a clicked `diagnose` inherits its stderr). Reports live in
 `~/.local/state/crash-reports/`. A palette pick that fails shows two toasts, crash-diagnose's own
@@ -1929,12 +1956,17 @@ plus `menu.py`'s generic one (§7; harmless). `bin` and `systemd` are both unfol
 script or unit is absent until `stow -R bin systemd`, then `systemctl --user daemon-reload`.
 `tests/check_consumers.sh` fails `crash-watch.service is active` until the unit is enabled.
 
-**The suite.** `python3 tests/crash_test.py` (~25 s; also run by `theme_test.sh`). Every tool is a
+**The suite.** `python3 tests/crash_test.py` (~45 s; also run by `theme_test.sh`). Every tool is a
 stub on a PATH holding only the stub directory; the fixtures are synthetic, with marker values in
 `COREDUMP_ENVIRON`, because a recorded real entry carries the real environment.
 `CRASH_DIAGNOSE_BIN` points it at a copy for mutation checks; the suite was built by turning 8 of 8
 planned mutants (uid filter, coalesce window, environ field, scrub, click twice, kill child only,
-no dedupe, prune by name) plus the detached-grandchild one red.
+no dedupe, prune by name) plus the detached-grandchild one red, and the final review's fixes each
+have a mutant it kills (shebang, gdb `presence`, terminate, prune threads, shared join deadline,
+stale dismiss and its two filters, journal halves, journal core, reap, the two stderr lines, 0700,
+both new scrub passes). One test execs the file by path, as systemd and the palette do: PATH is then
+the stub dir plus a dir holding only a `python3` link, never `/usr/bin`. `theme_test.sh` names it
+when it fails.
 
 **Manual smoke** (after `stow -R bin systemd`, `daemon-reload`, `enable --now`): `sleep 60 & kill
 -SEGV $!` raises "Crash: sleep (SIGSEGV)"; click it for a herdr tab `crash: sleep` with Claude

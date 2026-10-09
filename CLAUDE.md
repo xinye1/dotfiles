@@ -184,8 +184,8 @@ for: grim before any picker. `CAPTURE_BIN` points it at a copy for mutation chec
 
 **Run `tests/crash_test.py` after any edit to `bin/.local/bin/crash-diagnose` or
 `crash-watch.service`.** Every tool it runs (journalctl, coredumpctl, notify-send, herdr, kitty,
-claude, pacman, systemctl) is a stub on a PATH holding only the stub directory, so it never
-reaches the live herdr server, mako or the journal. Its fixtures are synthetic: never paste a real
+claude, pacman, systemctl, makoctl) is a stub on a PATH holding only the stub directory, so it
+never reaches the live herdr server, mako or the journal. Its fixtures are synthetic: never paste a real
 coredump entry in, because `COREDUMP_ENVIRON` is the process environment. `CRASH_DIAGNOSE_BIN`
 points it at a copy for mutation checks (§9.33).
 
