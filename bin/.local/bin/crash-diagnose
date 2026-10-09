@@ -470,7 +470,8 @@ class Toasts:
         try:
             proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=subprocess.DEVNULL, text=True)
-        except OSError:
+        except OSError as err:
+            print(f"crash-diagnose: no toast for {comm} (pid {pid}): {err}", file=sys.stderr)
             return
         # -p prints the id at once; read it here, before the next entry, so a
         # repeat a moment later can replace this toast.

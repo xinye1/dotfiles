@@ -647,6 +647,16 @@ class WatchUidTest(unittest.TestCase):  # D1
         self.assertIn("COREDUMP_UID", fields)
         self.assertNotIn("ENVIRON", fields)
 
+    def test_no_notify_send_is_a_stderr_line_not_silence(self):  # final review #9
+        sb = Sandbox(self, tools=[t for t in TOOLS if t != "notify-send"])
+        sb.fixture("follow.jsonl", json.dumps(entry(pid=222)) + "\n")
+        r = sb.tool("watch")
+        lines = [l for l in r.stderr.splitlines() if "notify-send" in l]
+        self.assertEqual(len(lines), 1, r.stderr)
+        line = lines[0]
+        self.assertTrue(line.startswith("crash-diagnose: "), line)
+        self.assertIn("222", line)
+
     def test_a_malformed_line_does_not_stop_the_watcher(self):
         sb = Sandbox(self)
         sb.fixture("follow.jsonl", "not json\n[1]\n" + json.dumps(entry()) + "\n")
