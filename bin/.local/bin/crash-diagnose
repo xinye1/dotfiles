@@ -501,9 +501,11 @@ class Toasts:
                 return
             group["diagnosed"] = True
             pid = group["pid"]
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "diagnose", pid],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         start_new_session=True)
+        proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "diagnose", pid],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                start_new_session=True)
+        # Reap it, or every click leaves a zombie until the watcher exits.
+        threading.Thread(target=proc.wait, daemon=True).start()
 
     def join(self, timeout):
         """Wait at most `timeout` in all, not per toast."""

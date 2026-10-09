@@ -795,6 +795,38 @@ class ToastLifetimeTest(unittest.TestCase):  # final review #3
         self.assertEqual(len([p for p in (t["pid"] for t in sb.toasts()) if alive(p)]), 3)
         self.assertLess(time.monotonic() - start, 9, "join(5) waited 5 s per live toast")
 
+    def test_a_finished_diagnose_is_reaped_while_the_watcher_runs(self):  # final review #7
+        import signal
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", json.dumps(entry(pid=222)) + "\n")
+        watcher = subprocess.Popen([sys.executable, str(TOOL), "watch"],
+                                   env=sb.env(STUB_NOTIFY_SEND="click", STUB_FOLLOW_HOLD="10"),
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL, start_new_session=True)
+
+        def stop():
+            try:
+                os.killpg(watcher.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            watcher.wait()
+        self.addCleanup(stop)
+        deadline = time.monotonic() + 8
+        while not [c for c in sb.calls("herdr") if c["argv"][:2] == ["pane", "run"]]:
+            self.assertLess(time.monotonic(), deadline, "the click never reached diagnose")
+            time.sleep(0.1)
+        time.sleep(1)  # diagnose returns right after `pane run`
+
+        def stat(pid):
+            try:
+                return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            except OSError:
+                return None
+        kids = [st for st in map(stat, (p for p in os.listdir("/proc") if p.isdigit()))
+                if st and st[1] == str(watcher.pid)]
+        self.assertTrue(kids, "the watcher's journalctl should still be its child")
+        self.assertEqual([st for st in kids if st[0] == "Z"], [], "an unreaped diagnose")
+
     def test_finished_toast_threads_are_not_kept(self):
         sb = Sandbox(self)
         tool = load_tool()
