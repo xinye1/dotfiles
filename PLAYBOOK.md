@@ -487,7 +487,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
-| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 8/4 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
+| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 6/2 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
 | Screenshot to clipboard | `Ctrl+Shift+Print` | Skips the swappy editor. All four Print bindings now go through `scripts/screenshot_*.sh`, which theme the slurp selection box and bail out when the selection is cancelled — §9.13 |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
@@ -753,7 +753,7 @@ Three separate surprises, all hit while tuning the borders:
   that value sticks for existing workspaces; the config line only sets the default for new ones.
   Reloading will *not* put it back. Reset explicitly:
   ```sh
-  swaymsg gaps inner all set 8 && swaymsg gaps outer all set 4
+  swaymsg gaps inner all set 6 && swaymsg gaps outer all set 2
   ```
   This makes live experimentation safe *and* confusing — you can end up convinced the config file
   is being ignored.
@@ -761,7 +761,7 @@ Three separate surprises, all hit while tuning the borders:
   a maximised window and the bar most need distinguishing. Set to `off`.
 
 For a single window on a workspace, the visible margin is `outer + inner` (with `outer 4 inner 8`,
-measured 12 px on all sides).
+measured 12 px on all sides; today's `outer 2 inner 6` gives 8, and 6 between tiles).
 
 ### 9.9 GTK apps need restarting after a theme change
 
@@ -1820,7 +1820,7 @@ restart it. The README has the full list.
 | Background reverted to an image | azote | §9.3 |
 | Notification icons missing | mako `icon-path` | Must be a directory that exists |
 | Border width change ignored | Applies to new windows only | `swaymsg '[title=".*"] border pixel 2'`; §9.8 |
-| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 8`; §9.8 |
+| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 6; swaymsg gaps outer all set 2`; §9.8 |
 | `htoprc` edit reverted | A running htop flushed its in-memory settings on quit | `pkill -9 htop`, then edit; §9.16 |
 | htop changes stopped reaching the repo | `rename()` replaced the symlink | `ls -ld ~/.config/htop` must be a symlink; §9.16 |
 | htop right-hand CPUs render below the left | All meters piled into `column_meters_0` | §9.16 |
