@@ -252,12 +252,18 @@ sh "$REPO/tests/lock_test.sh" >/dev/null
 
 # Focus-safe capture (capture.py): stubs only; a failure aborts. Its first
 # assertion is the bug it fixes -- grim must run before any picker.
-python3 "$REPO/tests/capture_test.py" 2>/dev/null
+python3 "$REPO/tests/capture_test.py" 2>/dev/null || {
+    printf 'theme_test: tests/capture_test.py failed (its output is hidden here); run it directly\n' >&2
+    exit 1
+}
 
 # crash-diagnose (PLAYBOOK §9.33): every tool is a stub on a PATH holding only
 # the stub dir, so it never reaches herdr, mako, the journal or systemd. A
 # failure aborts.
-python3 "$REPO/tests/crash_test.py" 2>/dev/null
+python3 "$REPO/tests/crash_test.py" 2>/dev/null || {
+    printf 'theme_test: tests/crash_test.py failed (its output is hidden here); run it directly\n' >&2
+    exit 1
+}
 
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
