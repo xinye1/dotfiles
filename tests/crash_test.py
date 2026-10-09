@@ -830,13 +830,18 @@ class ClickTest(unittest.TestCase):  # D3
 
 
 def load_tool():
-    """crash-diagnose as a module, for what only shows inside the watcher."""
+    """crash-diagnose as a module, for what only shows inside the watcher. No
+    bytecode: a __pycache__ in bin/.local/bin would be stowed into ~/.local/bin."""
     import importlib.machinery
     import importlib.util
     loader = importlib.machinery.SourceFileLoader("crash_diagnose", str(TOOL))
     spec = importlib.util.spec_from_loader("crash_diagnose", loader)
     module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
+    saved, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = saved
     return module
 
 
