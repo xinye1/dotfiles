@@ -1,5 +1,5 @@
 # Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
-# sway's copy of the fourteen theme roles.
+# sway's copy of the fourteen theme roles, and the wallpaper slot.
 
 set $bg        {{bg}}
 set $surface   {{surface}}
@@ -15,3 +15,7 @@ set $critical  {{critical}}
 set $warning   {{warning}}
 set $success   {{success}}
 set $desktop   {{desktop}}
+
+# Not a colour: the palette's wallpaper slot, a symlink the user owns
+# (PLAYBOOK §9.25). Missing is fine -- output bg falls back to $desktop.
+set $wallpaper ~/Pictures/wallpapers/{{palette}}

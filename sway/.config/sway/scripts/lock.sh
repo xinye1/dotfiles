@@ -2,10 +2,11 @@
 
 # The lock screen. Four callers: $mod+f1 (config.d/default), the 300s idle
 # timeout and before-sleep (config.d/autostart_applications, both passing -f),
-# and the power menu's Lock entry. Plain swaylock over the solid $desktop colour
-# -- the same field the desktop itself shows (config.d/theme) -- with no clock,
-# no power buttons, no avatar. §4.3 records what replacing gtklock cost and why
-# it was paid; §9.25 why there is no wallpaper any more.
+# and the power menu's Lock entry. Plain swaylock over the active palette's
+# wallpaper slot -- the same image the desktop shows (config.d/theme) -- or the
+# solid $desktop colour when there is no usable one; no clock, no power
+# buttons, no avatar. §4.3 records what replacing gtklock cost and why it was
+# paid; §9.25 why the image sits behind the guard below.
 #
 # NOTHING HERE TOUCHES THE NETWORK. This runs when the idle timer fires, before
 # suspend, and at $mod+f1 -- on a train, on dead wifi, halfway through a
@@ -68,6 +69,40 @@ for c in "$color_bg" "$color_surface" "$color_fg" "$color_fg_bright" \
     [[ $c =~ ^[0-9a-fA-F]{6}$ ]] || exec swaylock "$@"
 done
 
+# THE WALLPAPER (§9.25) -- an addition on top of a lock that already works,
+# never a precondition for it. ~/Pictures/wallpapers/$PALETTE is a slot: a
+# symlink the user points at an image. It is passed only when every check
+# below holds, each local and non-blocking; any miss leaves the colour lock.
+#
+#   PALETTE is a plain word      no ../ and no ':' -- swaylock reads --image as
+#                                [[<output>]:]<path>
+#   the slot is a symlink whose  a sibling in this folder (bare, or this folder's
+#   target is a bare name        own absolute path) -- never a link into another
+#                                tree, e.g. an rclone/FUSE mount whose stat could
+#                                hang. That holds while ~/Pictures/wallpapers is
+#                                itself local: keep it so.
+#   that sibling is a regular,   not itself a link out of the folder; and
+#   readable file under 8 MB     small, because swaylock decodes it BEFORE the
+#                                lock surface exists (main.c load_image)
+#
+# If swaylock still cannot decode it, load_image() drops the image and locks
+# over --color: a second fallback that does not depend on this one.
+image=()
+walls=$HOME/Pictures/wallpapers
+if [[ ${PALETTE-} =~ ^[a-z0-9_-]+$ ]] && [[ $walls != *:* ]] && [ -L "$walls/$PALETTE" ]; then
+    target=$(readlink -- "$walls/$PALETTE")
+    # `ln -sfn ~/Pictures/wallpapers/x.jpg …` stores the absolute path; that is
+    # the same sibling, so strip the folder by string alone -- no stat.
+    [[ $target == "$walls/"* ]] && target=${target#"$walls/"}
+    if [[ -n $target && $target != */* && $target != . && $target != .. ]] \
+       && [ ! -L "$walls/$target" ] && [ -f "$walls/$target" ] && [ -r "$walls/$target" ]; then
+        size=$(stat -c %s -- "$walls/$target" 2>/dev/null)
+        if [[ $size =~ ^[0-9]+$ ]] && (( size < 8388608 )); then
+            image=(--image "$walls/$PALETTE" --scaling fill)
+        fi
+    fi
+fi
+
 # "$@" is passed through, and comes last so a caller's flag wins over these
 # defaults. swayidle must pass -f (daemonize) or swaylock holds the timeout
 # chain open -- gtklock spelled the same thing -d, which swaylock reads as
@@ -109,4 +144,5 @@ exec swaylock \
     --indicator-radius 100 \
     --indicator-thickness 8 \
     --font "JetBrainsMono Nerd Font" \
+    "${image[@]}" \
     "$@"

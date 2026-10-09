@@ -91,10 +91,12 @@ own. swaylock does read `~/.config/swaylock/config` if one exists; deliberately 
 a config file could not derive its colours from the active palette and the script can (PLAYBOOK
 §4.3, §9.13).
 
-It locks over the solid **`$desktop`** colour — the field the desktop itself shows — and never
-touches the network: a lock that waits on a socket is a lock that does not happen. It used to pick
-a random palette-matched wallpaper from a ~320 MB cache that `walls-sync` downloaded; both retired
-on 2026-09-28 (PLAYBOOK §9.25).
+**Wallpapers are slots, one per palette:** `~/Pictures/wallpapers/nord` and `…/gruvbox` are
+symlinks you point at an image, so a palette switch swaps the wallpaper with everything else. The
+lock screen shows the same image when a local guard passes (a sibling file in that folder, under
+8 MB) and the solid **`$desktop`** colour otherwise, and it never touches the network: a lock that
+waits on a socket is a lock that does not happen. No slot, no error — just the colour (PLAYBOOK
+§9.25).
 
 `docs/` and `tests/` are **not** packages and must never be named in a `stow` command — `tests/…`
 would install to `~/tests/…`. `systemd-system/` mirrors the root filesystem (`/etc/systemd/system`,
