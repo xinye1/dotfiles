@@ -50,6 +50,14 @@ ENTRY_FIELDS = ("COREDUMP_PID", "COREDUMP_UID", "COREDUMP_COMM", "COREDUMP_EXE",
 # Second line of defence: an environment value under a secret-looking name is
 # redacted wherever it turns up (a journal line, a command line).
 SECRETISH = re.compile(r"TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE", re.I)
+# Third: what a secret looks like, wherever it came from (env or not). A private
+# key with no END line in sight is cut to the end of the report.
+SECRET_SHAPES = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)"
+    r"|sk-ant-[A-Za-z0-9_-]+"
+    r"|gh[pousr]_[A-Za-z0-9]{20,}"
+    r"|AKIA[0-9A-Z]{16}"
+    r"|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", re.S)
 # `presence`: a bt prints a char * argument's contents, which scrub() cannot
 # know. Frames keep their function names; argument values show as `...`.
 GDB_ARGS = ("-batch -iex 'set debuginfod enabled on' -ex 'set print frame-arguments presence'"
@@ -242,11 +250,17 @@ def missing(what, why):
 
 
 def scrub(report, entry):
-    for line in text(entry.get("COREDUMP_ENVIRON")).splitlines():
+    """Over the whole rendered report, whatever section a string came from."""
+    environ = text(entry.get("COREDUMP_ENVIRON")).splitlines()
+    for line in environ:  # a verbatim KEY=VALUE from the environment
+        key, sep, value = line.partition("=")
+        if sep and key and value:
+            report = report.replace(line, f"{key}=[redacted]")
+    for line in environ:  # a secret-named value on its own
         key, _, value = line.partition("=")
         if SECRETISH.search(key) and len(value) >= 8:
             report = report.replace(value, "[redacted]")
-    return report
+    return SECRET_SHAPES.sub("[redacted]", report)
 
 
 def journal_window(lines, crash_s):

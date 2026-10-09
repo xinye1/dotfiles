@@ -11,7 +11,9 @@ are throwaway and every HERDR_* variable is dropped.
 The journal fixtures are synthetic, built from the field names a real
 coredump entry carries (the plan's Task 1 probe). Never paste a real entry in:
 a real one carries the real process environment. COREDUMP_ENVIRON is present
-here with marker values so D4 can prove none of it reaches the report.
+here with marker values so D4 can prove none of it reaches the report; the
+coredumpctl info and gdb fixtures carry some of them too, so it proves scrub
+reaches those sections.
 
 CRASH_DIAGNOSE_BIN points the suite at another copy (the mutation check).
 """
@@ -194,9 +196,15 @@ class Sandbox:
         test.addCleanup(self.kill_stubs)  # runs before tmp.cleanup (LIFO)
         self.fixture("entry.jsonl", json.dumps(entry()) + "\n")
         self.fixture("list.json", json.dumps([row(pid=111, ts=T0 - 60 * MIN), row()]))
+        # Environment markers in both stacks (final review #14): a verbatim
+        # KEY=VALUE line, and a secret-named value on its own.
         self.fixture("info.txt", "           PID: 222 (waybar)\n        Signal: 6 (ABRT)\n"
+                                 f"       Cmdline: waybar --log {ENVIRON['GH_TOKEN']}\n"
+                                 f"   Environment: HOME={ENVIRON['HOME']}\n"
                                  "Stack trace of thread 222:\n#0  0x00007f81bfa9a17c n/a (libc.so.6 + 0x9a17c)\n")
-        self.fixture("gdb.txt", "Thread 1 (LWP 222):\n#0  0x00007f81bfa9a17c in __pthread_kill_implementation () at pthread_kill.c:44\n")
+        self.fixture("gdb.txt", "Thread 1 (LWP 222):\n#0  0x00007f81bfa9a17c in __pthread_kill_implementation () at pthread_kill.c:44\n"
+                                f"$1 = 0x5591 \"LANG={ENVIRON['LANG']}\"\n"
+                                f"$2 = 0x5592 \"{ENVIRON['ANTHROPIC_API_KEY']}\"\n")
         self.fixture("journal.txt", "2026-10-02T21:51:49+00:00 host waybar[222]: [error] bar went away\n")
 
     @staticmethod
@@ -328,6 +336,45 @@ class ReportTest(unittest.TestCase):  # D4
         self.assertNotIn("COREDUMP_ENVIRON", text)
         for value in ENVIRON.values():
             self.assertNotIn(value, text)
+
+    def test_scrub_reaches_both_stacks(self):  # final review #14
+        text = self.diagnose()
+        info = text[text.index("### Crash-time stack"):text.index("### Symbolised")]
+        gdb = text[text.index("### Symbolised"):text.index("## Journal entry")]
+        self.assertIn("HOME=[redacted]", info)
+        self.assertIn("waybar --log [redacted]", info)
+        self.assertIn('"LANG=[redacted]"', gdb)
+        self.assertIn('"[redacted]"', gdb)
+
+    def test_secret_shapes_are_redacted_whatever_their_source(self):  # final review #14
+        # None of these is in the environment: only their shape gives them away.
+        shapes = {"anthropic": "sk-ant-" + "api03-FixtureShape_0005-x",
+                  "github": "ghp_" + "FixtureShape0006abcdefgh",
+                  "github-oauth": "gho_" + "FixtureShape0007abcdefgh",
+                  "aws": "AKIA" + "FIXTURE000000008",
+                  "jwt": "eyJ" + "maXh0dXJl.eyJzaGFwZTA5.c2lnbmF0dXJlMDk"}
+        key = ("-----BEGIN " + "OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1maXh0dXJlLTAwMTA=\n"
+               "-----END " + "OPENSSH PRIVATE KEY-----")
+        self.sb.fixture("journal.txt", "".join(f"2026-10-02T21:51:49+00:00 host app[7]: {k} {v} end\n"
+                                               for k, v in shapes.items())
+                        + "2026-10-02T21:51:49+00:00 host app[7]: key follows\n" + key + "\n"
+                        + "2026-10-02T21:51:49+00:00 host app[7]: after the key\n")
+        text = self.diagnose()
+        for name, value in shapes.items():
+            with self.subTest(name):
+                self.assertNotIn(value, text)
+                self.assertIn(f": {name} [redacted] end\n", text)
+        self.assertNotIn("b3BlbnNzaC1maXh0dXJlLTAwMTA", text)
+        self.assertNotIn("PRIVATE KEY", text)
+        self.assertIn("after the key", text)
+
+    def test_a_private_key_cut_off_before_its_end_line_is_still_redacted(self):
+        # The journal window can end mid-key: redact to the end, never leak the rest.
+        self.sb.fixture("journal.txt", "2026-10-02T21:51:49+00:00 host app[7]: key follows\n"
+                        "-----BEGIN " + "RSA PRIVATE KEY-----\nTUlJRml4dHVyZUN1dE9mZjAwMTE=\n")
+        text = self.diagnose()
+        self.assertNotIn("TUlJRml4dHVyZUN1dE9mZjAwMTE", text)
+        self.assertIn("key follows", text)
 
     def test_a_secret_in_a_journal_line_is_redacted(self):
         self.sb.fixture("journal.txt", f"waybar[222]: token={ENVIRON['GH_TOKEN']}\n")
