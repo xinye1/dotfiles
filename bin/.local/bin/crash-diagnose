@@ -47,9 +47,12 @@ ENTRY_FIELDS = ("COREDUMP_PID", "COREDUMP_UID", "COREDUMP_COMM", "COREDUMP_EXE",
                 "COREDUMP_THREAD_NAME", "COREDUMP_PACKAGE_JSON", "COREDUMP_FILENAME",
                 "COREDUMP_PROC_STATUS")
 # Second line of defence: an environment value under a secret-looking name is
-# redacted wherever it turns up (a journal line, a command line, a gdb argument).
+# redacted wherever it turns up (a journal line, a command line).
 SECRETISH = re.compile(r"TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE", re.I)
-GDB_ARGS = "-batch -iex 'set debuginfod enabled on' -ex 'thread apply all bt'"
+# `presence`: a bt prints a char * argument's contents, which scrub() cannot
+# know. Frames keep their function names; argument values show as `...`.
+GDB_ARGS = ("-batch -iex 'set debuginfod enabled on' -ex 'set print frame-arguments presence'"
+            " -ex 'thread apply all bt'")
 REPORT_DIR = re.compile(r"^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d_")
 
 # Fixed text; tests/crash_test.py pins it to spec §3.

@@ -1879,8 +1879,10 @@ time), History (how many crashes of that executable), the crash-time stack, a gd
 journal entry and the journal lines around it. It **never** contains `COREDUMP_ENVIRON` (no field
 name, no value) or the core file. Beyond the field allowlist, any environment value whose name looks
 like a secret (`TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE`, value of 8+ characters) is redacted
-wherever it turns up: a journal line, a command line, a gdb string argument. Honest caveats
-(spec §8):
+wherever it turns up: a journal line, a command line. **Backtraces show frames, not argument
+values**: gdb runs with `set print frame-arguments presence`, because its default prints a `char *`
+argument's contents, which no scrub can know; every frame keeps its function name and its arguments
+show as `...`. Honest caveats (spec §8):
 
 - The report goes to Claude, which means Anthropic's API. Backtraces, command lines and journal
   lines are included; the process environment is not. A secret passed on a command line that is not

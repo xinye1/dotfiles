@@ -320,8 +320,16 @@ class ReportTest(unittest.TestCase):  # D4
     def test_gdb_gets_debuginfod_and_runs_batch(self):
         self.diagnose()
         [gdb] = [c for c in self.sb.calls("coredumpctl") if "debug" in c["argv"]]
-        self.assertIn("-batch", next(a for a in gdb["argv"] if a.startswith("--debugger-arguments=")))
+        args = shlex.split(next(a for a in gdb["argv"] if a.startswith("--debugger-arguments="))
+                           .split("=", 1)[1])
+        self.assertIn("-batch", args)
         self.assertEqual(gdb["env"]["DEBUGINFOD_URLS"], "https://debuginfod.invalid")
+        # A bt prints a char * argument's contents, which scrub() cannot know:
+        # frames keep their names, argument values become `...` (spec §8).
+        self.assertIn("set print frame-arguments presence", args)
+        presence = args.index("set print frame-arguments presence")
+        self.assertEqual(args[presence - 1], "-ex")
+        self.assertLess(presence, args.index("thread apply all bt"))
 
     def test_info_timeout_is_a_missing_line_and_claude_still_starts(self):
         text = self.diagnose(STUB_INFO="timeout", CRASH_DIAGNOSE_INFO_TIMEOUT="1")

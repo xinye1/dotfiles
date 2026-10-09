@@ -135,6 +135,10 @@ user package is unfolded (PLAYBOOK §5.2), so the new unit file needs `stow -R s
 
 - **The report goes to Claude**, which means Anthropic's API. Backtraces, command lines and journal
   lines are included; the process environment is not. A secret passed on a command line would be.
+- **Backtraces show frames, not argument values** (final-review ruling, 2026-10-09). gdb's default
+  `print frame-arguments scalars` prints a `char *` argument's contents, which scrub() cannot know,
+  so the gdb run sets `print frame-arguments presence`: every frame keeps its function name and
+  its arguments show as `...`. The crash-time stack never had argument values.
 - **debuginfod is network access** at click time, not at crash time. Offline reports are less
   useful, but still produced.
 - **Root and system-service crashes are out of scope** (uid filter). The chromium segfault in the
