@@ -753,7 +753,7 @@ Three separate surprises, all hit while tuning the borders:
   that value sticks for existing workspaces; the config line only sets the default for new ones.
   Reloading will *not* put it back. Reset explicitly:
   ```sh
-  swaymsg gaps inner all set 8 && swaymsg gaps outer all set 4
+  swaymsg gaps inner all set 6 && swaymsg gaps outer all set 2
   ```
   This makes live experimentation safe *and* confusing — you can end up convinced the config file
   is being ignored.
@@ -1820,7 +1820,7 @@ restart it. The README has the full list.
 | Background reverted to an image | azote | §9.3 |
 | Notification icons missing | mako `icon-path` | Must be a directory that exists |
 | Border width change ignored | Applies to new windows only | `swaymsg '[title=".*"] border pixel 2'`; §9.8 |
-| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 8`; §9.8 |
+| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 6; swaymsg gaps outer all set 2`; §9.8 |
 | `htoprc` edit reverted | A running htop flushed its in-memory settings on quit | `pkill -9 htop`, then edit; §9.16 |
 | htop changes stopped reaching the repo | `rename()` replaced the symlink | `ls -ld ~/.config/htop` must be a symlink; §9.16 |
 | htop right-hand CPUs render below the left | All meters piled into `column_meters_0` | §9.16 |
