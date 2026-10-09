@@ -178,7 +178,12 @@ your own process, `sleep 60 & kill -SEGV $!`, and wait 2 s. Never run `herdr tab
 `herdr pane run`, `herdr server stop` or `pkill herdr` here. A bare `herdr` reaches the live
 server that runs every Claude pane.
 
-- [ ] **Step 3: The mako click probe (Xinye; the orchestrator relays).** It needs a human click on a
+- [x] **Step 3: The mako click probe — DONE 2026-10-09 by the orchestrator with Xinye (ledger
+"P3").** A left click prints `default`; `-p` prints the id first, then `default`; a `-t 0` toast
+outlives `default-timeout=8000`, so crash toasts carry `-t 0` and stay until dismissed. The
+original instructions are kept below for reference.
+
+- [ ] **Step 3 (reference): The mako click probe (Xinye; the orchestrator relays).** It needs a human click on a
 real toast, so a subagent must not run it. Ask Xinye to run each command and click the toast's
 body once:
 
@@ -1258,7 +1263,9 @@ class CoalesceTest(unittest.TestCase):  # D2
         sb.tool("watch")
         [t] = sb.toasts()
         a = t["argv"]
-        for flag, value in (("-u", "normal"), ("-a", "crash"), ("-A", "default=Diagnose with Claude")):
+        # -t 0: a crash toast stays until dismissed (Xinye, 2026-10-09); mako's 8 s default hid it
+        for flag, value in (("-u", "normal"), ("-a", "crash"), ("-t", "0"),
+                            ("-A", "default=Diagnose with Claude")):
             self.assertEqual(a[a.index(flag) + 1], value)
         self.assertIn("-p", a)
 
@@ -1341,7 +1348,7 @@ class Toasts:
                 group = self.groups[exe] = {"first": ts, "count": 1, "nid": None}
             group.update(pid=pid, diagnosed=False)
             body = f"pid {pid} · {ordinal(group['count'])} since {stamp(group['first'])}"
-            argv = ["notify-send", "-u", "normal", "-a", "crash", "-p",
+            argv = ["notify-send", "-u", "normal", "-a", "crash", "-t", "0", "-p",
                     "-A", "default=Diagnose with Claude", "--wait"]
             if group["nid"]:
                 argv += ["-r", group["nid"]]
