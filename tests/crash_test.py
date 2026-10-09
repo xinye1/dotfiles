@@ -43,6 +43,7 @@ ENVIRON = {
     "GH_TOKEN": "ghp_fixtureEnvironToken0002",
     "LANG": "xx_FIXTURE.environ-0003",
     "HOME": "/fixture/environ/home-0004",
+    "DB_PASSWORD": "fixture-environ-pass-0005",  # secret-named, no secret shape
 }
 
 STUB = r'''#!@PYTHON@
@@ -377,10 +378,12 @@ class ReportTest(unittest.TestCase):  # D4
         self.assertIn("key follows", text)
 
     def test_a_secret_in_a_journal_line_is_redacted(self):
-        self.sb.fixture("journal.txt", f"waybar[222]: token={ENVIRON['GH_TOKEN']}\n")
+        # A secret-named value with no recognisable shape: only the name gives it
+        # away (a ghp_ value would also fall to the shape pass).
+        self.sb.fixture("journal.txt", f"waybar[222]: password={ENVIRON['DB_PASSWORD']}\n")
         text = self.diagnose()
-        self.assertNotIn(ENVIRON["GH_TOKEN"], text)
-        self.assertIn("token=[redacted]", text)
+        self.assertNotIn(ENVIRON["DB_PASSWORD"], text)
+        self.assertIn("password=[redacted]", text)
 
     def test_the_journal_keeps_the_lines_before_the_crash(self):  # final review #5
         # 500 lines either side: the newest 200 before the crash and the oldest
