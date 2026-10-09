@@ -612,6 +612,20 @@ class RetentionTest(unittest.TestCase):  # D8
         self.assertIn("2027-01-01_00-00-00_old", left)
         self.assertTrue((root / "notes.txt").exists())
 
+    def test_the_reports_root_is_private_new_or_existing(self):  # final review #12
+        import stat
+        old = os.umask(0o022)  # what a login session usually has: dirs come out 0755
+        self.addCleanup(os.umask, old)
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                sb = Sandbox(self)
+                root = sb.state / "crash-reports"
+                if existing:
+                    root.mkdir(mode=0o755)
+                    root.chmod(0o755)
+                sb.tool("diagnose", "222")
+                self.assertEqual(oct(stat.S_IMODE(root.stat().st_mode)), oct(0o700))
+
     def test_rediagnosing_rewrites_the_same_report(self):
         sb = Sandbox(self)
         sb.tool("diagnose", "222")

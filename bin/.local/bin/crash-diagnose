@@ -351,8 +351,13 @@ def build_report(entry, env):
 def write_report(entry, env):
     report, ts, exe = build_report(entry, env)
     name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(exe).name or text(entry.get("COREDUMP_COMM")) or "unknown")
-    rdir = state_dir(env) / f"{stamp(ts or 0, '%Y-%m-%d_%H-%M-%S')}_{name}"
-    rdir.mkdir(parents=True, exist_ok=True)
+    root = state_dir(env)
+    # Reports hold command lines, stacks and journal lines: this user's only.
+    # chmod too, for a root an earlier version made with the umask.
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    root.chmod(0o700)
+    rdir = root / f"{stamp(ts or 0, '%Y-%m-%d_%H-%M-%S')}_{name}"
+    rdir.mkdir(exist_ok=True)
     tmp = rdir / ".report.md.tmp"
     tmp.write_text(report)
     os.replace(tmp, rdir / "report.md")
