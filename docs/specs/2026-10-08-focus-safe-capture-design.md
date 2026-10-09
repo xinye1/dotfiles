@@ -87,8 +87,9 @@ STATUS: capture.py record-status → waybar JSON {"text":"●","class":"recordin
 
 **Palette rows (Capture group):** Region, Focused window, Display, Display in 5 s, Text from region
 (OCR), QR code from region, Record region, Record display, Stop recording. All shot rows pass
-`--after-palette`. The record and stop rows use `when = "capture.py record-status --quiet"` (exit 0
-while recording) or its negation.
+`--after-palette`. The record and stop rows gate on the pidfile with a shell test
+(`[ -s "$XDG_RUNTIME_DIR/capture/recording.pid" ]` or its negation): a `capture.py` call per row
+cost ~63 ms of python start on every palette open. `record-status` stays for waybar only.
 
 ## §5 Error handling
 

@@ -268,7 +268,7 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
 | `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the palette's wallpaper slot when its guard passes, else the solid `$desktop` colour (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
-| `grim` `slurp` `swappy` `wl-clipboard` | repo | Screenshots and clipboard | Print bindings dead |
+| `grim` `slurp` `satty` `wl-clipboard` `tesseract` (+`tesseract-data-eng`) `zbar` `wf-recorder` | repo | Screenshots (grim shoots, satty crops/annotates, §9.32), clipboard, OCR (`tesseract`), QR (`zbar`), recording (`wf-recorder`; `slurp` is its region picker) | Print bindings dead; each missing tool disables only its own mode, with a notification naming the package |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
 | `pamixer` `brightnessctl` `playerctl` | repo | Media/brightness keys | Function keys dead |
@@ -1818,6 +1818,12 @@ every mode; its first test is this bug.
   (`pkill -RTMIN+10 -x waybar`; `-x` per §9.29). A pid whose process is gone is removed on the next
   status read, so the dot cannot outlive the recorder. Region recording still uses slurp, so it is
   not focus-safe; *Record display* is.
+- **Window mode** shoots the focused window's sway rectangle, which includes its border and title
+  bar (`swaymsg` reports the decorated rect), so the image is a few pixels larger than the content.
+- **A failing tool is never silent.** satty exiting non-zero, or wf-recorder dying within 0.3 s of
+  starting (bad GPU or option), raises a notification quoting the stderr / `recording.log` tail;
+  Esc in satty exits 0 and stays quiet. The recorder uses the first `/dev/dri/renderD*`, and the
+  palette's record rows test the pidfile with `sh` (no python start per palette open).
 - **No satty** → the shot is copied to the clipboard whole, with a notification; the key still
   captures, still at the keypress.
 
