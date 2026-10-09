@@ -1807,8 +1807,10 @@ leaves the widget and the claude tooltip closes); by the time grim ran, both wer
 **The rule: grim runs before any picker.** A Print key is a sway binding and moves no focus, so the
 shot taken at the keypress still has the tooltip and the bricks. Choosing the region happens
 afterwards, in satty, fullscreen on that frozen image: Enter copies and saves to
-`~/Pictures/Screenshots/`, Esc discards and exits 0. `tests/capture_test.py` asserts the order in
-every mode; its first test is this bug.
+`~/Pictures/Screenshots/`, Esc discards and exits 0. **With a crop drawn it takes two Enters** —
+satty's crop tool consumes the first to apply the crop, the second runs the actions (satty 0.22
+has no option to merge them); Esc after only the first discards. `tests/capture_test.py` asserts
+the order in every mode; its first test is this bug.
 
 - **Palette rows pass `--after-palette`.** They wait for fuzzel's instance lock (the palette is on
   screen until it lets go, §7) plus 150 ms of repaint, so the palette is not in the shot. A Print key
@@ -1824,6 +1826,11 @@ every mode; its first test is this bug.
   starting (bad GPU or option), raises a notification quoting the stderr / `recording.log` tail;
   Esc in satty exits 0 and stays quiet. The recorder uses the first `/dev/dri/renderD*`, and the
   palette's record rows test the pidfile with `sh` (no python start per palette open).
+- **Never read a child's output through a pipe here.** satty's Enter runs wl-copy, which forks to
+  serve the clipboard and keeps satty's stdout/stderr; a pipe read to EOF hung capture.py until
+  the next copy. satty's output goes to `$XDG_RUNTIME_DIR/capture/satty.log` (also the place to
+  read why a save failed behind an Esc), and `menu.py` takes each action's stderr through a temp
+  file for the same reason (`cliphist_pick.sh` ends in wl-copy too).
 - **No satty** → the shot is copied to the clipboard whole, with a notification; the key still
   captures, still at the keypress.
 
