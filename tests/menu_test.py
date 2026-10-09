@@ -12,6 +12,7 @@ shown to go red against a broken one (the mutation check in the plan).
 import fcntl
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -122,7 +123,13 @@ class Sandbox:
         return [r for r in rows if name is None or r["name"] == name]
 
     def appdir(self):
-        return self.run / "fuzzel-menu" / "applications"
+        """The action directory the last palette handed fuzzel (each palette
+        has its own, named for its pid)."""
+        calls = self.calls("fuzzel")
+        dirs = calls[-1]["env"]["XDG_DATA_DIRS"] if calls else None
+        if not dirs or not dirs.startswith(str(self.run / "fuzzel-menu")):
+            return self.run / "no-palette-dir"
+        return Path(dirs.split(":")[0]) / "applications"
 
     def entries(self):
         d = self.appdir()
@@ -255,7 +262,7 @@ class PaletteTest(unittest.TestCase):
         self.sb.menu(toml=VALID, XDG_DATA_DIRS="/a/share:/b/share")
         [call] = self.sb.calls("fuzzel")
         root = self.sb.run / "fuzzel-menu"
-        self.assertEqual(call["env"]["XDG_DATA_DIRS"], f"{root}:/a/share:/b/share")
+        self.assertRegex(call["env"]["XDG_DATA_DIRS"], rf"^{re.escape(str(root))}/\d+:/a/share:/b/share$")
         self.assertEqual(call["argv"], ["--cache", str(self.sb.home / ".cache/fuzzel-menu"),
                                         "--fields", "filename,name,generic,keywords",
                                         "--launch-prefix", "env XDG_DATA_DIRS=/a/share:/b/share"])
@@ -464,6 +471,44 @@ class GroupTest(unittest.TestCase):
         r = self.sb.menu("--group", "Nope", toml=self.TOML)
         self.assertEqual(r.returncode, 1)
         self.assertEqual(len(self.sb.calls("notify-send")), 1)
+
+
+class PaletteDirTest(unittest.TestCase):
+    """Each palette writes its own fuzzel-menu/<pid> directory: menu.py execs
+    fuzzel, so the pid is the running fuzzel's. A second Super+Space used to
+    rmtree the one shared directory while the first fuzzel could still be
+    reading it (final review, deferred minor #4)."""
+
+    def setUp(self):
+        self.sb = Sandbox(self)
+        self.root = self.sb.run / "fuzzel-menu"
+
+    def first_dir(self):
+        return self.sb.calls("fuzzel")[-1]["env"]["XDG_DATA_DIRS"].split(":")[0]
+
+    def test_palettes_never_share_a_directory(self):
+        self.sb.menu(toml=VALID)
+        first = self.first_dir()
+        self.sb.menu(toml=VALID)
+        self.assertNotEqual(self.first_dir(), first)
+
+    def test_a_live_palettes_directory_is_left_alone(self):
+        live = self.root / str(os.getpid()) / "applications"  # this test process: alive
+        live.mkdir(parents=True)
+        (live / "menu-x.desktop").write_text("kept\n")
+        self.sb.menu(toml=VALID)
+        self.assertEqual((live / "menu-x.desktop").read_text(), "kept\n")
+
+    def test_dead_palettes_directories_are_pruned(self):
+        gone = subprocess.Popen(["true"])
+        gone.wait()
+        dead = self.root / str(gone.pid) / "applications"
+        dead.mkdir(parents=True)
+        legacy = self.root / "applications"  # the pre-fix shared layout
+        legacy.mkdir()
+        self.sb.menu(toml=VALID)
+        self.assertFalse(dead.parent.exists())
+        self.assertFalse(legacy.exists())
 
 
 class FuzzelLockTest(unittest.TestCase):

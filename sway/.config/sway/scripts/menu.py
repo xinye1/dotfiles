@@ -3,7 +3,7 @@
 
 Design: docs/specs/2026-10-08-command-palette-design.md. The actions live in
 ~/.config/sway/menu.toml. Each visible action is written as a .desktop file
-into $XDG_RUNTIME_DIR/fuzzel-menu/applications and fuzzel runs in its ordinary
+into $XDG_RUNTIME_DIR/fuzzel-menu/<pid>/applications and fuzzel runs in its ordinary
 launcher mode with that directory prepended to XDG_DATA_DIRS -- so fuzzel, not
 this script, finds and launches apps, draws icons and ranks by use. Picking an
 action runs `menu.py --run <id>`.
@@ -202,8 +202,29 @@ def desktop_entry(action, exe):
     return "\n".join(lines) + "\n"
 
 
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def prune(root):
+    """Remove the directories of palettes that are no longer running, and the
+    pre-fix shared `applications` directory. A live palette's is left alone:
+    its fuzzel may still be reading it."""
+    if not root.is_dir():
+        return
+    for d in root.iterdir():
+        if d.name == "applications" or (d.name.isdigit() and not alive(int(d.name))):
+            shutil.rmtree(d, ignore_errors=True)
+
+
 def write_entries(actions, appdir, exe):
-    """Rewrite the directory from scratch, so a removed row cannot linger."""
+    """Write a fresh directory, so a removed row cannot linger."""
     if appdir.exists():
         shutil.rmtree(appdir)
     appdir.mkdir(parents=True)
@@ -216,16 +237,21 @@ def palette(env):
     base = env.get("XDG_RUNTIME_DIR")
     if not base:
         raise RuntimeError("XDG_RUNTIME_DIR is not set")
+    # One directory per palette, named for this pid -- which execve hands on to
+    # fuzzel. A second Super+Space therefore never rewrites files a running
+    # fuzzel may still be reading; it only prunes palettes that have exited.
     root = Path(base) / "fuzzel-menu"
+    mine = root / str(os.getpid())
     actions = [a for a in load(config_path()) if shown(a, env)]
-    write_entries(actions, root / "applications", str(SCRIPT))
+    prune(root)
+    write_entries(actions, mine / "applications", str(SCRIPT))
     original = env.get("XDG_DATA_DIRS") or DEFAULT_DATA_DIRS
     cache = Path(env.get("XDG_CACHE_HOME") or Path(env["HOME"]) / ".cache") / "fuzzel-menu"
     # Without the prefix every app launched from here inherits the action
     # directory, and a launcher started from that app would list our actions.
     argv = ["fuzzel", "--cache", str(cache), "--fields", FIELDS,
             "--launch-prefix", f"env XDG_DATA_DIRS={original}"]
-    return argv, dict(env, XDG_DATA_DIRS=f"{root}:{original}")
+    return argv, dict(env, XDG_DATA_DIRS=f"{mine}:{original}")
 
 
 def wait_for_fuzzel(env):
