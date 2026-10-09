@@ -253,6 +253,27 @@ class SandboxTest(unittest.TestCase):
         self.assertTrue(env["HERDR_SOCKET_PATH"].startswith("/nonexistent/"))
 
 
+class ExecTest(unittest.TestCase):
+    def test_the_tool_runs_by_path_as_systemd_and_the_palette_run_it(self):
+        # ExecStart= and the palette's `sh -c "crash-diagnose list"` exec the
+        # file itself: without a shebang that is 203/EXEC, or sh reading Python.
+        sb = Sandbox(self)
+        self.assertTrue(os.access(TOOL, os.X_OK), f"{TOOL} is not executable")
+        # `env` must find a python3, but not by putting /usr/bin (every real
+        # tool) on PATH: a dir holding only a python3 link goes after the stubs.
+        py = sb.root / "py"
+        py.mkdir()
+        (py / "python3").symlink_to(sys.executable)
+        sb.fixture("list.json", json.dumps([row()]))
+        try:
+            r = subprocess.run([str(TOOL), "list"], env=sb.env(PATH=f"{sb.bin}:{py}"),
+                               capture_output=True, text=True, timeout=30)
+        except OSError as e:
+            self.fail(f"exec by path failed: {e}")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split()[0], "222")
+
+
 class ReportTest(unittest.TestCase):  # D4
     def setUp(self):
         self.sb = Sandbox(self)
