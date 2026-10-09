@@ -235,6 +235,17 @@ label = "herdr: back up sessions now"
 icon = "document-save"
 run = "herdr-session-backup"
 
+# Pick a recent crash of your own processes: crash-diagnose builds report.md
+# and opens Claude on it in a herdr tab (PLAYBOOK §9.33). The pick is a whole
+# `crash-diagnose list` line; diagnose takes its leading pid.
+[[action]]
+group = "Dev"
+label = "Diagnose a crash…"
+icon = "tools-report-bug"
+keywords = ["coredump", "segfault", "abort", "claude"]
+choices = "crash-diagnose list"
+run = "crash-diagnose diagnose {choice}"
+
 # --- Sway ---
 
 [[action]]

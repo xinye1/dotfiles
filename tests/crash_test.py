@@ -657,5 +657,14 @@ class UnitFileTest(unittest.TestCase):
         self.assertEqual(self.unit()["Service"]["KillMode"], "process")
 
 
+class MenuRowTest(unittest.TestCase):
+    def test_dev_diagnose_a_crash_row(self):
+        import tomllib
+        rows = tomllib.loads((REPO / "sway/.config/sway/menu.toml").read_text())["action"]
+        [r] = [r for r in rows if (r["group"], r["label"]) == ("Dev", "Diagnose a crash…")]
+        self.assertEqual(r["choices"], "crash-diagnose list")
+        self.assertEqual(r["run"], "crash-diagnose diagnose {choice}")
+
+
 if __name__ == "__main__":
     unittest.main()
