@@ -25,6 +25,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -457,9 +458,15 @@ class Toasts:
         # -p prints the id at once; read it here, before the next entry, so a
         # repeat a moment later can replace this toast.
         first = proc.stdout.readline().strip()
-        if first.isdigit():
-            with self.lock:
+        with self.lock:
+            if first.isdigit():
                 group["nid"] = first
+            # -r moved the toast to this notify-send; the one that raised it would
+            # wait forever (-t 0). Killing a client leaves the toast on screen.
+            old, group["proc"] = group.get("proc"), proc
+            if old is not None and old.poll() is None:
+                old.terminate()
+        self.threads = [t for t in self.threads if t.is_alive()]
         thread = threading.Thread(target=self.await_click, args=(proc, group, first), daemon=True)
         thread.start()
         self.threads.append(thread)
@@ -470,8 +477,9 @@ class Toasts:
         if "default" not in replies:
             return  # dismissed or expired: the crash stays in the palette list
         with self.lock:
-            # A replaced toast can report the click twice (its old and new
-            # notify-send); diagnose once, the newest crash.
+            # A replaced toast can report the click twice: its old notify-send is
+            # terminated, but a click already in that pipe still arrives.
+            # Diagnose once, the newest crash.
             if group["diagnosed"]:
                 return
             group["diagnosed"] = True
@@ -481,8 +489,10 @@ class Toasts:
                          start_new_session=True)
 
     def join(self, timeout):
+        """Wait at most `timeout` in all, not per toast."""
+        deadline = time.monotonic() + timeout
         for thread in self.threads:
-            thread.join(timeout)
+            thread.join(max(0.0, deadline - time.monotonic()))
 
 
 def watch():

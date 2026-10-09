@@ -46,10 +46,12 @@ ENVIRON = {
 STUB = r'''#!@PYTHON@
 # A logging stand-in for one tool crash-diagnose runs. STUB_* env vars script it;
 # canned output comes from $STUB_FIXTURES.
-import json, os, subprocess, sys, time
+import json, os, signal, subprocess, sys, time
 name = os.path.basename(sys.argv[0]); args = sys.argv[1:]
+with open(os.environ["STUB_LOG"] + ".pids", "a") as pids:  # never truncated: the cleanup's list
+    pids.write(f"{os.getpid()}\n")
 with open(os.environ["STUB_LOG"], "a") as log:
-    log.write(json.dumps({"name": name, "argv": args, "t": time.time(),
+    log.write(json.dumps({"name": name, "argv": args, "t": time.time(), "pid": os.getpid(),
         "env": {k: os.environ.get(k) for k in ("PATH", "WAYLAND_DISPLAY", "DEBUGINFOD_URLS",
                                                "LC_ALL", "HERDR_SOCKET_PATH")}}) + "\n")
 fx = os.environ["STUB_FIXTURES"]
@@ -111,9 +113,14 @@ elif name == "notify-send":
             open(counter, "w").write(nid)
         print(nid, flush=True)
     m = mode()
-    if "--wait" in args and m in ("click", "click-late"):
-        time.sleep(0.8 if m == "click-late" else 0.1)
+    if m == "click-late-sticky":
+        # Its click is already on the way: a terminate() cannot stop the report.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    if "--wait" in args and m in ("click", "click-late", "click-late-sticky"):
+        time.sleep(0.1 if m == "click" else 0.8)
         print("default", flush=True)
+    elif "--wait" in args and m == "hold":
+        time.sleep(30)  # -t 0 and nobody clicks: --wait never returns on its own
 elif name == "herdr":
     m = mode()
     if args[:2] == ["tab", "create"]:
@@ -180,6 +187,7 @@ class Sandbox:
             self.stub(self.bin / name)
         self.log = self.root / "log.jsonl"
         self.log.write_text("")
+        test.addCleanup(self.kill_stubs)  # runs before tmp.cleanup (LIFO)
         self.fixture("entry.jsonl", json.dumps(entry()) + "\n")
         self.fixture("list.json", json.dumps([row(pid=111, ts=T0 - 60 * MIN), row()]))
         self.fixture("info.txt", "           PID: 222 (waybar)\n        Signal: 6 (ABRT)\n"
@@ -192,6 +200,18 @@ class Sandbox:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(STUB.replace("@PYTHON@", sys.executable))
         path.chmod(0o755)
+
+    def kill_stubs(self):
+        """SIGKILL every stub this sandbox started that is still running (a
+        `hold` toast outlives the watcher). Only a pid whose command line names
+        this sandbox's stub dir: never a reused pid."""
+        pids = Path(f"{self.log}.pids")
+        for pid in pids.read_text().split() if pids.exists() else ():
+            try:
+                if str(self.bin).encode() in Path(f"/proc/{pid}/cmdline").read_bytes():
+                    os.kill(int(pid), 9)
+            except OSError:
+                pass
 
     def fixture(self, name, content):
         (self.fx / name).write_text(content)
@@ -659,6 +679,68 @@ class ClickTest(unittest.TestCase):  # D3
                         + json.dumps(entry(pid=2, ts=T0 + MIN)) + "\n")
         self.sb.tool("watch", STUB_NOTIFY_SEND="click-late", STUB_FOLLOW_HOLD="1.5")
         self.assertEqual(self.sb.diagnosed_pids(), ["2"])
+
+    def test_a_click_both_notify_sends_report_diagnoses_once_the_newest(self):  # Review Focus 2
+        # The superseded notify-send is terminated (final review #3), but a click
+        # already in its pipe still arrives: the old and the new both say "default".
+        self.sb.fixture("follow.jsonl", json.dumps(entry(pid=1, ts=T0)) + "\n"
+                        + json.dumps(entry(pid=2, ts=T0 + MIN)) + "\n")
+        self.sb.tool("watch", STUB_NOTIFY_SEND="click-late-sticky", STUB_FOLLOW_HOLD="1.5")
+        self.assertEqual(len([t for t in self.sb.toasts()]), 2)
+        self.assertEqual(self.sb.diagnosed_pids(), ["2"])
+
+
+def load_tool():
+    """crash-diagnose as a module, for what only shows inside the watcher."""
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("crash_diagnose", str(TOOL))
+    spec = importlib.util.spec_from_loader("crash_diagnose", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def alive(pid):
+    """Running, not a zombie."""
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+class ToastLifetimeTest(unittest.TestCase):  # final review #3
+    def test_a_replaced_toast_leaves_one_live_notify_send(self):
+        # -r replaces the toast on screen, but the notify-send waiting on the old
+        # one would wait forever (-t 0): one live client per group, the newest.
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", "".join(json.dumps(entry(pid=p, ts=T0 + p * MIN)) + "\n"
+                                           for p in (1, 2, 3)))
+        sb.tool("watch", STUB_NOTIFY_SEND="hold")
+        pids = [t["pid"] for t in sb.toasts()]
+        self.assertEqual(len(pids), 3)
+        self.assertEqual([p for p in pids if alive(p)], [pids[-1]])
+
+    def test_the_watcher_waits_for_live_toasts_once_not_per_toast(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", "".join(
+            json.dumps(entry(pid=p, exe=f"/usr/bin/x{p}", comm=f"x{p}")) + "\n" for p in (1, 2, 3)))
+        start = time.monotonic()
+        sb.tool("watch", STUB_NOTIFY_SEND="hold")
+        self.assertEqual(len([p for p in (t["pid"] for t in sb.toasts()) if alive(p)]), 3)
+        self.assertLess(time.monotonic() - start, 9, "join(5) waited 5 s per live toast")
+
+    def test_finished_toast_threads_are_not_kept(self):
+        sb = Sandbox(self)
+        tool = load_tool()
+        toasts = tool.Toasts()
+        from unittest import mock
+        with mock.patch.dict(os.environ, sb.env(), clear=True):
+            for p in (1, 2, 3):
+                toasts.crash(entry(pid=p, exe=f"/usr/bin/x{p}", comm=f"x{p}"))
+                for t in toasts.threads:
+                    t.join(5)  # dismissed at once: the thread is done
+        self.assertEqual(len(toasts.threads), 1)
 
 
 class UnitFileTest(unittest.TestCase):
