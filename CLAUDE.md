@@ -131,6 +131,7 @@ python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 python3 tests/menu_test.py    # the Super+Space palette; also run by theme_test.sh
 python3 tests/capture_test.py # focus-safe capture; also run by theme_test.sh
+python3 tests/crash_test.py   # crash → Claude diagnosis; stubs only; also run by theme_test.sh
 python3 tests/claude_tray_test.py # Windows tray; PowerShell half skips without WSL interop
 ```
 
@@ -180,6 +181,13 @@ Point `MENU_BIN` at a copy to check the assertions can still fail (PLAYBOOK §7)
 PATH holding **only** the stub directory (with `/usr/bin` on it, the installed satty answered the
 "not installed" tests). The stubs log call order; the first assertion is the bug the tool exists
 for: grim before any picker. `CAPTURE_BIN` points it at a copy for mutation checks (§9.32).
+
+**Run `tests/crash_test.py` after any edit to `bin/.local/bin/crash-diagnose` or
+`crash-watch.service`.** Every tool it runs (journalctl, coredumpctl, notify-send, herdr, kitty,
+claude, pacman, systemctl) is a stub on a PATH holding only the stub directory, so it never
+reaches the live herdr server, mako or the journal. Its fixtures are synthetic: never paste a real
+coredump entry in, because `COREDUMP_ENVIRON` is the process environment. `CRASH_DIAGNOSE_BIN`
+points it at a copy for mutation checks (§9.33).
 
 For sway changes: `sway --validate -c ~/.config/sway/config` **before** `swaymsg reload`, then
 `pgrep -xc swayidle` (must be exactly 1, and still 1 after a second reload) and
