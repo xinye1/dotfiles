@@ -1,0 +1,418 @@
+"""crash-diagnose -- crashes of your own processes, diagnosed by Claude on request.
+
+Design: docs/specs/2026-10-08-crash-diagnose-design.md. PLAYBOOK §9.33.
+
+  crash-diagnose watch                      crash-watch.service: a toast per new crash
+  crash-diagnose list                       recent crashes, newest first (palette choices)
+  crash-diagnose diagnose <pid | list line> build report.md, open Claude on it
+
+Claude never starts unless the user clicks a toast or picks a crash. It runs
+under the user's normal permission settings and is told to change nothing
+without asking. The report never holds the process environment
+(COREDUMP_ENVIRON) or the core file.
+
+`diagnose` is often started by the systemd user service, not a shell: PATH has
+no ~/.local/bin, and WAYLAND_DISPLAY and DEBUGINFOD_URLS may be unset.
+session_env() puts those back before anything else runs.
+"""
+import json
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+MESSAGE_ID = "fc2e22bc6ee647b6b90729ab34a250b1"
+KEEP = 20                           # reports kept, and rows `list` offers
+GDB_TIMEOUT = float(os.environ.get("CRASH_DIAGNOSE_GDB_TIMEOUT", "90"))
+INFO_TIMEOUT = float(os.environ.get("CRASH_DIAGNOSE_INFO_TIMEOUT", "30"))
+JOURNAL_SPAN_S = 120
+JOURNAL_MAX_LINES = 400
+SESSION_VARS = ("WAYLAND_DISPLAY", "DISPLAY", "SWAYSOCK", "XDG_CURRENT_DESKTOP")
+# The report's "Journal entry" section. An allowlist, so the process environment
+# (COREDUMP_ENVIRON) and the core itself (COREDUMP) can never ride along.
+ENTRY_FIELDS = ("COREDUMP_PID", "COREDUMP_UID", "COREDUMP_COMM", "COREDUMP_EXE",
+                "COREDUMP_CMDLINE", "COREDUMP_SIGNAL_NAME", "COREDUMP_TIMESTAMP",
+                "COREDUMP_UNIT", "COREDUMP_SLICE", "COREDUMP_CGROUP", "COREDUMP_CWD",
+                "COREDUMP_THREAD_NAME", "COREDUMP_PACKAGE_JSON", "COREDUMP_FILENAME",
+                "COREDUMP_PROC_STATUS")
+# Second line of defence: an environment value under a secret-looking name is
+# redacted wherever it turns up (a journal line, a command line, a gdb argument).
+SECRETISH = re.compile(r"TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE", re.I)
+GDB_ARGS = "-batch -iex 'set debuginfod enabled on' -ex 'thread apply all bt'"
+REPORT_DIR = re.compile(r"^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d_")
+
+# Fixed text; tests/crash_test.py pins it to spec §3.
+PROMPT = ("Read report.md in this directory: a crash on this machine. Find the most likely "
+          "cause, say how confident you are and why, and propose a fix. This machine's "
+          "configuration lives in ~/repos/dotfiles; read its CLAUDE.md first if the crash "
+          "involves it. Do not change any file or run anything that changes system state "
+          "without asking me first.")
+
+
+# --- plumbing ---
+
+def own(uid):
+    """Whether a crash's uid is this user's. Root and system-service crashes are out of scope."""
+    return str(uid) == str(os.getuid())
+
+
+def text(value):
+    """A journal field as text. journalctl -o json gives a binary field as a list
+    of byte values, a repeated field as a list of strings, and null for a field
+    it would not print."""
+    if isinstance(value, list):
+        if all(isinstance(x, int) for x in value):
+            return bytes(value).decode("utf-8", "replace")
+        return "\n".join(text(x) for x in value)
+    return "" if value is None else str(value)
+
+
+def signame(number):
+    try:
+        return signal.Signals(int(number)).name
+    except (TypeError, ValueError):
+        return f"signal {number}"
+
+
+def stamp(us, fmt="%m-%d %H:%M"):
+    return datetime.fromtimestamp(int(us) / 1e6).strftime(fmt)
+
+
+def run(argv, timeout=INFO_TIMEOUT, env=None):
+    """(returncode, stdout, stderr). returncode is None on a timeout and 127 when
+    the tool is missing. The child leads its own process group and a timeout
+    kills the group: `coredumpctl debug` runs gdb as its child."""
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, env=env, start_new_session=True)
+    except OSError as e:
+        return 127, "", str(e)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        return None, "", ""
+    return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+
+
+def notify(summary, body="", urgency="normal", env=None):
+    try:
+        subprocess.run(["notify-send", "-u", urgency, "-a", "crash", summary, body],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=5, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    print(f"crash-diagnose: {summary}" + (f": {body}" if body else ""), file=sys.stderr)
+
+
+def session_env(base):
+    """The environment diagnose and everything it starts run with."""
+    env = dict(base)
+    local_bin = os.path.join(env["HOME"], ".local", "bin")
+    if local_bin not in env.get("PATH", "").split(":"):
+        env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
+    if not env.get("WAYLAND_DISPLAY"):
+        # The service started before sway imported its variables into the user
+        # manager; the manager has them now.
+        _, out, _ = run(["systemctl", "--user", "show-environment"], timeout=5, env=env)
+        for line in out.splitlines():
+            key, _, value = line.partition("=")
+            if key in SESSION_VARS and value and not env.get(key):
+                env[key] = value
+    if not env.get("DEBUGINFOD_URLS"):
+        # What /etc/profile.d/debuginfod.sh does for a login shell.
+        conf = Path(env.get("CRASH_DIAGNOSE_DEBUGINFOD_DIR", "/etc/debuginfod"))
+        try:
+            urls = " ".join(p.read_text().strip() for p in sorted(conf.glob("*.urls")))
+        except OSError:
+            urls = ""
+        if urls.strip():
+            env["DEBUGINFOD_URLS"] = urls.strip()
+    return env
+
+
+def state_dir(env):
+    base = env.get("XDG_STATE_HOME") or os.path.join(env["HOME"], ".local", "state")
+    return Path(base) / "crash-reports"
+
+
+# --- list ---
+
+def crashes(match=(), env=None):
+    """This user's crashes, newest first, one row per crash (the journal can hold
+    the same entry twice)."""
+    rc, out, _ = run(["coredumpctl", "--json=short", "--no-pager", "list", *match], env=env)
+    try:
+        rows = json.loads(out) if rc == 0 and out.strip() else []
+    except ValueError:
+        rows = []
+    seen, mine = set(), []
+    for row in rows:
+        key = (row.get("pid"), row.get("time"))
+        if not own(row.get("uid")) or key in seen:
+            continue
+        seen.add(key)
+        mine.append(row)
+    return sorted(mine, key=lambda r: r.get("time") or 0, reverse=True)
+
+
+def list_line(row):
+    return (f"{row['pid']}  {stamp(row['time'])}  {Path(row.get('exe') or '?').name}"
+            f"  {signame(row.get('sig'))}")
+
+
+def cmd_list():
+    for row in crashes()[:KEEP]:
+        print(list_line(row))
+    return 0
+
+
+# --- diagnose: the report ---
+
+def entry_for(pid, env):
+    """The newest coredump journal entry for this pid of this user, or None.
+    --all: without it journalctl prints null for any field over 4 KiB, and
+    MESSAGE (the crash-time stack) is always one."""
+    _, out, _ = run(["journalctl", "-o", "json", "--all", "--no-pager", "-n", "1",
+                     f"MESSAGE_ID={MESSAGE_ID}", f"COREDUMP_PID={pid}",
+                     f"COREDUMP_UID={os.getuid()}"], env=env)
+    lines = [l for l in out.splitlines() if l.strip()]
+    try:
+        entry = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        return None
+    return entry if isinstance(entry, dict) and own(entry.get("COREDUMP_UID")) else None
+
+
+def package(entry, exe, env):
+    """("name version", None) or (None, why it is unknown)."""
+    try:
+        meta = json.loads(text(entry.get("COREDUMP_PACKAGE_JSON")) or "{}")
+    except ValueError:
+        meta = {}
+    if isinstance(meta, dict) and meta.get("name"):
+        return " ".join(str(meta[k]) for k in ("name", "version") if meta.get(k)), None
+    if not exe:
+        return None, "the journal entry names no executable"
+    rc, out, err = run(["pacman", "-Qo", exe], env=dict(env, LC_ALL="C"))
+    found = re.search(r" is owned by (\S+) (\S+)", out)
+    if rc == 0 and found:
+        return f"{found[1]} {found[2]}", None
+    return None, (err.strip() or out.strip() or f"pacman exited {rc}")[-200:]
+
+
+def fenced(body):
+    return "~~~text\n" + body.rstrip("\n") + "\n~~~"
+
+
+def missing(what, why):
+    return f"missing: {what} -- {why}"
+
+
+def scrub(report, entry):
+    for line in text(entry.get("COREDUMP_ENVIRON")).splitlines():
+        key, _, value = line.partition("=")
+        if SECRETISH.search(key) and len(value) >= 8:
+            report = report.replace(value, "[redacted]")
+    return report
+
+
+def build_report(entry, env):
+    pid = text(entry.get("COREDUMP_PID"))
+    comm = text(entry.get("COREDUMP_COMM")) or "?"
+    exe = text(entry.get("COREDUMP_EXE"))
+    sig = text(entry.get("COREDUMP_SIGNAL_NAME")) or signame(text(entry.get("COREDUMP_SIGNAL")))
+    ts = int(text(entry.get("COREDUMP_TIMESTAMP")) or text(entry.get("__REALTIME_TIMESTAMP")) or 0)
+    history = crashes([exe], env) if exe else []
+    this = next((r for r in history if str(r.get("pid")) == pid), None)
+    core = this.get("corefile", "unknown") if this else "unknown"
+    pkg, pkg_why = package(entry, exe, env)
+
+    out = [f"# Crash: {comm} ({sig})", "", "## Summary", "",
+           f"- Executable: {exe or '?'}", f"- Command: {comm}", f"- Signal: {sig}",
+           f"- Time: {stamp(ts, '%Y-%m-%d %H:%M:%S') if ts else '?'}", f"- PID: {pid}",
+           f"- Package: {pkg}" if pkg else f"- {missing('package', pkg_why)}",
+           f"- Core file: {core}", ""]
+
+    out += ["## History", ""]
+    if history:
+        out += [f"{len(history)} crash(es) of {exe} on record, newest first:", "",
+                "| time | pid | signal | core |", "|---|---|---|---|"]
+        out += [f"| {stamp(r['time'], '%Y-%m-%d %H:%M')} | {r['pid']} | {signame(r.get('sig'))}"
+                f" | {r.get('corefile', '?')} |" for r in history[:30]]
+    else:
+        out.append(missing("history", "coredumpctl listed no crashes of this executable"))
+    out.append("")
+
+    out += ["## Backtrace", "", "### Crash-time stack (coredumpctl info)", "",
+            "Recorded by systemd-coredump when the process died, so it matches the binaries",
+            "that crashed. Frames are module + offset; only exported symbols are named.", ""]
+    rc, info, err = run(["coredumpctl", "-1", "info", "--no-pager", pid],
+                        timeout=INFO_TIMEOUT, env=env)
+    if rc is None:
+        out.append(missing("coredumpctl info", f"it did not finish in {INFO_TIMEOUT:g} s"))
+    elif rc != 0 or not info.strip():
+        out.append(missing("coredumpctl info", (err.strip() or f"exit {rc}")[-300:]))
+    else:
+        out.append(fenced(info))
+    out += ["", "### Symbolised (gdb + debuginfod)", ""]
+    if core != "present":
+        out.append(missing("symbolised backtrace", f"the core file is {core} (rotated or "
+                           "never stored); the crash-time stack above is what remains"))
+    else:
+        rc, bt, err = run(["coredumpctl", "-1", "debug", "--no-pager", pid,
+                           f"--debugger-arguments={GDB_ARGS}"], timeout=GDB_TIMEOUT, env=env)
+        if rc is None:
+            out.append(missing("symbolised backtrace", f"no symbolised backtrace: gdb did not "
+                               f"finish in {GDB_TIMEOUT:g} s"))
+        elif rc != 0 or not bt.strip():
+            out.append(missing("symbolised backtrace", "no symbolised backtrace: "
+                               + (err.strip() or f"exit {rc}")[-300:]))
+        else:
+            if "does not match core file" in bt + err:
+                out += ["**Libraries changed since the crash** (gdb: build-id does not match",
+                        "the core). Frames in those libraries may be wrong; trust the",
+                        "crash-time stack above where they disagree.", ""]
+            out.append(fenced(bt))
+    out.append("")
+
+    out += ["## Journal entry", ""]
+    for key in ENTRY_FIELDS:
+        value = text(entry.get(key))
+        if value:
+            out.append(f"- {key}: " + (value if "\n" not in value else "\n" + fenced(value)))
+    out.append("")
+
+    out += ["## Journal", "", "This user's journal, 2 minutes either side of the crash.", ""]
+    if ts:
+        t = ts // 1_000_000
+        rc, lines, err = run(["journalctl", "--no-pager", "-q", "-o", "short-iso",
+                              f"_UID={os.getuid()}", f"--since=@{t - JOURNAL_SPAN_S}",
+                              f"--until=@{t + JOURNAL_SPAN_S}"], timeout=INFO_TIMEOUT, env=env)
+        if rc == 0 and lines.strip():
+            out.append(fenced("\n".join(lines.splitlines()[-JOURNAL_MAX_LINES:])))
+        else:
+            out.append(missing("journal", (err.strip() or "no lines")[-300:] if rc is not None
+                               else f"journalctl did not finish in {INFO_TIMEOUT:g} s"))
+    else:
+        out.append(missing("journal", "the entry has no timestamp"))
+    return scrub("\n".join(out) + "\n", entry), ts, exe
+
+
+def write_report(entry, env):
+    report, ts, exe = build_report(entry, env)
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", Path(exe).name or text(entry.get("COREDUMP_COMM")) or "unknown")
+    rdir = state_dir(env) / f"{stamp(ts or 0, '%Y-%m-%d_%H-%M-%S')}_{name}"
+    rdir.mkdir(parents=True, exist_ok=True)
+    tmp = rdir / ".report.md.tmp"
+    tmp.write_text(report)
+    os.replace(tmp, rdir / "report.md")
+    os.utime(rdir)  # retention goes by this
+    return rdir
+
+
+def prune(root, keep):
+    """Keep the newest KEEP report directories by mtime; `keep` (this run's) always."""
+    dirs = [d for d in root.iterdir() if d.is_dir() and REPORT_DIR.match(d.name)]
+    others = sorted((d for d in dirs if d != keep), key=lambda d: d.stat().st_mtime,
+                    reverse=True)
+    for old in others[KEEP - 1:]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
+# --- diagnose: opening Claude ---
+
+def pane_id(out):
+    """The new tab's root pane from `herdr tab create`. herdr 0.8.0's API schema
+    (protocol 19) says {"id", "result": {"type": "tab_created", "tab",
+    "root_pane": {"pane_id"}}}; the other shapes are fallbacks in case the CLI
+    unwraps the envelope or a release renames the key."""
+    try:
+        doc = json.loads(out)
+    except ValueError:
+        return None
+    for path in (("result", "root_pane", "pane_id"), ("root_pane", "pane_id"),
+                 ("result", "pane", "pane_id"), ("pane", "pane_id"), ("pane_id",)):
+        node = doc
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, str) and node:
+            return node
+    return None
+
+
+def launch(rdir, comm, env):
+    """Claude on the report: a herdr tab, else kitty. True when one started."""
+    report = rdir / "report.md"
+    if not shutil.which("claude", path=env["PATH"]):
+        notify("Crash report: claude not found", f"claude is not on PATH; the report is {report}",
+               "critical", env)
+        return False
+    rc, out, _ = run(["herdr", "tab", "create", "--label", f"crash: {comm}", "--cwd", str(rdir),
+                      "--focus"], timeout=15, env=env)
+    pane = pane_id(out) if rc == 0 else None
+    if pane:
+        rc, _, _ = run(["herdr", "pane", "run", pane, f"claude {shlex.quote(PROMPT)}"],
+                       timeout=15, env=env)
+        if rc == 0:
+            return True
+    try:
+        kitty = subprocess.Popen(["kitty", "--directory", str(rdir), "claude", PROMPT], env=env,
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+        if kitty.wait(timeout=2) == 0:
+            return True
+    except subprocess.TimeoutExpired:
+        return True  # still running: the window is up
+    except OSError:
+        pass
+    notify("Crash report: could not open Claude",
+           f"neither herdr nor kitty started; the report is {report}", "critical", env)
+    return False
+
+
+def cmd_diagnose(arg):
+    found = re.match(r"\s*(\d+)(?!\S)", arg)
+    if not found:
+        print(USAGE, file=sys.stderr)
+        return 2
+    pid = found[1]
+    env = session_env(os.environ)
+    entry = entry_for(pid, env)
+    if not entry:
+        notify(f"Crash report: no crash of yours with pid {pid}", "", "critical", env)
+        return 1
+    comm = text(entry.get("COREDUMP_COMM")) or "?"
+    notify(f"Preparing crash report for {comm}…", "", "low", env)
+    rdir = write_report(entry, env)
+    prune(rdir.parent, rdir)
+    return 0 if launch(rdir, comm, env) else 1
+
+
+USAGE = "usage: crash-diagnose watch | list | diagnose <pid | a line from list>"
+
+
+def main(argv):
+    if argv == ["list"]:
+        return cmd_list()
+    if len(argv) >= 2 and argv[0] == "diagnose":
+        try:
+            return cmd_diagnose(" ".join(argv[1:]))
+        except Exception as e:  # a click must never fail in silence
+            notify("Crash report failed", f"{type(e).__name__}: {e}", "critical")
+            return 1
+    print(USAGE, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
