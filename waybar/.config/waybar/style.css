@@ -80,6 +80,7 @@
 #mode,
 #custom-network,
 #custom-herdr,
+#custom-recording,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -129,6 +130,7 @@
 #window,
 #custom-network,
 #custom-herdr,
+#custom-recording,
 #custom-claude,
 #custom-keyboard-layout,
 #idle_inhibitor,
@@ -216,6 +218,7 @@
 #custom-herdr.quiet     { color: @dim; }
 #custom-herdr.waiting   { color: @warning; }
 #custom-herdr.blocked   { color: @critical; }
+#custom-recording.recording { color: @critical; }
 
 #custom-claude          { color: @fg; }
 #custom-claude.warning  { color: @warning; }

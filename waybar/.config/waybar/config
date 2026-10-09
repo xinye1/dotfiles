@@ -85,6 +85,7 @@
         "pulseaudio",
         "battery",
         "custom/network",
+        "custom/recording",
         "custom/herdr",
         "custom/claude",
         "clock",
@@ -215,6 +216,19 @@
         "format": "{}",
         "justify": "center",
         "on-click": "~/.config/waybar/scripts/herdr_blocked.py --focus"
+    },
+
+    // Recording indicator: a red dot while capture.py records, nothing otherwise.
+    // capture.py pokes signal 10 on start and stop; the interval catches a
+    // recorder that died (capture.py removes its stale pid file).
+    "custom/recording": {
+        "exec": "~/.config/sway/scripts/capture.py record-status",
+        "return-type": "json",
+        "interval": 10,
+        "signal": 10,
+        "exec-on-event": false,
+        "format": "{}",
+        "on-click": "~/.config/sway/scripts/capture.py record-stop"
     },
 
     "tray": {

@@ -24,6 +24,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 from pathlib import Path
@@ -325,10 +326,14 @@ def run_action(action, env):
         # `&` must not swallow it. bash, for `read -n`.
         script = f'{command}\nprintf "\\n[press a key to close]"; read -rsn1'
         return execute(["kitty", "--class", "menu-term", "bash", "-c", script], aenv)
-    r = subprocess.run(["sh", "-c", command], env=aenv, stdin=subprocess.DEVNULL,
-                       stderr=subprocess.PIPE)
-    if r.returncode != 0:
-        notify(f'Menu: "{label}" failed ({r.returncode})', tail(r.stderr))
+    # stderr to a file, not a pipe: wl-copy (cliphist_pick.sh, capture's OCR)
+    # forks to serve the clipboard and keeps the action's stderr, so a pipe read
+    # to EOF would hang this palette until the next copy.
+    with tempfile.TemporaryFile() as err:
+        r = subprocess.run(["sh", "-c", command], env=aenv, stdin=subprocess.DEVNULL, stderr=err)
+        if r.returncode != 0:
+            err.seek(0)
+            notify(f'Menu: "{label}" failed ({r.returncode})', tail(err.read()))
     return r.returncode
 
 

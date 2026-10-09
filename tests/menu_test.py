@@ -20,6 +20,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -96,7 +97,7 @@ class Sandbox:
         for d in (self.home / ".local/bin", self.bin, self.run):
             d.mkdir(parents=True)
         for name in ("fuzzel", "notify-send", "kitty", "cliphist", "wl-copy", "slurp",
-                     "swaymsg", "grim", "swappy"):
+                     "swaymsg", "grim"):
             script(self.bin / name, STUB)
         self.toml = self.root / "menu.toml"
         self.log = self.root / "log.jsonl"
@@ -410,6 +411,22 @@ class RunTest(unittest.TestCase):
         r = self.sb.menu("--run", "system-lock", toml=VALID)
         self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
 
+    def test_a_background_child_holding_stderr_does_not_hang_the_palette(self):
+        # wl-copy (the clipboard picker, capture's OCR) forks to serve the
+        # clipboard and keeps the action's stderr; a pipe read to EOF hung here.
+        pidfile = self.sb.root / "kid.pid"
+        def reap():
+            try:
+                os.kill(int(pidfile.read_text()), 9)
+            except (OSError, ValueError):
+                pass
+        self.addCleanup(reap)
+        toml = VALID.replace('"true"', f"""'sleep 30 >/dev/null & echo $! > {pidfile}'""")
+        t = time.monotonic()
+        r = self.sb.menu("--run", "system-lock", toml=toml)
+        self.assertLess(time.monotonic() - t, 10)
+        self.assertEqual((r.returncode, self.sb.calls("notify-send")), (0, []))
+
     def test_non_utf8_stderr_still_notifies(self):  # Review Focus 4
         toml = VALID.replace('"true"', """'printf "\\\\377\\\\376 bad\\\\n" >&2; exit 1'""")
         r = self.sb.menu("--run", "system-lock", toml=toml)
@@ -550,25 +567,6 @@ class FuzzelLockTest(unittest.TestCase):
         [note] = self.sb.calls("notify-send")
         self.assertIn("fuzzel", note["argv"][4])
         self.assertFalse((self.sb.home / "out").exists())
-
-
-class CaptureCancelTest(unittest.TestCase):
-    """The palette toasts any non-zero exit, so an action whose own picker is
-    cancelled must exit 0 (spec §4.2). Esc at slurp's selection is that cancel
-    (final review #3)."""
-
-    def test_esc_at_the_selection_exits_0_and_captures_nothing(self):
-        for name in ("screenshot_region.sh", "screenshot_window.sh"):
-            with self.subTest(name):
-                sb = Sandbox(self)
-                (sb.home / ".config/sway").mkdir(parents=True)
-                # Colour roles are irrelevant to a cancelled selection; no hex here.
-                (sb.home / ".config/sway/theme.gen.env").write_text("BG=bg\nACCENT=accent\n")
-                sb.log.write_text("")
-                r = subprocess.run([str(REPO / "sway/.config/sway/scripts" / name)],
-                                   env=sb.env(), capture_output=True, text=True, timeout=10)
-                self.assertEqual(r.returncode, 0, r.stderr)
-                self.assertEqual(sb.calls("grim") + sb.calls("swappy"), [])
 
 
 class RepoMenuTest(unittest.TestCase):
