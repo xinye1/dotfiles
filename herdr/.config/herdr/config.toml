@@ -27,6 +27,18 @@ auto_switch = false
 # 8.45:1). The cost is surface1's other job, separators and tree lines, which
 # drop to ~1.25:1 against bg — chrome, where §3.1 allows near-invisible.
 surface1 = "black"
+# Every highlight (active tab, menu/dialog selection, navigator) is text in
+# surface_dim on accent: the terminal theme's ANSI 8 on ANSI 4, which measured
+# 2.74:1 under nord and 1.15:1 under gruvbox. surface_dim is also the fill
+# behind the active sidebar row, where fg sat on it at 2.68:1 under gruvbox.
+# ANSI 0 fixes that second job (7.45 / 8.45:1). No ANSI blue carries ANSI 0
+# text at 4.5:1 under nord (3.74), so accent moves to ANSI 14 (frost
+# teal / aqua): 4.83 / 5.51:1 under ANSI 0, and 5.99 / 7.01:1 as text on bg,
+# its other job (pane-border labels, key hints). surface_dim's chrome job,
+# sidebar separators, drops to ~1.25:1 like surface1's. tests/herdr_test.py
+# measures every one of these pairs.
+surface_dim = "black"
+accent = "lightcyan"
 
 [keys]
 # The prefix stays ctrl+b, tmux's. tmux here only runs detached background jobs

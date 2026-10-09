@@ -1538,7 +1538,7 @@ panel sort) rewrites `config.toml` in place, so through the stow symlink those e
 `git status`. Commit what you meant, revert what you didn't — the same drill as nwg-look (§9.1),
 minus the clobbering.
 
-**Colour: `name = "terminal"`, plus one override.** The terminal theme draws with the host
+**Colour: `name = "terminal"`, plus three overrides.** The terminal theme draws with the host
 terminal's ANSI colours, which kitty renders from `palettes.toml`, so a `theme` switch recolours
 herdr with no template and no hex in this file. The two alternatives both break a convention:
 `[theme.custom]` rendered from roles would put `config.toml` on the hardcoded-path render list
@@ -1548,6 +1548,19 @@ theme's `surface1` is ANSI 8, and herdr draws text on it (copy-mode search match
 code blocks) — fg on gruvbox's ANSI 8 is 2.68:1. `surface1 = "black"` (ANSI 0, a *named* colour, so
 no hex) is the only one of the sixteen that clears 4.5:1 in both palettes (7.45 / 8.45). Its price
 is separators and tree lines at ~1.25:1, which is chrome.
+
+The same measurement was missed for every *highlight*: herdr draws the active tab, menu and dialog
+selections and the navigator as `surface_dim` text on an `accent` fill, which the terminal theme
+makes ANSI 8 on ANSI 4 — 2.74:1 under nord, 1.15:1 under gruvbox, the active tab name all but
+gone. `surface_dim` is also the fill behind the active sidebar row (fg on it: 2.68:1 under
+gruvbox), and `accent` is text on bg in the pane-border labels (3.48:1 under gruvbox). So
+`surface_dim = "black"` (ANSI 0, as `surface1`), and `accent = "lightcyan"` (ANSI 14: nord's frost
+teal, gruvbox's aqua), because no ANSI blue carries ANSI 0 text at 4.5:1 under nord's light
+blue (3.74). Result: highlight 4.83 / 5.51:1, sidebar row 7.45 / 8.45:1, accent text 5.99 /
+7.01:1. `ThemeTest` in `tests/herdr_test.py` resolves the config over the 0.8.0 terminal theme
+against `palettes.toml` and measures all four pairs in both palettes; against the old config it
+fails four of them. When herdr is upgraded, re-read `Palette::terminal` and `panel_contrast_fg`
+in the new source — the test copies them.
 
 **Agent state comes from the screen, on purpose.** The official Claude integration
 (`herdr integration install claude`) reports only *which conversation* a pane holds, for restore.

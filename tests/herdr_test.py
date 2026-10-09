@@ -413,5 +413,93 @@ class BackupTest(unittest.TestCase):
         self.assertNotIn("session-20260101T000000.json", [k.name for k in kept])
 
 
+CONFIG = REPO / "herdr/.config/herdr/config.toml"
+PALETTES = REPO / "palettes.toml"
+
+# herdr 0.8.0's `terminal` theme (src/app/state.rs, Palette::terminal), the
+# base that [theme.custom] layers over. `reset` is the terminal's own fg or bg.
+TERMINAL_THEME = {
+    "accent": "blue", "panel_bg": "reset", "surface0": "reset",
+    "surface1": "darkgray", "surface_dim": "darkgray", "overlay0": "gray",
+    "overlay1": "white", "text": "reset", "subtext0": "gray", "mauve": "gray",
+    "green": "green", "yellow": "yellow", "red": "lightred", "blue": "blue",
+    "teal": "cyan", "peach": "yellow",
+}
+# ratatui's names → kitty's ramp as palettes.toml spells it. herdr turns any
+# other name into cyan with only a log line (config/theme.rs, parse_color).
+ANSI = {
+    "black": "normal_black", "red": "normal_red", "green": "normal_green",
+    "yellow": "normal_yellow", "blue": "normal_blue",
+    "magenta": "normal_magenta", "cyan": "normal_cyan", "gray": "normal_white",
+    "darkgray": "bright_black", "lightred": "bright_red",
+    "lightgreen": "bright_green", "lightyellow": "bright_yellow",
+    "lightblue": "bright_blue", "lightmagenta": "bright_magenta",
+    "lightcyan": "bright_cyan", "white": "bright_white",
+}
+
+
+def luminance(hex_):
+    rgb = [int(hex_[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    r, g, b = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+               for c in rgb]
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+class ThemeTest(unittest.TestCase):
+    """Every place herdr draws text on a filled cell, measured in both palettes.
+
+    herdr's colours are ANSI names that kitty renders from palettes.toml, so a
+    pair can clear 4.5:1 under one palette and fail under the other — the
+    active tab did, at 2.74:1 under nord and 1.15:1 under gruvbox. §9.28.
+    """
+
+    def setUp(self):
+        import tomllib
+        with CONFIG.open("rb") as f:
+            theme = tomllib.load(f)["theme"]
+        self.assertEqual(theme["name"], "terminal")
+        self.tokens = dict(TERMINAL_THEME)
+        self.tokens.update({k: v.lower() for k, v in theme.get("custom", {}).items()
+                            if isinstance(v, str)})
+        with PALETTES.open("rb") as f:
+            self.palettes = tomllib.load(f)
+
+    def resolve(self, palette, token, as_fg):
+        name = self.tokens[token]
+        p = self.palettes[palette]
+        if name == "reset":
+            return p["fg"] if as_fg else p["bg"]
+        return p["ansi"][ANSI[name]]
+
+    def panel_contrast_fg(self):
+        # ui/widgets.rs: text on an accent fill.
+        return "surface_dim" if self.tokens["panel_bg"] == "reset" else "panel_bg"
+
+    def test_every_override_is_a_name_herdr_knows(self):
+        for token, name in self.tokens.items():
+            self.assertIn(token, TERMINAL_THEME)
+            self.assertIn(name, set(ANSI) | {"reset"}, token)
+
+    def test_text_clears_the_floor_in_both_palettes(self):
+        pairs = {
+            "highlight (active tab, menu/dialog selection)":
+                (self.panel_contrast_fg(), "accent"),
+            "active sidebar row": ("text", "surface_dim"),
+            "copy-mode match, release-note code": ("text", "surface1"),
+            "accent text (pane-border label, key hint)": ("accent", "panel_bg"),
+        }
+        for palette in ("nord", "gruvbox"):
+            for what, (fg, bg) in pairs.items():
+                with self.subTest(palette=palette, what=what):
+                    ratio = contrast(self.resolve(palette, fg, True),
+                                     self.resolve(palette, bg, False))
+                    self.assertGreaterEqual(ratio, 4.5, f"{fg} on {bg}: {ratio:.2f}:1")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
