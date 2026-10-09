@@ -305,7 +305,7 @@ def build_report(entry, env):
     else:
         out.append(fenced(info))
     out += ["", "### Symbolised (gdb + debuginfod)", ""]
-    if core != "present":
+    if core not in ("present", "journal"):  # "journal": Storage=journal, still debuggable
         out.append(missing("symbolised backtrace", f"the core file is {core} (rotated or "
                            "never stored); the crash-time stack above is what remains"))
     else:

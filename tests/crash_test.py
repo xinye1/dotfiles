@@ -419,6 +419,14 @@ class ReportTest(unittest.TestCase):  # D4
         self.assertIn("missing: symbolised backtrace -- the core file is missing", text)
         self.assertIn("- COREDUMP_FILENAME: /var/lib/systemd/coredump/core.waybar", text)
 
+    def test_a_core_stored_in_the_journal_is_debugged_like_a_present_one(self):  # final review #6
+        # Storage=journal: coredumpctl lists the core as "journal" and can still debug it.
+        self.sb.fixture("list.json", json.dumps([row(core="journal")]))
+        text = self.diagnose()
+        self.assertEqual(len([c for c in self.sb.calls("coredumpctl") if "debug" in c["argv"]]), 1)
+        self.assertIn("__pthread_kill_implementation", text)
+        self.assertNotIn("missing: symbolised backtrace", text)
+
     def test_libraries_changed_since_the_crash_is_called_out(self):  # Review Focus 4
         text = self.diagnose(STUB_GDB="mismatch")
         self.assertIn("**Libraries changed since the crash**", text)
