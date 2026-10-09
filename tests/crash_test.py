@@ -656,11 +656,23 @@ class RetentionTest(unittest.TestCase):  # D8
         sb.tool("diagnose", "222")
         left = sorted(d.name for d in root.iterdir() if d.is_dir())
         self.assertEqual(len(left), 20)
-        self.assertIn("2026-10-02_21-51-50_waybar", left)
+        self.assertIn("2026-10-02_21-51-50_waybar_222", left)
         self.assertNotIn("2027-01-01_00-00-19_old", left)   # the three oldest by mtime
         self.assertIn("2027-01-01_00-00-18_old", left)
         self.assertIn("2027-01-01_00-00-00_old", left)
         self.assertTrue((root / "notes.txt").exists())
+
+    def test_two_crashes_in_the_same_second_get_their_own_reports(self):  # CodeRabbit #50
+        sb = Sandbox(self)
+        for pid in (222, 223):
+            sb.fixture("entry.jsonl", json.dumps(entry(pid=pid)) + "\n")
+            self.assertEqual(sb.tool("diagnose", str(pid)).returncode, 0)
+        dirs = sorted(p.parent.name for p in sb.reports())
+        self.assertEqual(dirs, ["2026-10-02_21-51-50_waybar_222", "2026-10-02_21-51-50_waybar_223"])
+        # ...and a second diagnosis of the same crash reuses its directory
+        sb.fixture("entry.jsonl", json.dumps(entry(pid=222)) + "\n")
+        sb.tool("diagnose", "222")
+        self.assertEqual(len(sb.reports()), 2)
 
     def test_the_reports_root_is_private_new_or_existing(self):  # final review #12
         import stat
@@ -873,6 +885,32 @@ class ToastLifetimeTest(unittest.TestCase):  # final review #3
         sb.tool("watch", STUB_NOTIFY_SEND="hold")
         self.assertEqual(len([p for p in (t["pid"] for t in sb.toasts()) if alive(p)]), 3)
         self.assertLess(time.monotonic() - start, 9, "join(5) waited 5 s per live toast")
+
+    def test_the_journal_follower_dies_with_the_watcher(self):  # CodeRabbit #50
+        # KillMode=process stops only the watcher; its journalctl -f must not outlive it,
+        # whether systemd sends SIGTERM (stop/restart) or the watcher is SIGKILLed.
+        import signal
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            with self.subTest(sig=sig.name):
+                sb = Sandbox(self)
+                sb.fixture("follow.jsonl", "")
+                watcher = subprocess.Popen([sys.executable, str(TOOL), "watch"],
+                                           env=sb.env(STUB_FOLLOW_HOLD="30"),
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL, start_new_session=True)
+                deadline = time.monotonic() + 8
+                while not sb.calls("journalctl"):
+                    self.assertLess(time.monotonic(), deadline, "journalctl never started")
+                    time.sleep(0.05)
+                [jc] = sb.calls("journalctl")
+                self.addCleanup(lambda p=jc["pid"]: alive(p) and os.kill(p, signal.SIGKILL))
+                time.sleep(0.3)
+                os.kill(watcher.pid, sig)  # the watcher only, as KillMode=process does
+                watcher.wait(timeout=10)
+                deadline = time.monotonic() + 5
+                while alive(jc["pid"]) and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertFalse(alive(jc["pid"]), f"journalctl outlived a {sig.name}ed watcher")
 
     def test_a_finished_diagnose_is_reaped_while_the_watcher_runs(self):  # final review #7
         import signal

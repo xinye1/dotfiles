@@ -25,7 +25,7 @@ migration, replacing Omarchy's crash hook with this posture.
 
 - **Crash** — a systemd-coredump journal entry (`MESSAGE_ID=fc2e22bc…`) whose `COREDUMP_UID` is the
   user's own uid.
-- **Report** — `~/.local/state/crash-reports/<ts>_<exe>/report.md`, built on request from the crash.
+- **Report** — `~/.local/state/crash-reports/<ts>_<exe>_<pid>/report.md`, built on request from the crash.
 - **Coalescing** — collapsing repeat crashes of one executable into one notification.
 
 ## §2 Decisions (grill, 2026-10-08)

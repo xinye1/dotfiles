@@ -1870,7 +1870,7 @@ Nothing in it is sway-specific, so it is meant to survive the Omarchy migration 
 `MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1` entries with your uid and raises "Crash: <comm>
 (<signal>)" with the action "Diagnose with Claude" (`-t 0`: it stays until dismissed). A click runs
 `crash-diagnose diagnose <pid>`, which writes
-`~/.local/state/crash-reports/<date>_<exe>/report.md` and opens a herdr tab `crash: <comm>` running
+`~/.local/state/crash-reports/<date>_<exe>_<pid>/report.md` and opens a herdr tab `crash: <comm>` running
 `claude "<PROMPT>"`. The palette's `Dev › Diagnose a crash…` does the same from a list of recent
 crashes. **Claude never starts without a click or a pick.**
 
@@ -1914,7 +1914,9 @@ show as `...`. Honest caveats (spec §8):
   at click time.
 - `KillMode=process`: a click can open a kitty window with Claude in it, a child of the service. A
   watcher restart must not close a window someone is reading. herdr panes live in herdr's own
-  cgroup and are unaffected.
+  cgroup and are unaffected. The flip side: the watcher's own `journalctl -f` would survive too,
+  one more per restart, so the watcher ends it on SIGTERM and the kernel ends it on any other
+  death (`prctl(PR_SET_PDEATHSIG)` in its `preexec_fn`).
 - journalctl nulls fields over 4 KiB without `--all` (`MESSAGE`, which holds the stack, is one) and
   renders binary fields as lists of byte values. `diagnose` reads with `--all`; the watcher asks
   only for small fields, so it never sees the environment.

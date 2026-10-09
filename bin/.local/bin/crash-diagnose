@@ -370,9 +370,12 @@ def write_report(entry, env):
     # chmod too, for a root an earlier version made with the umask.
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     root.chmod(0o700)
-    rdir = root / f"{stamp(ts or 0, '%Y-%m-%d_%H-%M-%S')}_{name}"
+    # The pid too: two crashes of one executable within a second are two reports,
+    # while diagnosing the same crash again reuses its directory.
+    pid = re.sub(r"\D", "", text(entry.get("COREDUMP_PID"))) or "0"
+    rdir = root / f"{stamp(ts or 0, '%Y-%m-%d_%H-%M-%S')}_{name}_{pid}"
     rdir.mkdir(exist_ok=True)
-    tmp = rdir / ".report.md.tmp"
+    tmp = rdir / f".report.md.{os.getpid()}.tmp"  # concurrent diagnoses never share one
     tmp.write_text(report)
     os.replace(tmp, rdir / "report.md")
     os.utime(rdir)  # retention goes by this
@@ -557,11 +560,30 @@ def dismiss_stale_toasts():
             run(["makoctl", "dismiss", "-n", str(toast["id"])], timeout=5)
 
 
+def die_with_parent():
+    """preexec_fn: the kernel sends SIGTERM to this child when the watcher dies,
+    even of SIGKILL (prctl PR_SET_PDEATHSIG). Runs before any thread exists."""
+    import ctypes
+    ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM)
+
+
 def watch():
+    # KillMode=process stops only this process, so the journal follower is ours
+    # to end: a stop/restart must not leave one more journalctl -f behind.
     proc = subprocess.Popen(["journalctl", "-f", "-n", "0", "-o", "json", "--no-pager",
                              f"--output-fields={','.join(WATCH_FIELDS)}",
                              f"MESSAGE_ID={MESSAGE_ID}"],
-                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
+                            preexec_fn=die_with_parent)
+
+    def stop(signum, _frame):
+        proc.terminate()
+        try:
+            proc.wait(2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        os._exit(0)  # a requested stop is not a failure; toast threads die with us
+    signal.signal(signal.SIGTERM, stop)
     # After journalctl starts: a crash meanwhile waits in its pipe, and its toast
     # is raised after this, so it can never be one of the dismissed.
     dismiss_stale_toasts()
