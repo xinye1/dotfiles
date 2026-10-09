@@ -632,5 +632,30 @@ class ClickTest(unittest.TestCase):  # D3
         self.assertEqual(self.sb.diagnosed_pids(), ["2"])
 
 
+class UnitFileTest(unittest.TestCase):
+    """crash-watch.service, read as systemd would: one key=value per line, by section."""
+
+    def unit(self):
+        sections, current = {}, None
+        path = REPO / "systemd/.config/systemd/user/crash-watch.service"
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("[") and line.endswith("]"):
+                current = sections.setdefault(line[1:-1], {})
+            elif line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                current[key.strip()] = value.strip()
+        return sections
+
+    def test_the_unit_runs_the_watcher_and_restarts_it(self):
+        u = self.unit()
+        self.assertEqual(u["Service"]["ExecStart"], "%h/.local/bin/crash-diagnose watch")
+        self.assertEqual(u["Service"]["Restart"], "on-failure")
+        self.assertEqual(u["Install"]["WantedBy"], "default.target")
+
+    def test_a_restart_does_not_close_what_a_click_opened(self):  # Review Focus 3
+        self.assertEqual(self.unit()["Service"]["KillMode"], "process")
+
+
 if __name__ == "__main__":
     unittest.main()

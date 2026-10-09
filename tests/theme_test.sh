@@ -254,6 +254,11 @@ sh "$REPO/tests/lock_test.sh" >/dev/null
 # assertion is the bug it fixes -- grim must run before any picker.
 python3 "$REPO/tests/capture_test.py" 2>/dev/null
 
+# crash-diagnose (PLAYBOOK §9.33): every tool is a stub on a PATH holding only
+# the stub dir, so it never reaches herdr, mako, the journal or systemd. A
+# failure aborts.
+python3 "$REPO/tests/crash_test.py" 2>/dev/null
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar

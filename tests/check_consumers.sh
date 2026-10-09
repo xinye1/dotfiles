@@ -308,6 +308,23 @@ else
     sk "herdr accepts its config" "herdr is not installed"
 fi
 
+# --- crash-watch (crash-diagnose's watcher, PLAYBOOK §9.33) ---
+# A dead watcher looks exactly like a machine with no crashes: no toast either
+# way. Restart=on-failure covers journalctl exiting; this covers the unit never
+# having been linked or enabled. systemd/ is unfolded, so a new unit file is
+# absent until `stow -R systemd` (§5.2).
+if have systemctl && systemctl --user show-environment >/dev/null 2>&1; then
+    if [ ! -f "$HOME/.config/systemd/user/crash-watch.service" ]; then
+        no "crash-watch.service is active" "not installed: \`stow -R systemd\` (the package is unfolded)"
+    elif state=$(systemctl --user is-active crash-watch.service 2>&1); then
+        ok "crash-watch.service is active"
+    else
+        no "crash-watch.service is active" "$state: systemctl --user enable --now crash-watch.service"
+    fi
+else
+    sk "crash-watch.service is active" "no systemd user manager to ask"
+fi
+
 # --- yazi ---
 # `ya env` is a real validator, and a better one than most consumers here have:
 # it loads yazi.toml, keymap.toml and theme.toml and exits 1 on any of them it
