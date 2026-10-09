@@ -23,10 +23,15 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
 MESSAGE_ID = "fc2e22bc6ee647b6b90729ab34a250b1"
+COALESCE_US = 30 * 60 * 1_000_000   # one toast per executable per 30 min
+# What the watcher asks journalctl for: never the environment.
+WATCH_FIELDS = ("COREDUMP_UID", "COREDUMP_PID", "COREDUMP_EXE", "COREDUMP_COMM",
+                "COREDUMP_SIGNAL", "COREDUMP_SIGNAL_NAME", "COREDUMP_TIMESTAMP")
 KEEP = 20                           # reports kept, and rows `list` offers
 GDB_TIMEOUT = float(os.environ.get("CRASH_DIAGNOSE_GDB_TIMEOUT", "90"))
 INFO_TIMEOUT = float(os.environ.get("CRASH_DIAGNOSE_INFO_TIMEOUT", "30"))
@@ -81,6 +86,11 @@ def signame(number):
 
 def stamp(us, fmt="%m-%d %H:%M"):
     return datetime.fromtimestamp(int(us) / 1e6).strftime(fmt)
+
+
+def ordinal(n):
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def run(argv, timeout=INFO_TIMEOUT, env=None):
@@ -398,10 +408,96 @@ def cmd_diagnose(arg):
     return 0 if launch(rdir, comm, env) else 1
 
 
+# --- watch ---
+
+class Toasts:
+    """One toast per executable per COALESCE_US; a repeat replaces it with a count."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.groups = {}
+        self.threads = []
+
+    def crash(self, e):
+        exe = text(e.get("COREDUMP_EXE")) or text(e.get("COREDUMP_COMM")) or "?"
+        pid = text(e.get("COREDUMP_PID"))
+        comm = text(e.get("COREDUMP_COMM")) or Path(exe).name
+        sig = text(e.get("COREDUMP_SIGNAL_NAME")) or signame(text(e.get("COREDUMP_SIGNAL")))
+        ts = int(text(e.get("COREDUMP_TIMESTAMP")) or text(e.get("__REALTIME_TIMESTAMP")) or 0)
+        with self.lock:
+            group = self.groups.get(exe)
+            if group and ts - group["first"] < COALESCE_US:
+                group["count"] += 1
+            else:
+                group = self.groups[exe] = {"first": ts, "count": 1, "nid": None}
+            group.update(pid=pid, diagnosed=False)
+            body = f"pid {pid} · {ordinal(group['count'])} since {stamp(group['first'])}"
+            argv = ["notify-send", "-u", "normal", "-a", "crash", "-t", "0", "-p",
+                    "-A", "default=Diagnose with Claude", "--wait"]
+            if group["nid"]:
+                argv += ["-r", group["nid"]]
+        argv += [f"Crash: {comm} ({sig})", body]
+        try:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+        except OSError:
+            return
+        # -p prints the id at once; read it here, before the next entry, so a
+        # repeat a moment later can replace this toast.
+        first = proc.stdout.readline().strip()
+        if first.isdigit():
+            with self.lock:
+                group["nid"] = first
+        thread = threading.Thread(target=self.await_click, args=(proc, group, first), daemon=True)
+        thread.start()
+        self.threads.append(thread)
+
+    def await_click(self, proc, group, first):
+        replies = [first] + [line.strip() for line in proc.stdout]
+        proc.wait()
+        if "default" not in replies:
+            return  # dismissed or expired: the crash stays in the palette list
+        with self.lock:
+            # A replaced toast can report the click twice (its old and new
+            # notify-send); diagnose once, the newest crash.
+            if group["diagnosed"]:
+                return
+            group["diagnosed"] = True
+            pid = group["pid"]
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "diagnose", pid],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         start_new_session=True)
+
+    def join(self, timeout):
+        for thread in self.threads:
+            thread.join(timeout)
+
+
+def watch():
+    proc = subprocess.Popen(["journalctl", "-f", "-n", "0", "-o", "json", "--no-pager",
+                             f"--output-fields={','.join(WATCH_FIELDS)}",
+                             f"MESSAGE_ID={MESSAGE_ID}"],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+    toasts = Toasts()
+    for line in proc.stdout:
+        try:
+            entry = json.loads(line)
+            if isinstance(entry, dict) and own(entry.get("COREDUMP_UID")):
+                toasts.crash(entry)
+        except Exception as e:  # one bad entry must not stop the watcher
+            print(f"crash-diagnose: skipped an entry: {type(e).__name__}: {e}", file=sys.stderr)
+    proc.wait()
+    toasts.join(5)
+    print(f"crash-diagnose: journalctl exited ({proc.returncode})", file=sys.stderr)
+    return 1  # Restart=on-failure brings the watcher back
+
+
 USAGE = "usage: crash-diagnose watch | list | diagnose <pid | a line from list>"
 
 
 def main(argv):
+    if argv == ["watch"]:
+        return watch()
     if argv == ["list"]:
         return cmd_list()
     if len(argv) >= 2 and argv[0] == "diagnose":

@@ -510,6 +510,97 @@ class RetentionTest(unittest.TestCase):  # D8
         sb.tool("diagnose", "222")
         self.assertEqual(len(sb.reports()), 1)
 
+class WatchUidTest(unittest.TestCase):  # D1
+    def test_another_users_crash_is_ignored(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", json.dumps(entry(pid=111, uid=OTHER, comm="chrome")) + "\n"
+                   + json.dumps(entry(pid=222)) + "\n")
+        sb.tool("watch")
+        toasts = sb.toasts()
+        self.assertEqual(len(toasts), 1, toasts)
+        self.assertEqual(toasts[0]["argv"][-2], "Crash: waybar (SIGABRT)")
+        self.assertTrue(toasts[0]["argv"][-1].startswith("pid 222 · 1st since 10-02 21:51"))
+
+    def test_root_crash_is_ignored(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", json.dumps(entry(pid=111, uid=0)) + "\n")
+        self.assertEqual(sb.tool("watch").returncode, 1)
+        self.assertEqual(sb.toasts(), [])
+
+    def test_journal_is_followed_from_now_without_the_environment(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", "")
+        r = sb.tool("watch")
+        self.assertEqual(r.returncode, 1, "journalctl exiting must be a failure (Restart=on-failure)")
+        [jc] = sb.calls("journalctl")
+        for arg in ("-f", "-n", "0", "-o", "json", f"MESSAGE_ID={MID}"):
+            self.assertIn(arg, jc["argv"])
+        [fields] = [a for a in jc["argv"] if a.startswith("--output-fields=")]
+        self.assertIn("COREDUMP_UID", fields)
+        self.assertNotIn("ENVIRON", fields)
+
+    def test_a_malformed_line_does_not_stop_the_watcher(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", "not json\n[1]\n" + json.dumps(entry()) + "\n")
+        sb.tool("watch")
+        self.assertEqual(len(sb.toasts()), 1)
+
+
+class CoalesceTest(unittest.TestCase):  # D2
+    def test_a_repeat_within_30_min_replaces_the_toast_and_after_is_new(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", "".join(json.dumps(e) + "\n" for e in (
+            entry(pid=1, ts=T0),
+            entry(pid=9, ts=T0 + 1 * MIN, exe="/usr/bin/foot", comm="foot"),
+            entry(pid=2, ts=T0 + 10 * MIN),
+            entry(pid=3, ts=T0 + 31 * MIN))))
+        sb.tool("watch")
+        t = [c["argv"] for c in sb.toasts()]
+        self.assertEqual(len(t), 4, t)
+        self.assertNotIn("-r", t[0])
+        self.assertTrue(t[0][-1].startswith("pid 1 · 1st since 10-02 21:51"), t[0])
+        self.assertNotIn("-r", t[1])                       # another exe: its own toast
+        self.assertEqual(t[2][t[2].index("-r") + 1], "41")  # toast 1's id, from -p
+        self.assertTrue(t[2][-1].startswith("pid 2 · 2nd since 10-02 21:51"), t[2])
+        self.assertNotIn("-r", t[3])                       # 31 min after the first: new toast
+        self.assertTrue(t[3][-1].startswith("pid 3 · 1st since 10-02 22:22"), t[3])
+
+    def test_toast_shape(self):
+        sb = Sandbox(self)
+        sb.fixture("follow.jsonl", json.dumps(entry()) + "\n")
+        sb.tool("watch")
+        [t] = sb.toasts()
+        a = t["argv"]
+        # -t 0: a crash toast stays until dismissed (Xinye, 2026-10-09); mako's 8 s default hid it
+        for flag, value in (("-u", "normal"), ("-a", "crash"), ("-t", "0"),
+                            ("-A", "default=Diagnose with Claude")):
+            self.assertEqual(a[a.index(flag) + 1], value)
+        self.assertIn("-p", a)
+
+
+class ClickTest(unittest.TestCase):  # D3
+    def setUp(self):
+        self.sb = Sandbox(self)
+
+    def test_a_click_spawns_diagnose_for_that_pid(self):
+        self.sb.fixture("follow.jsonl", json.dumps(entry(pid=222)) + "\n")
+        self.sb.tool("watch", STUB_NOTIFY_SEND="click")
+        self.assertEqual(self.sb.diagnosed_pids(), ["222"])
+        self.assertTrue(self.sb.calls("herdr"))
+
+    def test_a_dismissed_toast_starts_nothing(self):
+        self.sb.fixture("follow.jsonl", json.dumps(entry(pid=222)) + "\n")
+        self.assertEqual(self.sb.tool("watch", STUB_NOTIFY_SEND="").returncode, 1)
+        self.assertEqual(len(self.sb.toasts()), 1)
+        self.assertEqual(self.sb.diagnosed_pids(), [])
+        self.assertEqual(self.sb.calls("herdr"), [])
+
+    def test_a_click_on_a_replaced_toast_diagnoses_once_the_newest(self):  # Review Focus 2
+        self.sb.fixture("follow.jsonl", json.dumps(entry(pid=1, ts=T0)) + "\n"
+                        + json.dumps(entry(pid=2, ts=T0 + MIN)) + "\n")
+        self.sb.tool("watch", STUB_NOTIFY_SEND="click-late", STUB_FOLLOW_HOLD="1.5")
+        self.assertEqual(self.sb.diagnosed_pids(), ["2"])
+
 
 if __name__ == "__main__":
     unittest.main()
