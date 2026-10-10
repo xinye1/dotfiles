@@ -173,6 +173,7 @@ isolation.
 | `accent2` | focused-inactive border, calendar weekdays, waybar mode |
 | `indicator` | sway split indicator — where the next window will open |
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
+| `critical_text` | `critical` when it must be *read* — swaysweeper's 3 and its flag. Nord's red is lightened toward `fg_bright` only until it clears 4.5:1 on `desktop`, as `dim` was; gruvbox's red already clears it |
 | `warning` | warning states, "today" in the calendar, idle inhibitor on |
 | `success` | battery charging, success states |
 | `desktop` | one shade below `bg`: the fallback behind the wallpaper slot, the letterbox around an image, and the lock colour when there is no usable image (§9.25) |
@@ -364,6 +365,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `htop` | **Yes — and it must be** | When htop does save `htoprc` (clean quit, settings changed) it uses `mkstemp` + `rename()`. A `rename()` onto a *file* symlink replaces the symlink with a regular file, so an unfolded `htop` would silently detach from the repo the first time it saved. Folded, the write lands on the repo's own file. See §9.16. |
 | `bash` | **Neither — no directory to fold** | Owns two loose files, `~/.bashrc` and `~/.config/dircolors`, and no directory of its own. `$HOME` and `~/.config` always exist, so stow has nothing to fold and always links file by file. Consequence: **a new file added to this package is silently absent until `stow -R bash`**, the same as an unfolded package, and it can never become folded by accident. |
 | `starship` | **Neither — no directory to fold** | Owns one loose file, `~/.config/starship.toml`. Same as `bash`: no directory, nothing to fold, `stow -R starship` needed for any file added later. |
+| `swaysweeper` | **Yes — and it must be** | The game watches `colors.gen.toml` for live repaint, and through an unfolded package (the file a symlink into the repo) it receives no change events. The game never writes here — its state is in `~/.local/state/swaysweeper`. `setup.sh` must not pre-create the directory. `tests/check_consumers.sh` asserts the fold. |
 
 **`systemd-system/` is not in this table because it is not stow-managed at all.** It mirrors the
 root filesystem (`/etc/systemd/system`, `/etc/udev/rules.d`, `/usr/local/bin`), not `$HOME`, and `.stowrc` pins

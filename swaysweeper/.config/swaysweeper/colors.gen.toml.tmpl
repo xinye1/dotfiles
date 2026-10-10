@@ -1,0 +1,47 @@
+# Generated from palettes.toml by `theme` — do not edit; edit the .tmpl.
+#
+# swaysweeper's colour slots (~/repos/swaysweeper, spec §3). The game watches
+# this file and repaints on every switch — which needs ~/.config/swaysweeper
+# to stay FOLDED (PLAYBOOK §5.2): through an unfolded package the game gets no
+# change events. It never writes here.
+#
+# `swaysweeper --check-colors` holds these to floors: numbers 4.5:1 on
+# `revealed`, the bevel pair 3:1, and more. tests/check_consumers.sh runs it
+# under both palettes.
+#
+# Departures from winmine's colours, all forced by a dark background:
+# - opened squares are `desktop`, darker than `bg` — it is what lets
+#   magenta (4) and gruvbox's red clear 4.5:1;
+# - winmine's navy 4, maroon 5 and black 7 vanish on dark: 4 is magenta,
+#   5 the yellow `warning`, 7 `fg`;
+# - 3 and the flag are `critical_text`, the readable red (palettes.toml).
+
+face = "{{surface}}"
+light = "{{dim}}"
+shadow = "{{desktop}}"
+grid = "{{sel}}"
+revealed = "{{desktop}}"
+backdrop = "{{desktop}}"
+text = "{{fg}}"
+
+led_bg = "{{desktop}}"
+led_on = "{{critical}}"
+led_off = "{{bg}}"
+
+mine = "{{fg}}"
+glint = "{{bg}}"
+flag = "{{critical_text}}"
+ink = "{{fg}}"
+exploded = "{{critical}}"
+smiley = "{{warning}}"
+smiley_ink = "{{desktop}}"
+cursor = "{{fg_bright}}"
+
+num1 = "{{ansi_bright_blue}}"
+num2 = "{{ansi_bright_green}}"
+num3 = "{{critical_text}}"
+num4 = "{{ansi_bright_magenta}}"
+num5 = "{{warning}}"
+num6 = "{{ansi_bright_cyan}}"
+num7 = "{{fg}}"
+num8 = "{{dim}}"
