@@ -448,7 +448,7 @@ PY
     if [ -L "$HOME/.config/swaysweeper" ]; then
         ok "~/.config/swaysweeper is folded (live repaint needs it)"
     elif [ -e "$HOME/.config/swaysweeper" ]; then
-        no "~/.config/swaysweeper is folded (live repaint needs it)" "unfolded: stow -D swaysweeper; rm -r ~/.config/swaysweeper; stow swaysweeper"
+        no "~/.config/swaysweeper is folded (live repaint needs it)" "unfolded: stow -D swaysweeper; rmdir ~/.config/swaysweeper (inspect anything left first); stow swaysweeper"
     else
         no "~/.config/swaysweeper is folded (live repaint needs it)" "not stowed: stow swaysweeper"
     fi
