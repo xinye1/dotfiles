@@ -27,12 +27,6 @@ accent = "#88c0d0"
 accent2 = "#5e81ac"
 indicator = "#8fbcbb"
 critical = "#bf616a"
-# `critical` when it has to be READ, not just seen: swaysweeper's 3 and its
-# flag. Nord has no lighter red; this is `critical` mixed toward `fg_bright` in
-# 5% steps, stopping at the first that clears 4.5:1 on `desktop` (20%: 4.55:1;
-# 3.23:1 on `surface`, under the flag). `dim`'s rule: the shortest step the
-# floor asks for, nothing more. §3.1.
-critical_text = "#c87d86"
 warning = "#ebcb8b"
 success = "#a3be8c"
 desktop = "#272b33"
@@ -74,8 +68,6 @@ accent = "#fabd2f"
 accent2 = "#d65d0e"
 indicator = "#8ec07c"
 critical = "#fb4934"
-# gruvbox's red already clears 4.5:1 on `desktop` (4.77:1) unchanged. §3.1.
-critical_text = "#fb4934"
 warning = "#fe8019"
 success = "#b8bb26"
 desktop = "#1d2021"
