@@ -187,9 +187,12 @@ used `muted`, which measured 1.87:1 on the GTK tooltip under nord — the widget
 gruvbox, where the same role scrapes 3.64:1 and merely looks quiet (§9.28). If a new role is ever
 added for text, give it a measured floor in this table or it will drift the same way.
 
-`desktop` being darker than `bg` is what turns the gaps between windows into visible channels, and
-is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
-hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
+`desktop` being darker than `bg` is what turns the gaps between windows into visible channels when
+gaps are on (`$mod+g`; everyday they are zero, which is why `smart_borders` is off — §9.8) and
+`desktop` is what shows in them: no usable wallpaper, or one that does not fill the output. Over a
+full-screen wallpaper the gaps show the wallpaper, so tuning `desktop` changes nothing there. Nord
+has nothing below `nord0`, so its value is a hand-darkened one; Gruvbox ships the idea as `bg0_h`.
+`palettes.toml` records both.
 
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
 role colours; the other eight are not, and are kitty's. They used to be duplicated across two
@@ -487,7 +490,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
-| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 6/2 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
+| Gaps toggle | `$mod+g` | Everyday gaps are zero; this shows the 6/2 frame and the second press returns to none — sway's toggle is `value ? 0 : amount`, so one end is always zero |
 | Screenshot | `Print` / `Ctrl+Print` / `Shift+Print` | Region / focused window / display. Shot first at the keypress, then cropped in satty (`scripts/capture.py`) — §9.32. `$mod+Print` starts or stops a recording |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
@@ -751,9 +754,11 @@ Three separate surprises, all hit while tuning the borders:
   ```
 - **Runtime `gaps` changes survive `swaymsg reload`.** Once you run `swaymsg gaps inner all set 20`,
   that value sticks for existing workspaces; the config line only sets the default for new ones.
-  Reloading will *not* put it back. Reset explicitly:
+  Reloading will *not* put it back — and the same holds the other way: after **editing** the
+  config's gaps, a reload leaves every existing workspace at the old values, so the first `$mod+g`
+  there toggles from the wrong end. Reset explicitly, to the config's values:
   ```sh
-  swaymsg gaps inner all set 6 && swaymsg gaps outer all set 2
+  swaymsg gaps inner all set 0 && swaymsg gaps outer all set 0
   ```
   This makes live experimentation safe *and* confusing — you can end up convinced the config file
   is being ignored.
@@ -761,7 +766,9 @@ Three separate surprises, all hit while tuning the borders:
   a maximised window and the bar most need distinguishing. Set to `off`.
 
 For a single window on a workspace, the visible margin is `outer + inner` (with `outer 4 inner 8`,
-measured 12 px on all sides; today's `outer 2 inner 6` gives 8, and 6 between tiles).
+measured 12 px on all sides). Everyday gaps are now `0 / 0`, so there is no margin at all and the
+border is the only edge between a lone window and the bar, both `bg`; `$mod+g` toggles `outer 2
+inner 6` on, which gives 8, and 6 between tiles.
 
 ### 9.9 GTK apps need restarting after a theme change
 
@@ -1874,7 +1881,7 @@ Ctrl+Print mid-termtris (the bricks are); OCR some terminal text; `$mod+Print` t
 | Background reverted to an image | azote | §9.3 |
 | Notification icons missing | mako `icon-path` | Must be a directory that exists |
 | Border width change ignored | Applies to new windows only | `swaymsg '[title=".*"] border pixel 2'`; §9.8 |
-| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 6; swaymsg gaps outer all set 2`; §9.8 |
+| Gaps stuck at an old value | A runtime `gaps` command overrode the config | `swaymsg gaps inner all set 0; swaymsg gaps outer all set 0`; §9.8 |
 | `htoprc` edit reverted | A running htop flushed its in-memory settings on quit | `pkill -9 htop`, then edit; §9.16 |
 | htop changes stopped reaching the repo | `rename()` replaced the symlink | `ls -ld ~/.config/htop` must be a symlink; §9.16 |
 | htop right-hand CPUs render below the left | All meters piled into `column_meters_0` | §9.16 |
