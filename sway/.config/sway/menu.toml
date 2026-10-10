@@ -191,7 +191,8 @@ run = "~/.config/sway/scripts/window_switcher.sh"
 group = "Windows"
 label = "Toggle gaps"
 icon = "view-restore"
-run = "swaymsg gaps inner current toggle 12"
+# The same command as $mod+g (config.d/default), so the two leave the same gaps.
+run = "swaymsg gaps inner current toggle 6, gaps outer current toggle 2"
 
 [[action]]
 group = "Keys"
