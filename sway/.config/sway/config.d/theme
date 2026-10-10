@@ -27,12 +27,13 @@ exec_always ~/.config/sway/scripts/import-gsettings
 #
 # Colours are further down, in the `client.*` block.
 
-# Everyday: 6 between tiles, 8 at the screen edges and beside the bar (outer +
-# inner) -- 12 and 16 physical px at scale 2, enough for the wallpaper to frame
-# the tiles. Gaps are for windows only: the bar stays flush to its edge. $mod+g
-# turns them off and back on (config.d/default); keep its amounts in step.
-gaps inner 6
-gaps outer 2
+# Everyday: no gaps -- tiles meet edge to edge and every pixel goes to windows.
+# $mod+g (config.d/default) toggles framed gaps on and back off: 6 between
+# tiles, 8 at the screen edges and beside the bar (outer + inner), 12 and 16
+# physical px at scale 2, enough for the wallpaper to frame the tiles. Gaps are
+# for windows only: the bar stays flush to its edge.
+gaps inner 0
+gaps outer 0
 
 # Border thickness. `pixel N` means "N px border, no titlebar" — using
 # `normal` instead would bring back a titlebar with the window title in it.

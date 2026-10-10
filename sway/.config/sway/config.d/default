@@ -213,9 +213,9 @@ set $powermenu ~/.config/sway/scripts/menu.py --group System
 #
 # Gaps:
 #
-    # Gaps off and back on, for when a tile needs every pixel. sway's toggle is
-    # `value ? 0 : amount` (sway/commands/gaps.c), so these amounts must match
-    # the everyday gaps in config.d/theme or the second press lands elsewhere.
+    # Gaps on and back off; everyday is none (config.d/theme). sway's toggle is
+    # `value ? 0 : amount` (sway/commands/gaps.c), so from zero these amounts
+    # are what the first press shows, and the second press returns to zero.
     bindsym $mod+g gaps inner current toggle 6, gaps outer current toggle 2
 
 #
