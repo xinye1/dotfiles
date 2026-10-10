@@ -187,9 +187,9 @@ used `muted`, which measured 1.87:1 on the GTK tooltip under nord — the widget
 gruvbox, where the same role scrapes 3.64:1 and merely looks quiet (§9.28). If a new role is ever
 added for text, give it a measured floor in this table or it will drift the same way.
 
-`desktop` being darker than `bg` is what turns the gaps between windows into visible channels, and
-is what makes `smart_borders on` safe. Nord has nothing below `nord0`, so its value is a
-hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
+`desktop` being darker than `bg` is what turns the gaps between windows into visible channels when
+gaps are on (`$mod+g`; everyday they are zero, which is why `smart_borders` is off — §9.8). Nord
+has nothing below `nord0`, so its value is a hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
 
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
 role colours; the other eight are not, and are kitty's. They used to be duplicated across two
@@ -761,7 +761,9 @@ Three separate surprises, all hit while tuning the borders:
   a maximised window and the bar most need distinguishing. Set to `off`.
 
 For a single window on a workspace, the visible margin is `outer + inner` (with `outer 4 inner 8`,
-measured 12 px on all sides; today's `outer 2 inner 6` gives 8, and 6 between tiles).
+measured 12 px on all sides). Everyday gaps are now `0 / 0`, so there is no margin at all and the
+border is the only edge between a lone window and the bar, both `bg`; `$mod+g` toggles `outer 2
+inner 6` on, which gives 8, and 6 between tiles.
 
 ### 9.9 GTK apps need restarting after a theme change
 

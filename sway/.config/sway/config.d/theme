@@ -43,13 +43,13 @@ default_border pixel 2
 default_floating_border pixel 3
 
 # smart_borders on = hide borders when a workspace holds only ONE window.
-# Safe here because the desktop background is darker than the window background,
-# so a lone window still has a visible edge without a border. Set this to `off`
-# if the background ever goes back to nord0.
-#   on       hide when only one window   <- current
-#   no_gaps  hide only when gaps are also zero
-#   off      always draw
-smart_borders on
+# Off, because the everyday gaps are zero: with no desktop showing around it, a
+# lone borderless window meets the bar flush, and both are `bg`, so the two run
+# together with no edge. The border is that edge (PLAYBOOK §9.8).
+#   on       hide when only one window
+#   no_gaps  hide only when gaps are also zero -- i.e. always, here
+#   off      always draw                 <- current
+smart_borders off
 
 # Default Font. The Nerd Font variant, not plain "JetBrains Mono" — sway renders
 # window titles and the resize/mode indicator with this, and both can carry the
@@ -85,8 +85,8 @@ font pango:JetBrainsMono Nerd Font 10
 # $desktop is deliberately one shade DARKER than the window background
 # (nord0 #2E3440): it is the fallback field, the letterbox colour around an
 # image that does not fill, and the lock colour when there is no image. When
-# it shows, the gaps read as channels between tiles rather than dead space and
-# a lone window stays legible even with smart_borders on.
+# it shows -- with gaps on ($mod+g) -- the gaps read as channels between tiles
+# rather than dead space.
 #
 # $desktop (#272B33 for Nord) is a darkened nord0, not a canonical Nord value —
 # the one deliberate exception to the "pick a role from the palette" rule, and
