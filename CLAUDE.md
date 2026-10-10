@@ -106,6 +106,11 @@ triggers, not the full story: read the named section before working in its area.
   time** — sway has no IPC that lists bindings. A binding in a shape the parser does not follow
   would silently drop off the list, so `tests/keyhint_test.py` asserts row count = bind lines in
   the repo's sway package; extend the parser, not the count (§7).
+- **Never read a child's output through a pipe when the child may run `wl-copy` or fork a daemon.**
+  wl-copy forks to serve the clipboard and inherits the pipe, so a read to EOF (`communicate()`,
+  `capture_output=True`, `$(…)`) waits until something else is copied. That hung capture.py and
+  the palette's error toast. Send the output to a file or tempfile instead, and after a timeout
+  kill the group and close the pipes unread (§9.32, §9.33).
 
 ## Verify
 
