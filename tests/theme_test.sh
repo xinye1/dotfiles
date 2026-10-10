@@ -233,18 +233,27 @@ python3 "$REPO/tests/claude_usage_test.py" >/dev/null
 # powershell.exe is reachable (WSL); a skip elsewhere. Same contract.
 python3 "$REPO/tests/claude_tray_test.py" >/dev/null
 
+# The suites below hide their output, so a failure must name itself: set -e
+# alone would end the run with no hint which suite failed.
+quiet_suite() {
+    python3 "$REPO/tests/$1" 2>/dev/null || {
+        printf 'theme_test: tests/%s failed (its output is hidden here); run it directly\n' "$1" >&2
+        exit 1
+    }
+}
+
 # herdr's attention plugin, the waybar custom/herdr module and the session
 # backup (PLAYBOOK §9.30). Same contract: stubs only, and a failure aborts.
-python3 "$REPO/tests/herdr_test.py" 2>/dev/null
+quiet_suite herdr_test.py
 
 # The keybinding cheat sheet reads sway's config files itself (PLAYBOOK §7);
 # this also asserts it lists every bind line in the repo's sway package.
-python3 "$REPO/tests/keyhint_test.py" 2>/dev/null
+quiet_suite keyhint_test.py
 
 # The Super+Space command palette (menu.py, menu.toml). Stubs only; a failure
 # aborts. Includes the rot guard: every command menu.toml names must resolve in
 # the PATH actions really run with, not this shell's (spec §3.3).
-python3 "$REPO/tests/menu_test.py" 2>/dev/null
+quiet_suite menu_test.py
 
 # The lock screen's wallpaper guard (PLAYBOOK §9.25). A stub swaylock only;
 # the real one would lock the session. A failure aborts.
@@ -252,18 +261,12 @@ sh "$REPO/tests/lock_test.sh" >/dev/null
 
 # Focus-safe capture (capture.py): stubs only; a failure aborts. Its first
 # assertion is the bug it fixes -- grim must run before any picker.
-python3 "$REPO/tests/capture_test.py" 2>/dev/null || {
-    printf 'theme_test: tests/capture_test.py failed (its output is hidden here); run it directly\n' >&2
-    exit 1
-}
+quiet_suite capture_test.py
 
 # crash-diagnose (PLAYBOOK §9.33): every tool is a stub on a PATH holding only
 # the stub dir, so it never reaches herdr, mako, the journal or systemd. A
 # failure aborts.
-python3 "$REPO/tests/crash_test.py" 2>/dev/null || {
-    printf 'theme_test: tests/crash_test.py failed (its output is hidden here); run it directly\n' >&2
-    exit 1
-}
+quiet_suite crash_test.py
 
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
