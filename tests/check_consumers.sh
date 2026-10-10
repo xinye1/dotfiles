@@ -445,15 +445,17 @@ PY
         fi
     done
     rm -rf "$ss_tmp"
-    if [ -L "$HOME/.config/swaysweeper" ]; then
-        ok "~/.config/swaysweeper is folded (live repaint needs it)"
-    elif [ -e "$HOME/.config/swaysweeper" ]; then
-        no "~/.config/swaysweeper is folded (live repaint needs it)" "unfolded: stow -D swaysweeper; rmdir ~/.config/swaysweeper (inspect anything left first); stow swaysweeper"
-    else
-        no "~/.config/swaysweeper is folded (live repaint needs it)" "not stowed: stow swaysweeper"
-    fi
 else
     sk "swaysweeper colours" "not installed — make install in ~/repos/swaysweeper"
+fi
+# The package is stowed with all the others whether or not the game is
+# installed, so its fold is checked either way.
+if [ -L "$HOME/.config/swaysweeper" ]; then
+    ok "~/.config/swaysweeper is folded (live repaint needs it)"
+elif [ -e "$HOME/.config/swaysweeper" ]; then
+    no "~/.config/swaysweeper is folded (live repaint needs it)" "unfolded: stow -D swaysweeper; rmdir ~/.config/swaysweeper (inspect anything left first); stow swaysweeper"
+else
+    no "~/.config/swaysweeper is folded (live repaint needs it)" "not stowed: stow swaysweeper"
 fi
 
 printf '\n%s  %d consumer checks%s\n\n' \
