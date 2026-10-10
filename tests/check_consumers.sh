@@ -430,51 +430,6 @@ PY
     fi
 fi
 
-# --- swaysweeper ---
-# The game falls back per slot with only a stderr line, so a misspelt slot, or
-# a palette edit that drops a number under 4.5:1, would ship looking almost
-# right. Ask the game itself, under BOTH palettes (the live file is only the
-# current one), rendered to a scratch dir through theme's own functions.
-ss="$HOME/.local/bin/swaysweeper"
-if [ -x "$ss" ]; then
-    ss_tmp=$(mktemp -d)
-    for p in nord gruvbox; do
-        if python3 - "$repo" "$p" "$ss_tmp/$p.toml" <<'PY'
-import importlib.machinery, importlib.util, sys
-from pathlib import Path
-root, name, out = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
-loader = importlib.machinery.SourceFileLoader("theme", str(root / "bin/.local/bin/theme"))
-spec = importlib.util.spec_from_loader("theme", loader)
-theme = importlib.util.module_from_spec(spec)
-loader.exec_module(theme)
-tmpl = root / "swaysweeper/.config/swaysweeper/colors.gen.toml.tmpl"
-data = theme.load_palettes(root)
-out.write_text(theme.render(tmpl.read_text(), theme.bindings(data[name], name), tmpl.name))
-PY
-        then
-            if out=$("$ss" --check-colors "$ss_tmp/$p.toml" 2>&1); then
-                ok "swaysweeper accepts its colours under $p"
-            else
-                no "swaysweeper accepts its colours under $p" "$(printf '%s' "$out" | head -3)"
-            fi
-        else
-            no "swaysweeper colours render under $p"
-        fi
-    done
-    rm -rf "$ss_tmp"
-else
-    sk "swaysweeper colours" "not installed — make install in ~/repos/swaysweeper"
-fi
-# The package is stowed with all the others whether or not the game is
-# installed, so its fold is checked either way.
-if [ -L "$HOME/.config/swaysweeper" ]; then
-    ok "~/.config/swaysweeper is folded (live repaint needs it)"
-elif [ -e "$HOME/.config/swaysweeper" ]; then
-    no "~/.config/swaysweeper is folded (live repaint needs it)" "unfolded: stow -D swaysweeper; rmdir ~/.config/swaysweeper (inspect anything left first); stow swaysweeper"
-else
-    no "~/.config/swaysweeper is folded (live repaint needs it)" "not stowed: stow swaysweeper"
-fi
-
 printf '\n%s  %d consumer checks%s\n\n' \
     "$([ "$fail" -eq 0 ] && echo PASS || echo FAIL)" "$((pass+fail))" \
     "$([ "$skip" -eq 0 ] || printf ', %d skipped' "$skip")"

@@ -73,7 +73,6 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bin` | `~/.local/bin/theme` — the palette renderer; `herdr-session-backup`; `tp-backup`, `tp-backup-ssd` |
 | `claude` | `~/.claude/statusline.py` — the Claude Code status line |
 | `herdr` | `~/.config/herdr/config.toml`, `local-plugins/attention/` — the agent multiplexer and its blocked-agent alerts |
-| `swaysweeper` | `~/.config/swaysweeper/colors.gen.toml` — swaysweeper's colours (the game is `~/repos/swaysweeper`) |
 | `kitty` | `~/.config/kitty/kitty.conf` — **the terminal**; ported from the retired `foot` package |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
 | `starship` | `~/.config/starship.toml` |
