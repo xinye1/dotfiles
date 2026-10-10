@@ -188,7 +188,9 @@ gruvbox, where the same role scrapes 3.64:1 and merely looks quiet (§9.28). If 
 added for text, give it a measured floor in this table or it will drift the same way.
 
 `desktop` being darker than `bg` is what turns the gaps between windows into visible channels when
-gaps are on (`$mod+g`; everyday they are zero, which is why `smart_borders` is off — §9.8). Nord
+gaps are on (`$mod+g`; everyday they are zero, which is why `smart_borders` is off — §9.8) and
+`desktop` is what shows in them: no usable wallpaper, or one that does not fill the output. Over a
+full-screen wallpaper the gaps show the wallpaper, so tuning `desktop` changes nothing there. Nord
 has nothing below `nord0`, so its value is a hand-darkened one; Gruvbox ships the idea as `bg0_h`. `palettes.toml` records both.
 
 A third group is the **16-colour terminal ramp**, under `[<palette>.ansi]`. Eight of its slots are
