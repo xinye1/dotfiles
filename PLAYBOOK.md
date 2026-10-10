@@ -487,7 +487,7 @@ capability added on top of stock (§6.3) and the one known-incomplete fix (§6.4
 | Workspace back-and-forth | `$mod+Tab`, plus `workspace_auto_back_and_forth yes` | Re-pressing the current workspace's number returns to the previous one |
 | Dropdown terminal | `$mod+grave` | `kitty --class dropdown`, parked in the scratchpad. `swaymsg … scratchpad show` exits 2 when nothing matches, so `\|\| kitty …` creates it on first press. `--class` sets the app_id the `for_window` rule matches on — and stays this simple only while `$term` is one-process-per-window; under `--single-instance` it would need `--instance-group dropdown` too |
 | Modal resize | `$mod+r` | vim keys and arrows; `Escape`/`Return` exits. Indicator drawn by waybar's `sway/mode` module |
-| Gaps toggle | `$mod+g` | Gaps off and back on to the everyday 6/2 — sway's toggle is `value ? 0 : amount`, so it can only go to zero |
+| Gaps toggle | `$mod+g` | Everyday gaps are zero; this shows the 6/2 frame and the second press returns to none — sway's toggle is `value ? 0 : amount`, so one end is always zero |
 | Screenshot | `Print` / `Ctrl+Print` / `Shift+Print` | Region / focused window / display. Shot first at the keypress, then cropped in satty (`scripts/capture.py`) — §9.32. `$mod+Print` starts or stops a recording |
 | Workspace → output | `$mod+Ctrl+Shift+{h,j,k,l}` | **Not** `$mod+Ctrl` — already bound to resize |
 | Workspace pinning | `config.d/output` | 1–5 on `eDP-1`; 6–10 prefer an external and fall back. sway ignores a disconnected output name, so it's safe undocked |
