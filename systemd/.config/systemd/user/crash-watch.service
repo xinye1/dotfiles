@@ -1,0 +1,14 @@
+[Unit]
+Description=crash-diagnose: a toast for each crash of your own processes (PLAYBOOK §9.33)
+
+[Service]
+ExecStart=%h/.local/bin/crash-diagnose watch
+Restart=on-failure
+RestartSec=5
+# A click starts `crash-diagnose diagnose`, which can open a kitty window with
+# Claude in it; all of them are children of this service. KillMode=process
+# stops only the watcher, so restarting it never closes a window being read.
+KillMode=process
+
+[Install]
+WantedBy=default.target

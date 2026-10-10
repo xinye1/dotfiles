@@ -5,6 +5,7 @@ desktop-file-utils
 fd
 fuzzel
 fzf
+gdb
 git
 grim
 htop

@@ -287,6 +287,7 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
+| `gdb` | repo | crash-diagnose's symbolised backtrace (§9.33). Installed today only as a dependency of `debugedit`, so a cleanup could orphan it, and a report then just says "no symbolised backtrace" |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
 | `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
 | `lualine.nvim`, `nvim-web-devicons` | **self-installing** | nvim's statusline. Fetched by `vim.pack.add` in `init.lua` on first launch, into `~/.local/share/nvim/site/pack/core/opt` — nothing to clone by hand, and nothing in `~/.config/nvim` (§5.2). nvim's *colourschemes* are still written from the §3.1 roles rather than cloned, and lualine is themed from them too, so no plugin decides a colour here |
@@ -362,6 +363,7 @@ links **file by file** and a newly added file is silently absent until `stow -R 
 | `nvim` | **Yes** | Neovim keeps its state in `~/.local/share/nvim`, `~/.local/state/nvim` and `~/.cache/nvim`, and `vim.pack` puts plugin *code* in `~/.local/share/nvim/site/pack/core/opt` — none of it in `~/.config/nvim`, so there is no untracked content to keep out of the repo. Folded, a newly rendered `colorscheme.gen.lua` and any new themed file appear without `stow -R`. **The one thing `vim.pack` does write here is `nvim-pack-lock.json`**, which folding puts straight into the repo — so it is tracked deliberately (§8) rather than ignored, which is what keeps the "no untracked content inside a folded directory" rule satisfied. It is rewritten in place, not by `rename()`, so unlike `htop` (§9.16) folding is a choice here rather than a requirement. |
 | `gtk` | **No** | **nwg-look writes into `~/.config/gtk-{3,4}.0`.** See §9.1. Only specific files are tracked; `bookmarks` is left alone as machine-specific. |
 | `bin` | **No** | `~/.local/bin` is a real directory holding untracked binaries — `claude`, `coderabbit` (104 MB), `herdr` (22 MB), `uv`. Folding would pull all of it into the repo. A newly added script therefore needs `stow -R bin`. |
+| `systemd` | **No** | `systemctl --user enable` writes `*.wants/` symlinks into `~/.config/systemd/user` (`default.target.wants`, `timers.target.wants`): untracked content inside the package directory. A new unit file is therefore absent until `stow -R systemd`, and `systemctl --user daemon-reload` comes after that. |
 | `yazi` | **No** | `ya pkg add` installs plugins and flavors into `~/.config/yazi` and writes a `package.toml` lockfile beside them — untracked content inside the package directory, which is the rule below. **No plugin is used today**, and the decision is still made now: unfolding later costs `stow -D && rmdir && stow`, and the trap this section documents is discovering that mid-way through something else. `~/.config/yazi` therefore has to exist *before* the first `stow yazi`, or stow folds it. A file added to the package later is silently absent until `stow -R yazi` — and for this package that includes the rendered `theme.toml`, which is why `tests/check_consumers.sh` asks yazi whether it actually loaded a theme rather than only whether it started. |
 | `claude` | **No** | `~/.claude` is Claude Code's own state directory — `sessions/`, `history.jsonl`, `projects/`, `plugins/`, `.credentials.json`, all untracked and some of it secret. Folding would pull the lot into the repo. It also already contains `skills`, a directory symlink to `~/repos/xl-skills/skills`, which folding would swallow. Unfolded, stow links only `statusline.py`; a second file added to the package later needs `stow -R claude`. Note the repo's own `.claude/` at the root is Claude Code *project* state for this repo and is not a package — never name it in a stow command. |
 | `herdr` | **No** | `~/.config/herdr` is herdr's runtime directory as much as its config: the live API socket (`herdr.sock`), the client socket, logs, `session.json` (every workspace, pane and Claude conversation to restore), `plugins.json` and the `plugins/` state tree are all written there. Folding would put live sockets and session state in the repo. Unfolded, stow links `config.toml` as a file and `local-plugins/` as a folded subdirectory, which is safe because herdr never writes into it — its own plugin state goes to `plugins/`, which is why the source directory is *not* called that. **herdr rewrites `config.toml` in place** from its settings screen (`std::fs::write`, not `rename()`), so unlike htop (§9.16) the symlink survives and the edit lands in the repo: after touching herdr's settings, `git status`, then commit or revert. `setup.sh` pre-creates the directory. See §9.30. |
@@ -1858,6 +1860,123 @@ the order in every mode; its first test is this bug.
 
 Smoke after touching it: hover the claude widget and press Print (the tooltip is in the image);
 Ctrl+Print mid-termtris (the bricks are); OCR some terminal text; `$mod+Print` twice.
+
+### 9.33 Crash → Claude: a toast, a report, and Claude under normal permissions
+
+`bin/.local/bin/crash-diagnose` (`docs/specs/2026-10-08-crash-diagnose-design.md`) turns a crash of
+one of your own processes into a toast, and a click into a report plus a Claude session. It is
+Omarchy's `omarchy-agent-crash` minus the permission bypass: Claude starts under normal permissions.
+Nothing in it is sway-specific, so it is meant to survive the Omarchy migration unchanged.
+
+**The flow.** `crash-watch.service` (`crash-diagnose watch`) follows the journal for
+`MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1` entries with your uid and raises "Crash: <comm>
+(<signal>)" with the action "Diagnose with Claude" (`-t 0`: it stays until dismissed). A click runs
+`crash-diagnose diagnose <pid>`, which writes
+`~/.local/state/crash-reports/<date>_<exe>_<pid>/report.md` and opens a herdr tab `crash: <comm>` running
+`claude "<PROMPT>"`. The palette's `Dev › Diagnose a crash…` does the same from a list of recent
+crashes. **Claude never starts without a click or a pick.**
+
+**What the report holds, and never holds.** Summary (executable, signal, pid, package, core file,
+time), History (how many crashes of that executable), the crash-time stack, a gdb backtrace, the
+journal entry and the journal lines around it. It **never** contains `COREDUMP_ENVIRON` (no field
+name, no value) or the core file. Beyond the field allowlist, any environment value whose name looks
+like a secret (`TOKEN|SECRET|PASS|KEY|AUTH|CRED|COOKIE`, value of 8+ characters) is redacted
+wherever it turns up: a journal line, a command line. A third pass runs over the whole rendered
+report, whatever section a string came from: any verbatim `KEY=VALUE` line of the process
+environment becomes `KEY=[redacted]`, and secret *shapes* go on sight, env or not (`sk-ant-…`,
+`gh[pousr]_…`, `AKIA…`, a JWT, a PEM private key through its END line, or to the end of the report
+if the journal window cut it off). `~/.local/state/crash-reports/` is 0700 (chmod'ed if an older
+run made it with the umask). **Backtraces show frames, not argument
+values**: gdb runs with `set print frame-arguments presence`, because its default prints a `char *`
+argument's contents, which no scrub can know; every frame keeps its function name and its arguments
+show as `...`. Honest caveats (spec §8):
+
+- The report goes to Claude, which means Anthropic's API. Backtraces, command lines and journal
+  lines are included; the process environment is not. A secret passed on a command line that is not
+  in the environment would be.
+- debuginfod is network access at click time, not at crash time. Offline reports are less useful,
+  but still produced.
+- Root and system-service crashes are out of scope (uid filter). The chromium segfault in
+  `coredumpctl list` is one.
+- One toast per executable per 30 min can hide a storm. The count in the replaced toast ("2nd since
+  …") is the signal.
+
+**What the probes found, and what each changed** (2026-10-09, read-only):
+
+- `coredumpctl info` is instant (0.01 s) but not symbolised: it prints the stack recorded at crash
+  time (`n/a (waybar + 0x3058b)`). gdb (`coredumpctl debug` with `-batch -iex 'set debuginfod
+  enabled on'`) gives symbols: 19.0 s cold, 1.6 s warm. Batch gdb does not use debuginfod unless
+  told to. The report holds both, capped at 30 s and 90 s.
+- gdb can be worse than the crash-time stack. On the probe core a dozen libraries had been upgraded
+  since the crash (`warning: Build-id of /usr/lib/libc.so.6 does not match core file`) and the
+  crashing thread came out as `?? ()`. The report says so and puts the crash-time stack first.
+- The service is not a shell. The user manager has no `~/.local/bin` on PATH (where `claude` and
+  `herdr` live), no `DEBUGINFOD_URLS`, and gets `WAYLAND_DISPLAY`/`SWAYSOCK` only when sway runs
+  `import-environment`, after a `default.target` service has started. `session_env()` fills the gaps
+  at click time.
+- `KillMode=process`: a click can open a kitty window with Claude in it, a child of the service. A
+  watcher restart must not close a window someone is reading. herdr panes live in herdr's own
+  cgroup and are unaffected. The flip side: the watcher's own `journalctl -f` would survive too,
+  one more per restart, so the watcher ends it on SIGTERM and the kernel ends it on any other
+  death (`prctl(PR_SET_PDEATHSIG)` in its `preexec_fn`).
+- journalctl nulls fields over 4 KiB without `--all` (`MESSAGE`, which holds the stack, is one) and
+  renders binary fields as lists of byte values. `diagnose` reads with `--all`; the watcher asks
+  only for small fields, so it never sees the environment.
+- `COREDUMP_PACKAGE_JSON` carries no package name on Arch, so `pacman -Qo <exe>` is the real path.
+- `coredumpctl --json=short list` has no `comm`, and the journal can hold one crash twice (same pid,
+  same time): `list` dedupes on `(pid, time)` and History counts it once.
+- herdr's `tab create` reply is parsed defensively (`.result.root_pane.pane_id` plus four fallback
+  shapes); anything else falls back to a kitty window in the report directory.
+- Retention goes by directory mtime, not name (names start with the crash time); newest 20 kept.
+- `run()` never reads a child's pipes to EOF after a timeout: a descendant in another session can
+  hold them (the same trap as §9.32's wl-copy). It kills the group, reaps and closes.
+
+**Toast lifetimes** (final review, 2026-10-09). A `-t 0` toast's `notify-send --wait` never returns
+by itself. When `-r` replaces a toast, the watcher terminates the notify-send that raised it (the
+toast stays on screen; killing a client never closes a notification), so there is one live client
+per executable group; a click already in the old pipe is still diagnosed once, the newest. Each
+clicked `diagnose` is reaped by a small thread (no zombie per click), and on exit the watcher waits
+5 s in all for live toasts, not 5 s each. **A watcher restart closes its predecessor's toasts**:
+`KillMode=process` lets their notify-send outlive it, so a click would write into a dead pipe and
+do nothing while the toast looks live. At start (after journalctl is running, so no new toast can
+be caught) `watch` reads `makoctl list -j` (mako 1.11: a JSON array of `{id, app_name, actions, …}`)
+and runs `makoctl dismiss -n <id>` for each toast with app-name `crash` **and** the `default` click
+action; diagnose's own action-less toasts ("…the report is <path>") and every other app's are left
+alone. Dismissing ends the old notify-send's `--wait` too.
+
+**The journal section** keeps what led up to the crash: at most the newest 200 lines before the
+crash timestamp and the oldest 200 after (`short-iso-precise`, split to the microsecond). A core
+kept with `Storage=journal` (corefile `journal`) gets a gdb backtrace like a `present` one.
+
+**Known and accepted** (final review): the `-p` id `readline()` in the watcher blocks until
+notify-send prints the id, bounded by the D-Bus call timeout; `entry_for(pid)` takes the newest
+entry for that pid, so after pid reuse an old list line diagnoses the newer crash of that pid; if
+`herdr tab create` succeeds and `pane run` fails, the empty tab stays open and kitty opens as well.
+
+**Operating it.** `systemctl --user status crash-watch`; the watcher's own log is `journalctl --user
+-u crash-watch` (a clicked `diagnose` inherits its stderr). Reports live in
+`~/.local/state/crash-reports/`. A palette pick that fails shows two toasts, crash-diagnose's own
+plus `menu.py`'s generic one (§7; harmless). `bin` and `systemd` are both unfolded (§5.2): a new
+script or unit is absent until `stow -R bin systemd`, then `systemctl --user daemon-reload`.
+`tests/check_consumers.sh` fails `crash-watch.service is active` until the unit is enabled.
+
+**The suite.** `python3 tests/crash_test.py` (~45 s; also run by `theme_test.sh`). Every tool is a
+stub on a PATH holding only the stub directory; the fixtures are synthetic, with marker values in
+`COREDUMP_ENVIRON`, because a recorded real entry carries the real environment.
+`CRASH_DIAGNOSE_BIN` points it at a copy for mutation checks; the suite was built by turning 8 of 8
+planned mutants (uid filter, coalesce window, environ field, scrub, click twice, kill child only,
+no dedupe, prune by name) plus the detached-grandchild one red, and the final review's fixes each
+have a mutant it kills (shebang, gdb `presence`, terminate, prune threads, shared join deadline,
+stale dismiss and its two filters, journal halves, journal core, reap, the two stderr lines, 0700,
+both new scrub passes). One test execs the file by path, as systemd and the palette do: PATH is then
+the stub dir plus a dir holding only a `python3` link, never `/usr/bin`. `theme_test.sh` names it
+when it fails.
+
+**Manual smoke** (after `stow -R bin systemd`, `daemon-reload`, `enable --now`): `sleep 60 & kill
+-SEGV $!` raises "Crash: sleep (SIGSEGV)"; click it for a herdr tab `crash: sleep` with Claude
+reading `report.md`; repeat within 30 min and the toast is replaced with "2nd since …"; Super+Space
+→ `Dev › Diagnose a crash…` gives the same as a click; `grep -c COREDUMP_ENVIRON
+~/.local/state/crash-reports/*/report.md` is 0 for every report.
 
 ## 10. Troubleshooting
 

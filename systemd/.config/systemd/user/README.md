@@ -48,3 +48,13 @@ rotate the good copies out. Not part of the tp-backup regime above. PLAYBOOK §9
 
     systemctl --user daemon-reload
     systemctl --user enable --now herdr-session-backup.timer
+
+# crash-watch
+
+`crash-diagnose watch`: a toast for each crash of your own processes, with "Diagnose with Claude"
+(PLAYBOOK §9.33). `KillMode=process`, so a restart never closes a Claude window a click opened;
+the restarted watcher closes the old watcher's crash toasts instead, since their clicks go nowhere.
+This package is unfolded: a new unit needs `stow -R systemd` first.
+
+    systemctl --user daemon-reload
+    systemctl --user enable --now crash-watch.service
