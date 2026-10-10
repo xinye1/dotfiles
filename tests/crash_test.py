@@ -385,6 +385,18 @@ class ReportTest(unittest.TestCase):  # D4
         self.assertNotIn(ENVIRON["DB_PASSWORD"], text)
         self.assertIn("password=[redacted]", text)
 
+    def test_a_short_environ_line_does_not_corrupt_longer_text(self):  # CodeRabbit #50
+        # A=1 in the environment is no secret, and DATA=10 or XA=1 elsewhere must
+        # survive; a long verbatim KEY=VALUE line is still redacted where it stands alone.
+        e = entry()
+        e["COREDUMP_ENVIRON"] += "\nA=1\nSHLVL=1\nLONGVAR=abcd\nSESSION_HINT=fixture-hint-0006"
+        self.sb.fixture("entry.jsonl", json.dumps(e) + "\n")
+        self.sb.fixture("journal.txt", "waybar[222]: DATA=10 XA=1 SHLVL=12 flag A=1 set MYLONGVAR=abcdef\n"
+                                       "waybar[222]: SESSION_HINT=fixture-hint-0006\n")
+        text = self.diagnose()
+        self.assertIn("DATA=10 XA=1 SHLVL=12 flag A=1 set MYLONGVAR=abcdef", text)
+        self.assertNotIn("fixture-hint-0006", text)
+
     def test_the_journal_keeps_the_lines_before_the_crash(self):  # final review #5
         # 500 lines either side: the newest 200 before the crash and the oldest
         # 200 after it, not the last 400 overall (all post-crash noise).

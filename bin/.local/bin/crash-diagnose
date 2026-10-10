@@ -254,8 +254,11 @@ def scrub(report, entry):
     environ = text(entry.get("COREDUMP_ENVIRON")).splitlines()
     for line in environ:  # a verbatim KEY=VALUE from the environment
         key, sep, value = line.partition("=")
-        if sep and key and value:
-            report = report.replace(line, f"{key}=[redacted]")
+        # Whole tokens only, and no 1-3 char values: a plain replace of A=1 also
+        # rewrote DATA=10 and XA=1 in stacks and journal lines, and hid nothing.
+        if sep and key and len(value) >= 4:
+            report = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(line)}(?![A-Za-z0-9_])",
+                            lambda _m, k=key: f"{k}=[redacted]", report)
     for line in environ:  # a secret-named value on its own
         key, _, value = line.partition("=")
         if SECRETISH.search(key) and len(value) >= 8:
