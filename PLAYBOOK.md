@@ -754,7 +754,9 @@ Three separate surprises, all hit while tuning the borders:
   ```
 - **Runtime `gaps` changes survive `swaymsg reload`.** Once you run `swaymsg gaps inner all set 20`,
   that value sticks for existing workspaces; the config line only sets the default for new ones.
-  Reloading will *not* put it back. Reset explicitly:
+  Reloading will *not* put it back — and the same holds the other way: after **editing** the
+  config's gaps, a reload leaves every existing workspace at the old values, so the first `$mod+g`
+  there toggles from the wrong end. Reset explicitly, to the config's values:
   ```sh
   swaymsg gaps inner all set 0 && swaymsg gaps outer all set 0
   ```
