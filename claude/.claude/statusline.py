@@ -227,6 +227,29 @@ def usage_segment(icon, pct, warn, crit, resets=None):
     return segment(icon, value)
 
 
+INPUT_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def context_segment(window):
+    """`<icon> NN%`, or a dimmed `?` while Claude Code has no measurement.
+
+    Before a session's first API call the fields are null, and after `/compact`
+    — until the next call — every count is 0, `used_percentage` included (seen
+    on 2.1.296; the docs say null). A real context is never empty, so a zero
+    input total means unmeasured, not empty: shown as `0%` it read as a fresh
+    window beside a $42 session cost. The test is the token counts, not the
+    percentage, which rounds a small real reading down to a true 0.
+    """
+    window = window or {}
+    pct = window.get("used_percentage")
+    usage = window.get("current_usage") or {}
+    if pct is None or not sum(usage.get(k) or 0 for k in INPUT_KEYS):
+        return segment(ICON_CONTEXT, paint(LABEL, "?"))
+    # Rate limits cost delivery speed, not output quality — context is what
+    # degrades quality, so it warns earlier (60/85) than the limits (70/90).
+    return usage_segment(ICON_CONTEXT, float(pct), 60, 85)
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -236,7 +259,6 @@ def main():
     workspace = data.get("workspace") or {}
     cwd = workspace.get("current_dir") or data.get("cwd") or os.getcwd()
     model = (data.get("model") or {}).get("display_name") or "Claude"
-    pct = (data.get("context_window") or {}).get("used_percentage") or 0
     cost = (data.get("cost") or {}).get("total_cost_usd") or 0.0
     level = (data.get("effort") or {}).get("level")
     limits = data.get("rate_limits") or {}
@@ -244,15 +266,14 @@ def main():
     # Everything but the directory, which is sized last from what is left over.
     rest = [
         paint(MODEL, model),
-        usage_segment(ICON_CONTEXT, float(pct), 60, 85),
+        context_segment(data.get("context_window")),
         paint(VALUE, f"${cost:.2f}"),
     ]
     cache = cache_segment(data.get("prompt_cache"))
     if cache:
         rest.append(cache)
-    # Rate limits cost delivery speed, not output quality — context (60/85
-    # above) is what degrades quality, so it is the one that warns earlier.
     # 70/90 matches the waybar claude widget: one machine-wide definition.
+    # Context warns earlier; see context_segment.
     for icon, key in ((ICON_SESSION, "five_hour"), (ICON_WEEK, "seven_day")):
         window = limits.get(key)
         if window and window.get("used_percentage") is not None:
