@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = Path(os.environ.get("STATUSLINE_BIN", REPO / "claude/.claude/statusline.py"))
-spec = importlib.util.spec_from_file_location("statusline", REPO / "claude/.claude/statusline.py")
+spec = importlib.util.spec_from_file_location("statusline", SCRIPT)
 sl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sl)
 
