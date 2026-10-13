@@ -1510,6 +1510,31 @@ class SnapshotTest(unittest.TestCase):
             st = self.fresh_state(limits=[dict(LIMITS[0], percent=pct)])
             self.assertEqual(cu.snapshot(st, NOW)["limits"][0]["fill"], fill)
 
+    def test_icon_is_session_and_the_worst_weekly(self):
+        # Fable Wk (70, warning) outranks Weekly (41): the scoped limit is the
+        # one about to bind, so it is the one the tile's weekly half shows.
+        self.assertEqual(cu.snapshot(self.fresh_state(), NOW)["icon"],
+                         {"session": {"text": "4", "level": "normal"},
+                          "weekly": {"text": "7", "level": "warning"}})
+
+    def test_icon_digit_is_the_tens_of_the_shown_percent(self):
+        for shown, want in ((0, "0"), (9, "0"), (10, "1"), (89, "8"), (99, "9"),
+                            (100, "!"), (130, "!"), (-5, "0")):
+            self.assertEqual(cu.icon_digit(shown), want, msg=f"shown={shown}")
+        # Rounded first, like the level: 99.6 reads "100%" in the panel, so its
+        # half must say `!` and be critical, not "9".
+        st = self.fresh_state(limits=[dict(LIMITS[0], percent=99.6)])
+        self.assertEqual(cu.snapshot(st, NOW)["icon"]["session"],
+                         {"text": "!", "level": "critical"})
+
+    def test_icon_half_missing_is_none(self):
+        st = self.fresh_state(limits=[LIMITS[1], {"kind": None, "percent": 99},
+                                      {"kind": "mystery", "percent": 99}])
+        self.assertEqual(cu.snapshot(st, NOW)["icon"],
+                         {"session": None, "weekly": {"text": "4", "level": "normal"}})
+        self.assertEqual(cu.snapshot({"limits_error": "not logged in"}, NOW)["icon"],
+                         {"session": None, "weekly": None})
+
     def test_floor_reaches_window_start(self):
         floor = (NOW - timedelta(hours=1)).timestamp()
         snap = cu.snapshot(self.fresh_state(reset_floor=floor), NOW)

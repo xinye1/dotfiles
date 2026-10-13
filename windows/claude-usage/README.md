@@ -41,10 +41,14 @@ item stops it until the next logon.
 
 ## Using it
 
-- **Icon** — your highest limit percentage, coloured green below 70%, amber from 70%, red from
-  90%. **Grey** means the number isn't current: WSL is not running, the usage API is erroring
-  (for example an expired token, which clears once a Claude Code session runs in WSL), or the
-  collector failed. `–` means no data yet.
+- **Icon** — a tile split diagonally in two colours: **session** usage top-left, **weekly**
+  bottom-right (the higher of the all-models and model-scoped weekly limits). Each half shows the
+  tens digit of its percentage — `4` is 40–49%, `!` is 100% — and is coloured green below 70%,
+  amber from 70%, red from 90%, so the half about to bind shows by colour alone. The hover has the
+  exact numbers.
+  **Grey** (both halves) means the numbers aren't current: WSL is not running, the usage API is
+  erroring (for example an expired token, which clears once a Claude Code session runs in WSL), or
+  the collector failed. `–` in a half means no data for that limit yet.
 - **Hover** — one line per limit, with time to reset.
 - **Left-click** — the panel. Click again, press `Esc` or click elsewhere to close it.
 - **Right-click** — *Refresh now* (this one will start WSL if it is stopped), *Limits were reset

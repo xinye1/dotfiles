@@ -1668,7 +1668,8 @@ stubbed test once sent a real notification.
 
 On a Windows machine where every Claude Code session runs in WSL there is no waybar, so
 `windows/claude-usage/` gives the claude widget (§9.23) a Windows face: a notification-area icon
-showing the worst displayed percent in its level colour, a hover summary (`Session 44% · 3h 13m`,
+split along its `/` diagonal into session (top-left) and weekly (bottom-right) halves, each its
+limit's tens digit in that limit's level colour, a hover summary (`Session 44% · 3h 13m`,
 one line per limit), a click-open panel with the waybar tooltip's three sections drawn as real
 bars, and toasts at 70/90/100% and on a reset. Right-click: Refresh now, Limits were reset early…,
 Open usage page, Send test notification, Open log, Exit. **The operational cheat sheet — every
@@ -1683,6 +1684,31 @@ snapshot from before WSL went idle, never shows a countdown that has stopped. Th
 comes from the same `$Now` — never the wall clock — for §9.23's reason: it is what lets the tests
 pin a fixture's date. `schema` in the snapshot is checked; an unknown one is an error on the icon
 ("re-run install.py"), not half a panel.
+
+**The split tile is sized for 16 px.** The icon was one number, the worst percent; since 2026-10-13
+it is `session/weekly` on a tile split along its `/` diagonal. Which limits fill the halves
+(session, and the *higher* of the two weeklies so a scoped limit about to bind still reaches the
+icon) and what each says — the tens digit of the displayed percent, `!` at 100 — are decisions, so
+they are `claude_usage.icon_halves()`, shipped as the snapshot's `icon` field; the tray only paints.
+A digit, not the number, because `SmallIconSize` measures **16** in the tray's own PowerShell, which
+is not DPI-aware — on a scaled display Windows stretches that bitmap rather than asking for a bigger
+one — and half of a 16 px tile holds one legible glyph. Placement was settled by rendering, twice.
+Glyphs centred on each triangle's incentre (the geometric answer) crossed a drawn diagonal at every
+size, because a digit is taller than wide; corner boxes cleared it, but at 0.56 em the digits read
+too small on the taskbar. So the drawn line went: the two fills already mark the split. Then 0.68 em
+still read small, and the size stopped being a constant: the digits are now as big as two `0`-wide
+boxes side by side allow with a 1 px gap between them and a 1 px margin inside the tile — about 10
+px tall at 16 px, session top-aligned at the left, weekly bottom-aligned at the right, overlapping
+in height and separated across. The margin is measured, not taste: without it the digits land on the
+tile's anti-aliased edge row and the top-left `7` spills past the rounded corner.
+`claude_tray_test.ps1` holds all three at 16 px for `0 4 7 8 9 !` — no glyph ink off the tile, a
+clear column between the two glyphs, each against its own edge — and goes red with the gap or the
+margin removed. The weekly half is the tile's own outline from arc midpoint to arc midpoint, painted
+over a tile filled in the session colour: two triangles on a transparent tile left an anti-aliased
+seam whenever the halves shared a colour, a clip region (never anti-aliased) made the corners
+jagged, and a hard-stepped gradient smeared the split over several pixels. The field is additive, so
+`schema` stayed 1: an older tray ignores it, and a newer tray reading an older `last.json` draws
+grey dashes until the first collection.
 
 **Cadence and WSL's lifetime.** A 60 s timer (config `interval`) runs the collector; the API is
 still fetched at most every 300 s inside it, so the tick only buys fresher token charts. The timer

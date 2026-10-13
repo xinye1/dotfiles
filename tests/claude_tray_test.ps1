@@ -112,16 +112,81 @@ Check 'hover says idle' { (Get-HoverText $full $Now $true '') -like '*WSL idle s
 Check 'hover says fault first' { (Get-HoverText $full $Now $true 'collector exited 1') -like '*error: collector exited 1' }
 
 # --- icon -----------------------------------------------------------------------------
-Check 'icon text is the worst percent' { Eq (Get-IconText $full) '70' }
-Check 'icon text without limits' { Eq (Get-IconText $empty) ([string][char]0x2013) }
+function HalvesOf($Snap, [bool]$Idle = $false, [string]$Fault = '') {
+    (@(Get-IconHalves $Snap $Idle $Fault) | ForEach-Object { "$($_.text):$($_.level)" }) -join ' '
+}
+Check 'icon halves: session, then the worst weekly, each its own level' {
+    Eq (HalvesOf $full) '4:normal 7:warning'
+}
+Check 'icon halves grey together when stale, idle or faulted' {
+    (Eq (HalvesOf $stale) '4:stale 7:stale') -and (Eq (HalvesOf $full $true) '4:stale 7:stale') -and
+    (Eq (HalvesOf $full $false 'boom') '4:stale 7:stale')
+}
+Check 'icon halves without data are grey dashes' {
+    $d = [char]0x2013
+    (Eq (HalvesOf $empty) "${d}:stale ${d}:stale") -and (Eq (HalvesOf $null $true) "${d}:stale ${d}:stale")
+}
+Check 'icon halves from a snapshot without the icon field' {
+    $s = ConvertFrom-Snapshot '{"schema": 1, "level": "normal", "limits": [{"label": "X", "shown": 50}]}'
+    Eq (HalvesOf $s) "$([char]0x2013):stale $([char]0x2013):stale"
+}
 Check 'icon level' {
     (Eq (Get-IconLevel $full $false '') 'warning') -and (Eq (Get-IconLevel $full $true '') 'stale') -and
     (Eq (Get-IconLevel $full $false 'boom') 'stale') -and (Eq (Get-IconLevel $stale $false '') 'stale') -and
     (Eq (Get-IconLevel $null $false '') 'stale')
 }
-Check 'icon bitmap fits three digits at 16px' {
-    $b = New-IconBitmap '100' ([Drawing.Color]::Orange) ([Drawing.Color]::Black) 16
+Check 'toast bitmap draws its text at 16px' {
+    $b = New-IconBitmap '%' ([Drawing.Color]::Orange) ([Drawing.Color]::Black) 16
     try { Eq $b.Width 16 } finally { $b.Dispose() }
+}
+function InkBox($Bmp) {
+    # Bounding box of the glyph ink (dark pixels) on a white tile, as "x0,y0,x1,y1".
+    $x0 = 99; $y0 = 99; $x1 = -1; $y1 = -1
+    for ($x = 0; $x -lt $Bmp.Width; $x++) { for ($y = 0; $y -lt $Bmp.Height; $y++) {
+        $c = $Bmp.GetPixel($x, $y)
+        if ($c.A -ge 128 -and $c.R -lt 128) {
+            $x0 = [Math]::Min($x0, $x); $y0 = [Math]::Min($y0, $y); $x1 = [Math]::Max($x1, $x); $y1 = [Math]::Max($y1, $y)
+        }
+    } }
+    @($x0, $y0, $x1, $y1)
+}
+Check 'split tile: each half its own colour, and no line or seam on the split' {
+    $px = { param($b, $x, $y) $c = $b.GetPixel($x, $y); "$($c.R),$($c.G),$($c.B)" }
+    $two = New-SplitIconBitmap @{ text = ' '; fill = [Drawing.Color]::Red } @{ text = ' '; fill = [Drawing.Color]::Blue } ([Drawing.Color]::Black) 64
+    $one = New-SplitIconBitmap @{ text = ' '; fill = [Drawing.Color]::Red } @{ text = ' '; fill = [Drawing.Color]::Red } ([Drawing.Color]::Black) 64
+    try {
+        $seam = $true
+        for ($i = 12; $i -le 51; $i++) { if ((& $px $one $i (63 - $i)) -ne '255,0,0') { $seam = $false } }
+        (Eq (& $px $two 20 20) '255,0,0') -and (Eq (& $px $two 43 43) '0,0,255') -and $seam
+    } finally { $two.Dispose(); $one.Dispose() }
+}
+Check 'split tile at 16px: session glyph top-left, weekly bottom-right, a gap, neither clipped' {
+    $ok = $true; $white = [Drawing.Color]::White; $blank = @{ text = ' '; fill = $white }
+    foreach ($t in '0', '4', '7', '8', '9', '!') {
+        $top = New-SplitIconBitmap @{ text = $t; fill = $white } $blank ([Drawing.Color]::Black) 16
+        $bot = New-SplitIconBitmap $blank @{ text = $t; fill = $white } ([Drawing.Color]::Black) 16
+        try {
+            $a = InkBox $top; $b = InkBox $bot
+            # Top-aligned: the ink starts within two rows of the top, never on
+            # the tile's own edge row; the weekly glyph mirrors it at the
+            # bottom right. (`8` is a pixel taller than the `0` the box is
+            # measured on, so it may sit a row lower.) Side by side, at least
+            # one clear column between them - the gap that sets their size.
+            if ($a[1] -lt 1 -or $a[1] -gt 2 -or $a[0] -lt 1) { $ok = $false; Write-Output "top '$t' at $($a -join ',')" }
+            if ($b[3] -lt 13 -or $b[3] -gt 14 -or $b[2] -gt 14) { $ok = $false; Write-Output "bottom '$t' at $($b -join ',')" }
+            if ($b[0] - $a[2] -lt 2) { $ok = $false; Write-Output "'$t' no gap: $($a -join ',') / $($b -join ',')" }
+            # And every ink pixel on the tile: a glyph too big for its corner
+            # spills past the rounded edge onto the transparent outside.
+            $tile = New-SplitIconBitmap $blank $blank ([Drawing.Color]::Black) 16
+            try {
+                foreach ($bmp in $top, $bot) { for ($x = 0; $x -lt 16; $x++) { for ($y = 0; $y -lt 16; $y++) {
+                    $c = $bmp.GetPixel($x, $y)
+                    if ($c.A -ge 128 -and $c.R -lt 128 -and $tile.GetPixel($x, $y).A -lt 255) { $ok = $false; Write-Output "'$t' off the tile at $x,$y" }
+                } } }
+            } finally { $tile.Dispose() }
+        } finally { $top.Dispose(); $bot.Dispose() }
+    }
+    $ok
 }
 
 # --- wsl plumbing -------------------------------------------------------------------------
