@@ -7,8 +7,8 @@ The Windows face of waybar's claude widget (PLAYBOOK §9.31). Every decision -
 the API fetch and its TTL, the transcript scan, the rounded percent and its
 70/90 level, labels, pace windows, day buckets - stays in claude_usage.py
 inside WSL, under its own tests. This script only asks it for a snapshot
-(`--json`) and turns that into pixels: a tray icon carrying the worst percent,
-a hover summary, and a click-open panel. The countdowns and the pace marker
+(`--json`) and turns that into pixels: a tray icon split by a diagonal into
+session and weekly halves, a hover summary, and a click-open panel. The countdowns and the pace marker
 are computed here against this machine's clock, from the epoch times in the
 snapshot, so an open panel or a snapshot taken before WSL went idle never shows
 a countdown that has stopped.
@@ -122,6 +122,12 @@ function ConvertFrom-Snapshot([string]$Json) {
                human = [string](Get-OptionalValue $i 'human' '0') }
         })
     }
+    $half = {
+        param($h)
+        if ($null -eq $h) { return $null }
+        @{ text = [string](Get-OptionalValue $h 'text' '?'); level = [string](Get-OptionalValue $h 'level' 'normal') }
+    }
+    $icon = Get-OptionalValue $o 'icon'
     return @{
         generated_at = [double](Get-OptionalValue $o 'generated_at' 0)
         tier         = [string](Get-OptionalValue $o 'tier' '')
@@ -130,6 +136,8 @@ function ConvertFrom-Snapshot([string]$Json) {
         fetched_at   = & $num (Get-OptionalValue $o 'fetched_at')
         retry_at     = & $num (Get-OptionalValue $o 'retry_at')
         limits       = $limits
+        icon         = @{ session = & $half (Get-OptionalValue $icon 'session')
+                          weekly  = & $half (Get-OptionalValue $icon 'weekly') }
         days         = & $series (Get-OptionalValue $o 'days' @()) 'date'
         models       = & $series (Get-OptionalValue $o 'models' @()) 'name'
     }
@@ -146,19 +154,25 @@ function Get-DayLabel([string]$Date, [datetime]$Today) {
     return $d.ToString('ddd', [Globalization.CultureInfo]::InvariantCulture)
 }
 
-function Get-IconText($Snap) {
-    # The worst displayed percent, the number waybar's bar stacks first among
-    # equals; an en dash before there is anything to show.
-    if ($null -eq $Snap -or @($Snap.limits).Count -eq 0) { return [string][char]0x2013 }
-    return [string](@($Snap.limits | ForEach-Object { $_.shown }) | Measure-Object -Maximum).Maximum
-}
-
 function Get-IconLevel($Snap, [bool]$Idle, [string]$Fault) {
     # The icon's fill. Anything that makes the number less than current - an
     # API error, a failed collector run, WSL asleep - greys it, like waybar's
     # `stale` class; the number stays, so last-known is still readable.
     if ($null -eq $Snap -or $Fault -or $Idle -or $Snap.level -eq 'stale') { return 'stale' }
     return $Snap.level
+}
+
+function Get-IconHalves($Snap, [bool]$Idle, [string]$Fault) {
+    # The split tile, session half first: @(@{ text; level }, @{ text; level }).
+    # Digit and level are claude_usage.icon_halves()'s; each half keeps its own
+    # level so the hot limit shows by colour alone, and a stale icon greys
+    # both. A half the snapshot has no limit for is a grey en dash.
+    $grey = (Get-IconLevel $Snap $Idle $Fault) -eq 'stale'
+    foreach ($k in 'session', 'weekly') {
+        $h = if ($null -ne $Snap) { $Snap.icon[$k] } else { $null }
+        if ($null -eq $h) { @{ text = [string][char]0x2013; level = 'stale' } }
+        else { @{ text = $h.text; level = $(if ($grey) { 'stale' } else { $h.level }) } }
+    }
 }
 
 function Get-StatusLine($Snap, [bool]$Idle, [string]$Fault) {
@@ -420,19 +434,25 @@ function Invoke-PanelPaint([Drawing.Graphics]$G, $Layout, $Theme) {
     }
 }
 
+function New-TilePath([int]$Size) {
+    # The icon's rounded square.
+    $r = [Math]::Max(2, [int]($Size / 4)); $d = 2 * $r
+    $path = New-Object Drawing.Drawing2D.GraphicsPath
+    $path.AddArc(0, 0, $d, $d, 180, 90); $path.AddArc($Size - $d - 1, 0, $d, $d, 270, 90)
+    $path.AddArc($Size - $d - 1, $Size - $d - 1, $d, $d, 0, 90); $path.AddArc(0, $Size - $d - 1, $d, $d, 90, 90)
+    $path.CloseFigure()
+    return $path
+}
+
 function New-IconBitmap([string]$Text, [Drawing.Color]$Fill, [Drawing.Color]$Ink, [int]$Size) {
-    # A rounded tile in the level colour carrying the number. The font is the
-    # largest that fits, so "7" is big and "100" still fits a 16px icon.
+    # A rounded tile in one colour carrying a short text - the toasts' `%`.
+    # The font is the largest that fits.
     $bmp = New-Object Drawing.Bitmap($Size, $Size)
     $g = [Drawing.Graphics]::FromImage($bmp)
     try {
         $g.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
         $g.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-        $r = [Math]::Max(2, [int]($Size / 4)); $d = 2 * $r
-        $path = New-Object Drawing.Drawing2D.GraphicsPath
-        $path.AddArc(0, 0, $d, $d, 180, 90); $path.AddArc($Size - $d - 1, 0, $d, $d, 270, 90)
-        $path.AddArc($Size - $d - 1, $Size - $d - 1, $d, $d, 0, 90); $path.AddArc(0, $Size - $d - 1, $d, $d, 90, 90)
-        $path.CloseFigure()
+        $path = New-TilePath $Size
         $brush = New-Object Drawing.SolidBrush($Fill); $g.FillPath($brush, $path); $brush.Dispose(); $path.Dispose()
         $fmt = New-Object Drawing.StringFormat
         $fmt.Alignment = 'Center'; $fmt.LineAlignment = 'Center'
@@ -447,6 +467,81 @@ function New-IconBitmap([string]$Text, [Drawing.Color]$Fill, [Drawing.Color]$Ink
         $inkBrush.Dispose(); $font.Dispose(); $fmt.Dispose()
     } finally { $g.Dispose() }
     return $bmp
+}
+
+function New-SplitIconBitmap($Top, $Bottom, [Drawing.Color]$Ink, [int]$Size) {
+    # The tray icon: the tile split along its `/` diagonal into session
+    # (top-left) and weekly (bottom-right), each @{ text; fill } - one glyph
+    # in its own level colour. No line on the split: at 16px it cost the
+    # digits the room they need, and the two fills already mark it.
+    $bmp = New-Object Drawing.Bitmap($Size, $Size)
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $s = [single]($Size - 1)   # the far edge: New-TilePath's arcs end at Size - 1
+        # The whole tile in the session colour, then the weekly half over it:
+        # the tile's own outline from the top-right arc's midpoint round to
+        # the bottom-left's, closed by the diagonal. Both fills anti-alias,
+        # and same-colour-over-same-colour leaves no seam - which two
+        # triangles meeting on a transparent tile did, and which a clip region
+        # (never anti-aliased) traded for jagged rounded corners.
+        $tile = New-TilePath $Size
+        $r = [Math]::Max(2, [int]($Size / 4)); $d = 2 * $r
+        $half = New-Object Drawing.Drawing2D.GraphicsPath
+        $half.AddArc($Size - $d - 1, 0, $d, $d, 315, 45)
+        $half.AddArc($Size - $d - 1, $Size - $d - 1, $d, $d, 0, 90)
+        $half.AddArc(0, $Size - $d - 1, $d, $d, 90, 45)
+        $half.CloseFigure()
+        foreach ($f in @(@{ p = $tile; c = $Top.fill }, @{ p = $half; c = $Bottom.fill })) {
+            $b = New-Object Drawing.SolidBrush($f.c)
+            try { $g.FillPath($b, $f.p) } finally { $b.Dispose() }
+        }
+        $tile.Dispose(); $half.Dispose()
+        # Session's glyph is top-aligned at the left, weekly's bottom-aligned
+        # at the right, each in a digit-sized box placed by its own ink, not
+        # DrawString's line box: at 16px that box's ascent padding sets a
+        # digit a visible pixel off. One box for every glyph, measured on `0`,
+        # so `!` and the dash line up with digits.
+        $family = New-Object Drawing.FontFamily('Segoe UI')
+        $inkBrush = New-Object Drawing.SolidBrush($Ink)
+        $mx = $Size / 16; $my = $Size / 16; $gap = [Math]::Max(1, $Size / 16)
+        $glyph = {
+            param([string]$t, [single]$em)
+            $p = New-Object Drawing.Drawing2D.GraphicsPath
+            $p.AddString($t, $family, [int][Drawing.FontStyle]::Bold, $em,
+                         (New-Object Drawing.PointF(0, 0)), [Drawing.StringFormat]::GenericTypographic)
+            $p
+        }
+        try {
+            # As big as the digits go: two `0`-wide boxes side by side with
+            # $gap between them, and no taller than the tile.
+            $em = [single]$Size
+            do {
+                $zero = & $glyph '0' $em; $box = $zero.GetBounds(); $zero.Dispose()
+                $fits = 2 * $box.Width + $gap -le $s - 2 * $mx -and $box.Height -le $s - 2 * $my
+                if (-not $fits) { $em -= 0.25 }
+            } while (-not $fits -and $em -gt 4)
+            foreach ($half in @(@{ t = $Top.text; x = $mx; y = $my },
+                                @{ t = $Bottom.text; x = $s - $mx - $box.Width; y = $s - $my - $box.Height })) {
+                $p = & $glyph $half.t $em
+                try {
+                    $r = $p.GetBounds()
+                    $m = New-Object Drawing.Drawing2D.Matrix
+                    $m.Translate([Math]::Round($half.x + ($box.Width - $r.Width) / 2 - $r.X),
+                                 [Math]::Round($half.y + ($box.Height - $r.Height) / 2 - $r.Y))
+                    $p.Transform($m); $m.Dispose()
+                    $g.FillPath($inkBrush, $p)
+                } finally { $p.Dispose() }
+            }
+        } finally { $inkBrush.Dispose(); $family.Dispose() }
+    } finally { $g.Dispose() }
+    return $bmp
+}
+
+function New-TrayBitmap($Snap, $Theme, [bool]$Idle, [string]$Fault, [int]$Size) {
+    $halves = @(Get-IconHalves $Snap $Idle $Fault | ForEach-Object {
+        @{ text = $_.text; fill = Get-LevelColor $Theme $_.level } })
+    return New-SplitIconBitmap $halves[0] $halves[1] $Theme.bg $Size
 }
 
 # --- notifications ----------------------------------------------------------------
@@ -576,8 +671,7 @@ if ($RenderPanel -or $RenderIcon) {
         $bmp.Save($RenderPanel, [Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
     }
     if ($RenderIcon) {
-        $level = Get-IconLevel $snap $Idle.IsPresent ''
-        $bmp = New-IconBitmap (Get-IconText $snap) (Get-LevelColor $theme $level) $theme.bg 64
+        $bmp = New-TrayBitmap $snap $theme $Idle.IsPresent '' 64
         $bmp.Save($RenderIcon, [Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
     }
     return
@@ -657,8 +751,7 @@ function Update-Layout {
 function Update-Tray {
     $now = Get-NowEpoch
     $size = [Windows.Forms.SystemInformation]::SmallIconSize.Width
-    $level = Get-IconLevel $script:snap $script:idle $script:fault
-    $bmp = New-IconBitmap (Get-IconText $script:snap) (Get-LevelColor $theme $level) $theme.bg $size
+    $bmp = New-TrayBitmap $script:snap $theme $script:idle $script:fault $size
     $handle = $bmp.GetHicon(); $bmp.Dispose()
     $tray.Icon = [Drawing.Icon]::FromHandle($handle)
     if ($script:iconHandle -ne [IntPtr]::Zero) { [void][ClaudeUsage.Native]::DestroyIcon($script:iconHandle) }

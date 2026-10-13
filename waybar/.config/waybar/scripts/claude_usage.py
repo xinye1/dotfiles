@@ -650,6 +650,33 @@ def level_of(pct):  # pct is the rounded, displayed integer
     return "normal"
 
 
+def icon_digit(shown):
+    """One glyph for a half of the Windows tray's split tile: the tens digit
+    of the displayed percent, `!` once it reads 100. A triangle of a 16px tile
+    holds one legible glyph, not two; the exact number is a hover away. From
+    `shown`, for shown_pct's reason — the half reading `!` is the row the panel
+    prints as 100%."""
+    return "!" if shown >= 100 else str(max(shown, 0) // 10)
+
+
+def icon_halves(limits):
+    """The tray tile's two halves: the session limit, and the worst weekly
+    one — `weekly_all` or a model-scoped weekly, whichever reads higher, so a
+    scoped limit about to bind still reaches the icon. Each half is
+    {"text", "level"}, or None when the payload carries no limit of that kind
+    (the tray draws a dash there). Ties go to the earlier row, `weekly_all`."""
+    def half(rows):
+        if not rows:
+            return None
+        shown = max(shown_pct(l) for l in rows)
+        return {"text": icon_digit(shown), "level": level_of(shown)}
+    kind = lambda l: l.get("kind") if isinstance(l.get("kind"), str) else ""
+    return {
+        "session": half([l for l in limits if kind(l) == "session"]),
+        "weekly": half([l for l in limits if kind(l).startswith("weekly")]),
+    }
+
+
 def _pct_color(pct, theme):
     level = level_of(pct)
     return theme["indicator" if level == "normal" else level]
@@ -839,6 +866,7 @@ def snapshot(st, now):
         "fetched_at": st.get("limits_fetched_at"),
         "retry_at": pending_retry(st, now),
         "limits": rows,
+        "icon": icon_halves(limits),
         "days": [],
         "models": [],
     }
