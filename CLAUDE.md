@@ -25,10 +25,12 @@ triggers, not the full story: read the named section before working in its area.
   `swaymsg reload` check reports 1. `exec` only runs at startup so a fix using it can't be tested
   with `swaymsg reload`; `exec export FOO=bar` does nothing (§9.2). `config.d/*` is read
   alphabetically and `theme` sorts last, so a `$role` in an earlier file fails `sway --validate`
-  — scripts source `theme.gen.env` at runtime instead (§9.6, §9.13). swayidle's timeout chain is
-  AC/battery-dependent and owned by `scripts/idle.sh`, not a static list in `config.d/*` — it
-  polls power state and restarts swayidle on change; edit timeouts there, not by hand-writing a
-  new `exec_always swayidle …` line (§9.26).
+  — scripts source `theme.gen.env` at runtime instead (§9.6, §9.13). swayidle's timeout chain
+  and the power profile are AC/battery-dependent and owned by the block at the top of
+  `scripts/idle.sh`, not a static list in `config.d/*` — it polls power state and reapplies on
+  change; edit timeouts there, not by hand-writing a new `exec_always swayidle …` line. **Never let anything hold a logind `idle`
+  inhibitor** (`systemd-inhibit --what=…idle…`): swayidle then arms *no* timeout at all, and the
+  screen never blanked or locked on AC while every check read healthy (§9.26).
 - **waybar is a supervised daemon, not a `bar {}` block** — `scripts/waybar_run.sh` restarts it when
   it aborts. An **orphaned** bar (supervisor dead, `PPid: 1`) is pixel-identical to a healthy one,
   so the desktop looks right while crash recovery is silently gone — that cost a 13-hour outage.
@@ -132,6 +134,7 @@ sh tests/check_consumers.sh   # starts the real apps against the LIVE config
 sh tests/tp_backup_test.sh    # sandboxed; never touches restic, ssh or the network
 sh tests/waybar_run_test.sh   # sandboxed; kills only PIDs it started itself
 sh tests/lock_test.sh         # stub swaylock; never locks; also run by theme_test.sh
+sh tests/idle_test.sh         # idle + power profile; stubs only; also run by theme_test.sh
 python3 tests/herdr_test.py   # stubs only; also run by theme_test.sh
 python3 tests/keyhint_test.py # sway config parser; also run by theme_test.sh
 python3 tests/menu_test.py    # the Super+Space palette; also run by theme_test.sh

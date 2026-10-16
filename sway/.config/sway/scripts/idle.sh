@@ -1,31 +1,64 @@
 #!/bin/bash
 
-# Owns the swayidle timeout chain and restarts swayidle whenever AC/battery
-# state changes. swayidle itself has no concept of a power source, and
-# config.d/* is only read at sway startup/reload, so nothing there can react
-# to a plug/unplug live -- the same ordering problem lock.sh solves for
-# colours (§9.13), solved here for the timeout chain instead.
+# ---------------------------------------------------------------------------
+# THE POWER POLICY -- edit these, then `swaymsg reload` to apply.
 #
-# On AC: lock only, never auto-suspend -- a machine plugged in and idle is
-# not a machine anyone wants asleep on its own.
-# On battery: lock AND suspend at the same 300s timeout, since idle screen
-# time on battery is exactly what this is for. Which of the two fires first
-# does not matter: before-sleep below calls lock.sh -f independently of
-# *why* the machine is suspending, so a suspend that somehow beat the lock
-# still comes back locked.
+# Seconds of no input before each step. 0 means "never". The steps are
+# independent: each counts from the last input, not from the step before it.
+#
+#                    plugged in       on battery
+AC_SCREEN_OFF=180;   BAT_SCREEN_OFF=60
+AC_LOCK=300;         BAT_LOCK=120
+AC_SLEEP=0;          BAT_SLEEP=900
+#
+# power-profiles-daemon profile -- `powerprofilesctl list` shows the choices.
+# On this Dell `performance` drives both the firmware platform profile (fan
+# and thermal limits) and intel_pstate's energy preference; empty leaves the
+# profile alone.
+AC_PROFILE=performance; BAT_PROFILE=balanced
+#
+# Sleep is a plain suspend. There is no hibernation, by decision (2026-10-17):
+# it needs swap the size of RAM on a disk that is 88% full.
+#
+# On AC, sleep is also blocked outright by inhibit-sleep-on-ac.service, so
+# AC_SLEEP stays 0: a nonzero value would only make swayidle ask and be told no.
+# ---------------------------------------------------------------------------
+
+# Owns the swayidle timeout chain and the power profile, and reapplies both
+# whenever AC/battery state changes. swayidle itself has no concept of a power
+# source, and config.d/* is only read at sway startup/reload, so nothing there
+# can react to a plug/unplug live -- the same ordering problem lock.sh solves
+# for colours (§9.13), solved here for the power policy instead.
+#
+# before-sleep calls lock.sh -f independently of *why* the machine is
+# suspending, so a sleep that beat the lock step, or a lid close, still comes
+# back locked.
+#
+# No `idlehint`: it reported the session idle to logind, which feeds logind's
+# own IdleAction. That made two owners of one policy -- a logind IdleAction on
+# this machine would start its own suspend clock and race the one here. The
+# policy is this file's alone.
 #
 # AC/online is polled, not watched via udev/acpid: noticing a plug/unplug
 # within 15s is more than precise enough for a policy switch nobody is
 # timing, against a udev-monitor text parser this repo would have to trust
 # to stay stable across systemd releases for something this low-stakes.
-# See PLAYBOOK.md §9.26.
 #
-# A failed read of AC/online defaults to the AC branch (lock, no suspend) --
-# the same "when unsure, fail toward the safer state" lock.sh's own
-# fail-safes follow (§9.25): losing track of power state must never be the
-# reason a machine suspends itself.
+# A failed read of AC/online defaults to the AC branch -- the same "when
+# unsure, fail toward the safer state" lock.sh's own fail-safes follow
+# (§9.25): losing track of power state must never be the reason a machine
+# suspends itself.
+#
+# The name predates the power profile; it stays idle.sh because §9.2's
+# pkill-by-name and tests/check_sway_exec.py both key on it.
+#
+# IDLE_AC_ONLINE and IDLE_POLL exist for tests/idle_test.sh only.
 
-AC=/sys/class/power_supply/AC/online
+AC=${IDLE_AC_ONLINE:-/sys/class/power_supply/AC/online}
+POLL=${IDLE_POLL:-15}
+# The ~ is for swayidle, which runs each command through sh -c.
+# shellcheck disable=SC2088
+LOCK='~/.config/sway/scripts/lock.sh -f'
 state=""
 
 on_ac() {
@@ -33,25 +66,26 @@ on_ac() {
 }
 
 start() {
-    pkill -x swayidle
+    local screen_off lock sleep_after profile args=()
     if [ "$1" = battery ]; then
-        swayidle -w idlehint 300 \
-            timeout 300 '~/.config/sway/scripts/lock.sh -f' \
-            timeout 300 'systemctl suspend' \
-            timeout 600 'swaymsg "output * dpms off"' \
-                resume 'swaymsg "output * dpms on"' \
-            before-sleep '~/.config/sway/scripts/lock.sh -f' &
+        screen_off=$BAT_SCREEN_OFF lock=$BAT_LOCK sleep_after=$BAT_SLEEP profile=$BAT_PROFILE
     else
-        swayidle -w idlehint 300 \
-            timeout 300 '~/.config/sway/scripts/lock.sh -f' \
-            timeout 600 'swaymsg "output * dpms off"' \
-                resume 'swaymsg "output * dpms on"' \
-            before-sleep '~/.config/sway/scripts/lock.sh -f' &
+        screen_off=$AC_SCREEN_OFF lock=$AC_LOCK sleep_after=$AC_SLEEP profile=$AC_PROFILE
     fi
+    [ "$screen_off" -gt 0 ] && args+=(timeout "$screen_off" 'swaymsg "output * dpms off"'
+                                      resume 'swaymsg "output * dpms on"')
+    [ "$lock" -gt 0 ] && args+=(timeout "$lock" "$LOCK")
+    [ "$sleep_after" -gt 0 ] && args+=(timeout "$sleep_after" 'systemctl suspend')
+    pkill -x swayidle
+    swayidle -w "${args[@]}" before-sleep "$LOCK" &
+    # After swayidle, and never fatal: a missing daemon or a refused switch
+    # must not cost the lock. Only when the policy is applied, so a profile
+    # picked by hand holds until the next plug/unplug or sway reload.
+    [ -n "$profile" ] && powerprofilesctl set "$profile" 2>/dev/null
 }
 
 while :; do
     if on_ac; then new=ac; else new=battery; fi
     [ "$new" = "$state" ] || { start "$new"; state=$new; }
-    sleep 15
+    sleep "$POLL"
 done

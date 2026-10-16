@@ -259,6 +259,10 @@ quiet_suite menu_test.py
 # the real one would lock the session. A failure aborts.
 sh "$REPO/tests/lock_test.sh" >/dev/null
 
+# The idle and power policy (PLAYBOOK §9.26): stubs only, so the live
+# swayidle is never killed nor the real profile switched. A failure aborts.
+sh "$REPO/tests/idle_test.sh" >/dev/null
+
 # Focus-safe capture (capture.py): stubs only; a failure aborts. Its first
 # assertion is the bug it fixes -- grim must run before any picker.
 quiet_suite capture_test.py

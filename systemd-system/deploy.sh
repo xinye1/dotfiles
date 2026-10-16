@@ -98,9 +98,10 @@ fi
 # --- never sleep on AC ------------------------------------------------------
 # This machine is a server while it is plugged in: tp2's nightly jobs, Jellyfin
 # and the family site all assume it stays up. inhibit-sleep-on-ac.service holds
-# a logind *block* inhibitor for sleep, idle AND handle-lid-switch while AC is
-# online; the udev rule starts/stops it on plug/unplug. handle-lid-switch is a
-# separate inhibitor class from sleep -- the unit once covered only sleep:idle
+# a logind *block* inhibitor for sleep AND handle-lid-switch while AC is
+# online (never `idle`: swayidle reads that as "disable every timeout", so the
+# screen never blanked or locked on AC -- PLAYBOOK.md §9.26); the udev rule
+# starts/stops it on plug/unplug. handle-lid-switch is a separate inhibitor class from sleep -- the unit once covered only sleep:idle
 # and the box slept 23 h through a nightly with the guard "active" the whole
 # time (trading-platform-v2 docs/runbooks/automation-nightly-watchdogs.md).
 # Installed FIRST, before anything jellyfin-related can fail, because this is
@@ -132,7 +133,7 @@ STAGE="verify: sleep inhibitor"
 # than judge one instant.
 ac_inhibitor_held() {
     systemd-inhibit --list --no-legend --no-pager \
-        | grep -E '^ac-power[[:space:]].*sleep:idle:handle-lid-switch[[:space:]].*[[:space:]]block$' >/dev/null
+        | grep -E '^ac-power[[:space:]].*[[:space:]]sleep:handle-lid-switch[[:space:]].*[[:space:]]block$' >/dev/null
 }
 any_ac_inhibitor() {
     systemd-inhibit --list --no-legend --no-pager | grep -E '^ac-power[[:space:]]' >/dev/null
@@ -156,8 +157,9 @@ if [[ "$(cat "$AC_ONLINE" 2>/dev/null)" == 1 ]]; then
     # the lid switch too.
     wait_until ac_inhibitor_held \
         || { echo "deploy: on AC, but logind holds no ac-power block inhibitor over" >&2
-             echo "deploy: sleep:idle:handle-lid-switch -- the machine CAN sleep" >&2; exit 1; }
-    echo "  on AC: logind holds the ac-power block inhibitor over sleep:idle:handle-lid-switch: OK"
+             echo "deploy: exactly sleep:handle-lid-switch -- the machine CAN sleep, or" >&2
+             echo "deploy: (with idle in it) the screen never blanks or locks" >&2; exit 1; }
+    echo "  on AC: logind holds the ac-power block inhibitor over sleep:handle-lid-switch: OK"
 else
     # On battery the machine SHOULD be able to sleep. udev stops the unit on
     # unplug, but a unit left active (a missed event, a manual start) would
