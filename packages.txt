@@ -23,6 +23,7 @@ pavucontrol
 playerctl
 polkit-gnome
 poppler
+power-profiles-daemon
 python
 ripgrep
 satty

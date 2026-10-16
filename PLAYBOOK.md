@@ -270,7 +270,7 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `kitty` | repo | **The terminal.** `$term` is `kitty`; also the dropdown, fuzzel's `terminal=`, and waybar's htop/nmtui click targets. One process per window, no daemon — §9.11 has the measurements | `$mod+Return` does nothing |
 | `fuzzel` | repo | **The** launcher — `$mod+d` and the waybar launcher button — and the cliphist picker. The only one since 2026-09-28: nwg-drawer's app grid (`$mod+Shift+d`, resident, ~40 MB and its own themed stylesheet) duplicated it, and Omarchy ships one launcher too | Launcher and clipboard history dead |
 | `mako` | repo | Notifications | Silent desktop |
-| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the 300s idle timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the palette's wallpaper slot when its guard passes, else the solid `$desktop` colour (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
+| `swaylock` | repo | Lock screen, driven by `sway/scripts/lock.sh` — `$mod+f1`, the idle lock timeout (via `idle.sh`, §9.26), before-sleep, and the power menu's Lock entry. No config file of its own: the script derives every colour from the live palette and passes them as flags (§9.13), and locks over the palette's wallpaper slot when its guard passes, else the solid `$desktop` colour (§9.25) | **Machine never locks** — `lock.sh` execs a binary that is not there, and swayidle's timeout fires into nothing |
 | `grim` `slurp` `satty` `wl-clipboard` `tesseract` (+`tesseract-data-eng`) `zbar` `wf-recorder` | repo | Screenshots (grim shoots, satty crops/annotates, §9.32), clipboard, OCR (`tesseract`), QR (`zbar`), recording (`wf-recorder`; `slurp` is its region picker) | Print bindings dead; each missing tool disables only its own mode, with a notification naming the package |
 | `cliphist` | repo | Clipboard history | `$mod+Ctrl+v` dead |
 | `autotiling` | repo | Splits along the longer axis automatically | Manual `$mod+v`/`$mod+b` for every split |
@@ -286,6 +286,7 @@ retired on 2026-09-28, `$EDITOR` is `nvim`, and plain vim is kept for root and r
 | `ttf-jetbrains-mono-nerd` | repo | **The patched Nerd Font.** See §9.4 — the base install has only `ttf-nerd-fonts-symbols`, a symbols-only fallback |
 | `google-chrome` | **AUR** | **The browser.** `$mod+o` and `$BROWSER`, and the default handler for `http`/`https`/`text/html` — §8 sets that, it is not stowed. The package ships `/usr/bin/google-chrome-stable` **only**: no bare `google-chrome`, and `Google-chrome` is the X11 WM_CLASS (`application_defaults` matches on it to assign workspace 2), never a command. Get the name wrong and `$mod+o` fails silently |
 | `kanshi` | repo | Display hotplug profiles |
+| `power-profiles-daemon` | repo | `idle.sh` switches it to `performance` on AC and `balanced` on battery (§9.26). Absent, the profile never changes and nothing else notices — the switch is never fatal |
 | `gdb` | repo | crash-diagnose's symbolised backtrace (§9.33). Installed today only as a dependency of `debugedit`, so a cleanup could orphan it, and a report then just says "no symbolised backtrace" |
 | `tmux` | repo | Terminal multiplexer. Optional to the desktop, but its status bar is themed from `palettes.toml` like everything else, so a machine without it simply renders a `colors.gen.conf` nobody reads. `git` is a soft dependency of the bar's right-hand segment — absent, the branch is blank rather than broken |
 | `yazi` | repo | Terminal file manager, themed from `palettes.toml` like everything else. Optional to the desktop; a machine without it renders a `theme.toml` nobody reads. Launched as `y` from any interactive bash — the wrapper in `bash/.bashrc` leaves the shell in whatever directory yazi ended up in, which plain `yazi` cannot do. **Optional extras, none required:** `7zip` (archive preview and the `extract` opener — without it archives show nothing), `ffmpegthumbnailer` (video thumbnails), `perl-image-exiftool` (the preset's `exif` opener), `zoxide` (makes the preset's `Z` binding work rather than error), `chafa` (image fallback outside kitty). `fd`, `ripgrep`, `fzf`, `jq`, `poppler` and `imagemagick` are already present and are what `s`, `S` and `z` use. Image previews need nothing extra: kitty speaks its own graphics protocol and `tmux.conf` already sets `allow-passthrough on` |
@@ -385,12 +386,14 @@ root.
 It holds two things. **`inhibit-sleep-on-ac.service`** plus **`99-inhibit-sleep-on-ac.rules`** keep
 the machine awake while it is plugged in — it is a server on AC (tp2's nightly jobs, Jellyfin, the
 family site). The udev rule starts and stops the unit on plug/unplug; the unit holds a logind
-*block* inhibitor over `sleep:idle:handle-lid-switch`. The lid switch is its own inhibitor class:
+*block* inhibitor over `sleep:handle-lid-switch`. The lid switch is its own inhibitor class:
 the unit once covered only `sleep:idle`, and the box slept 23 hours through a nightly with the unit
 `active` throughout (trading-platform-v2 `docs/runbooks/automation-nightly-watchdogs.md`). Until
 2026-09-25 these two files lived only in `/etc`, edited by hand, so a reinstall would have lost
 them silently. The tracked unit adds `Restart=on-failure` (the hand-made one had `Restart=no`, so
-a dead `systemd-inhibit` left the machine sleepable until the next plug event). A deploy that
+a dead `systemd-inhibit` left the machine sleepable until the next plug event). It must **never**
+hold `idle` as well: until 2026-10-12 it did, and swayidle answers a logind idle inhibitor by
+disabling *every* timeout, so on AC the screen never blanked or locked (§9.26). A deploy that
 changes the unit restarts it, which drops the block for a moment, so **don't deploy during a tp2
 nightly window**. The other is the **jellyfin-state-dump** timer.
 
@@ -1243,20 +1246,52 @@ most obviously-valid invocation available: every flag it does not carry is a fla
 the reason it failed. Measured on swaylock 1.8.6, a malformed `--color` is swallowed and it locks
 anyway; the guard does not rest on that leniency.
 
-### 9.26 Idle policy depends on AC vs battery, and lives in `idle.sh`
+### 9.26 Idle and power policy depend on AC vs battery, and live in `idle.sh`
 
 `config.d/autostart_applications` no longer execs `swayidle` with a fixed timeout chain. It execs
 **`scripts/idle.sh`**, a small daemon that owns that decision because it is the one thing about the
 idle chain that `config.d/*` cannot express: it has to change *while the session is running*, on a
 plug/unplug, with no `swaymsg reload`.
 
-**The policy.** On AC: lock at 300s, never auto-suspend — a machine plugged in and idle is not one
-anyone wants asleep on its own. On battery: lock **and** `systemctl suspend` both at 300s — idle
-screen time on battery is exactly what this exists to stop. Screen-off via DPMS at 600s is
-unconditional, unchanged from before. Ordering between the 300s lock and the 300s suspend on
-battery does not matter: `before-sleep` still calls `lock.sh -f` independently of what triggered
-the sleep, so a suspend that somehow beat the lock still comes back locked — the same double
-insurance that already existed for lid-close and the power menu's Suspend entry.
+**The policy** is the block at the top of `idle.sh` — seconds of no input before each step, `0`
+for never, each counted from the last input:
+
+| | screen off | lock | sleep | power profile |
+|---|---|---|---|---|
+| on AC | 180 | 300 | never | `performance` |
+| on battery | 60 | 120 | 900 (suspend) | `balanced` |
+
+On AC sleep is also blocked outright by `inhibit-sleep-on-ac.service` (§5.2) — the box is a server
+while plugged in. `before-sleep` calls `lock.sh -f` whatever triggered the sleep, so a sleep that
+beat the lock step, or a lid close, still comes back locked.
+
+**No hibernation, by decision (2026-10-17).** It would need swap about the size of RAM (30 GB)
+on a disk that is 88% full; the machine has no swap at all. And it cannot be a plain timeout
+anyway: once suspended nothing counts idle time, so it would have to be systemd's
+`suspend-then-hibernate` with a `HibernateDelaySec` drop-in. Revisit both together if that changes.
+
+**The power profile** is set through power-profiles-daemon, which on this Dell drives both the
+firmware platform profile (fan and thermal limits — `cool quiet balanced performance` in
+`/sys/firmware/acpi/platform_profile_choices`) and intel_pstate's energy-performance preference.
+It is applied after swayidle starts and is never fatal — a missing daemon or refused switch must
+not cost the lock — and only when the policy is applied (login, reload, plug/unplug), so a profile
+picked by hand with `powerprofilesctl set` holds until the next of those. The script keeps the name
+`idle.sh` because §9.2's `pkill -x idle.sh` and `tests/check_sway_exec.py` key on it.
+
+**Never a logind `idle` inhibitor.** swayidle ≥ 1.8 reads logind's `BlockInhibited` and, while it
+contains `idle`, logs `Not enabling timeouts: idle inhibitor found` and arms **none** of them —
+screen-off and lock included, not just sleep. `inhibit-sleep-on-ac.service` held `idle`
+from its hand-made days, before it was tracked on 2026-09-25, until 2026-10-12, so on AC the screen
+never went dark and never locked, with `pgrep -xc swayidle` reading a healthy 1 throughout. Its output goes to
+tty1, so nothing visible said so. Reproduce with the live session's flags — `swayidle -d -w …`;
+without `-w` swayidle fails to parse the property at startup and arms the timeouts anyway, which is
+how a bare test run looks fine. `tests/idle_test.sh` asserts the unit's `--what` has no `idle`.
+
+**No `idlehint`, on purpose.** It reported the session idle to logind, feeding logind's own
+`IdleAction` — and this machine carries an untracked `/etc/systemd/logind.conf.d/suspend.conf` with
+`IdleAction=suspend`, `IdleActionSec=10min`, which would have run a second suspend clock racing
+the one here. Without the hint logind never sees the session idle, so that
+file is inert and `idle.sh` is the policy's only owner.
 
 **Why polled, not event-driven.** `idle.sh` reads `/sys/class/power_supply/AC/online` every 15s
 and only touches `swayidle` when that value changes. `udevadm monitor` or `acpid` would be event-
@@ -1284,8 +1319,12 @@ Check those **after a fresh login**, not only after a `swaymsg reload`. The two 
 paths through sway, and the reload path is the forgiving one: this exact pair read 1/1 on demand
 while the machine had in fact booted with neither process running (§9.2).
 
-**Changing the timeouts.** Edit `scripts/idle.sh`, not `config.d/autostart_applications` — the
-latter only starts the wrapper now and has no timeout values of its own.
+**Changing the timeouts.** Edit the block at the top of `scripts/idle.sh`, then `swaymsg reload`
+(the `exec_always` restarts it). Not `config.d/autostart_applications`, which only starts the
+wrapper and has no timeout values of its own.
+Run `sh tests/idle_test.sh` after any edit — stubs only, so it never `pkill`s the live swayidle
+or switches the real profile;
+its expected values are the defaults above, so a deliberate change updates both.
 
 ### 9.27 A waybar state class is a *GTK* class, and the GTK theme styles it too
 

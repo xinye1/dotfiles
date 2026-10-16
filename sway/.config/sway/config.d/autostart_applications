@@ -38,8 +38,8 @@ exec_always dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP=swa
 # Second, stock had `before-sleep` only: no timeout clauses at all, so the screen
 # never locked or blanked on idle no matter how long the machine sat unattended.
 #
-# The actual timeout chain (lock at 300s always; suspend at 300s too, but only
-# on battery; screen off at 600s) lives in scripts/idle.sh, not here, because it
+# The actual timeout chain -- screen off, lock and sleep, each with its own AC
+# and battery value -- lives in the block at the top of scripts/idle.sh, not here, because it
 # depends on AC vs battery and has to change without a sway reload — see the
 # script's own header and PLAYBOOK.md §9.26. `pkill -x swayidle` still runs here
 # in addition to idle.sh's own bookkeeping, so a reload can never leave a

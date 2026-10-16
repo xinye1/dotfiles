@@ -5,7 +5,11 @@ Description=Block idle sleep while on AC power (tp2 nightly protection)
 # Start only if AC is actually online (guards boot-on-battery; udev handles
 # transitions afterwards).
 ExecCondition=/bin/sh -c '[ "$(cat /sys/class/power_supply/AC/online)" = "1" ]'
-ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle:handle-lid-switch --who=ac-power --why="plugged into AC" --mode=block /usr/bin/sleep infinity
+# No `idle` in --what, on purpose. swayidle >= 1.8 honours a logind idle
+# inhibitor by disabling EVERY timeout -- not just sleep, the screen-off and the
+# lock too -- so with `idle` here the screen never blanked or locked on AC.
+# `sleep` alone already stops logind's IdleAction from suspending. PLAYBOOK §9.26.
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:handle-lid-switch --who=ac-power --why="plugged into AC" --mode=block /usr/bin/sleep infinity
 # Re-establish the block if systemd-inhibit dies abnormally while on AC.
 # on-failure never fires for the udev rule's deliberate stop on unplug, and a
 # restart re-runs ExecCondition, so a restart on battery is a clean skip.
