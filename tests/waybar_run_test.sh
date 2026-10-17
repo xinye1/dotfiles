@@ -86,10 +86,13 @@ printf '\nwaybar_run\n'
 printf '  (%s)\n' "$WBR_BIN"
 
 # --- 1. a crashed bar comes back ---
-# The whole reason the script exists. SIGABRT is what waybar actually dies of.
+# The whole reason the script exists. waybar dies of SIGABRT, but the stub is
+# KILLed: the supervisor treats every exit alike (rc is only logged), and an
+# ABRT makes the stub's `sleep` dump core, which crash-watch then reports as a
+# real crash of /usr/bin/sleep (2026-09-15, 09-18, 10-17).
 if start_supervisor; then
     first=$child
-    kill -ABRT "$first" 2>/dev/null
+    kill -KILL "$first" 2>/dev/null
     n=0; second=''
     while [ "$n" -lt 50 ]; do
         second=$(pgrep -P "$sup" 2>/dev/null | head -1)
@@ -100,7 +103,7 @@ if start_supervisor; then
     if [ -n "$second" ]; then
         ok "a crashed waybar is restarted"
     else
-        no "a crashed waybar is restarted" "no new child after SIGABRT to $first"
+        no "a crashed waybar is restarted" "no new child after SIGKILL to $first"
     fi
 else
     no "a crashed waybar is restarted" "supervisor never started a child"
