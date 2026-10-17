@@ -22,6 +22,10 @@ AC_PROFILE=performance; BAT_PROFILE=balanced
 #
 # On AC, sleep is also blocked outright by inhibit-sleep-on-ac.service, so
 # AC_SLEEP stays 0: a nonzero value would only make swayidle ask and be told no.
+#
+# Keep-awake (awake.sh: the bar's eye, or System > Keep awake in the palette)
+# drops all three steps on either source until its deadline, then this policy
+# comes back by itself. Its default length lives in awake.sh.
 # ---------------------------------------------------------------------------
 
 # Owns the swayidle timeout chain and the power profile, and reapplies both
@@ -52,19 +56,47 @@ AC_PROFILE=performance; BAT_PROFILE=balanced
 # The name predates the power profile; it stays idle.sh because §9.2's
 # pkill-by-name and tests/check_sway_exec.py both key on it.
 #
-# IDLE_AC_ONLINE and IDLE_POLL exist for tests/idle_test.sh only.
+# Keep-awake is a deadline, not a Wayland idle inhibitor held by some client:
+# awake.sh writes it, this loop alone acts on it, so the policy keeps one
+# owner and a waybar crash cannot end it. While it holds, swayidle runs with no
+# timeouts but keeps before-sleep, so a lid close or a manual suspend still
+# comes back locked. The deadline names the sway that set it ($SWAYSOCK, which
+# carries sway's pid and survives a reload): $XDG_RUNTIME_DIR outlives a logout
+# here, because the user lingers, so without that a deadline would carry into
+# the next login and keep it from ever locking. One that has passed, does not
+# parse or names another session is deleted and counts as off -- fail toward
+# locking, as above.
+#
+# IDLE_AC_ONLINE, IDLE_POLL and IDLE_AWAKE_FILE exist for tests/idle_test.sh only.
 
 AC=${IDLE_AC_ONLINE:-/sys/class/power_supply/AC/online}
 POLL=${IDLE_POLL:-15}
+AWAKE=${IDLE_AWAKE_FILE:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/idle-awake-until}
 # The ~ is for swayidle, which runs each command through sh -c.
 # shellcheck disable=SC2088
 LOCK='~/.config/sway/scripts/lock.sh -f'
 state=""
+power=""
+
+# awake.sh sends USR1 after it changes the deadline. The trap only has to
+# exist: it ends the `wait` below early, so the loop re-reads at once. Set
+# before the first swayidle starts -- USR1's default action is to exit.
+trap : USR1
 
 on_ac() {
     [ "$(cat "$AC" 2>/dev/null)" != "0" ]
 }
 
+awake() {
+    local until key
+    read -r until key 2>/dev/null <"$AWAKE" || return 1
+    [[ $until =~ ^[0-9]{1,12}$ ]] && [ -n "$key" ] && [ "$key" = "${SWAYSOCK:-}" ] &&
+        [ "$until" -gt "$(date +%s)" ] && return 0
+    rm -f "$AWAKE"
+    return 1
+}
+
+# start <ac|battery> <normal|awake>
 start() {
     local screen_off lock sleep_after profile args=()
     if [ "$1" = battery ]; then
@@ -72,20 +104,26 @@ start() {
     else
         screen_off=$AC_SCREEN_OFF lock=$AC_LOCK sleep_after=$AC_SLEEP profile=$AC_PROFILE
     fi
-    [ "$screen_off" -gt 0 ] && args+=(timeout "$screen_off" 'swaymsg "output * dpms off"'
-                                      resume 'swaymsg "output * dpms on"')
-    [ "$lock" -gt 0 ] && args+=(timeout "$lock" "$LOCK")
-    [ "$sleep_after" -gt 0 ] && args+=(timeout "$sleep_after" 'systemctl suspend')
+    if [ "$2" = normal ]; then
+        [ "$screen_off" -gt 0 ] && args+=(timeout "$screen_off" 'swaymsg "output * dpms off"'
+                                          resume 'swaymsg "output * dpms on"')
+        [ "$lock" -gt 0 ] && args+=(timeout "$lock" "$LOCK")
+        [ "$sleep_after" -gt 0 ] && args+=(timeout "$sleep_after" 'systemctl suspend')
+    fi
     pkill -x swayidle
     swayidle -w "${args[@]}" before-sleep "$LOCK" &
     # After swayidle, and never fatal: a missing daemon or a refused switch
-    # must not cost the lock. Only when the policy is applied, so a profile
-    # picked by hand holds until the next plug/unplug or sway reload.
-    [ -n "$profile" ] && powerprofilesctl set "$profile" 2>/dev/null
+    # must not cost the lock. Only when the power source changes (or at
+    # start), so a profile picked by hand holds until the next plug/unplug or
+    # sway reload -- switching keep-awake does not reset it.
+    [ "$1" != "$power" ] && [ -n "$profile" ] && powerprofilesctl set "$profile" 2>/dev/null
 }
 
 while :; do
     if on_ac; then new=ac; else new=battery; fi
-    [ "$new" = "$state" ] || { start "$new"; state=$new; }
-    sleep "$POLL"
+    if awake; then mode=awake; else mode=normal; fi
+    [ "$new:$mode" = "$state" ] || { start "$new" "$mode"; state=$new:$mode; power=$new; }
+    sleep "$POLL" &
+    wait $!
+    kill $! 2>/dev/null   # a USR1 ends the wait, not the sleep
 done
