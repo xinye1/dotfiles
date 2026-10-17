@@ -78,7 +78,7 @@
 
     "modules-right": [
         "custom/keyboard-layout",
-        "idle_inhibitor",
+        "custom/awake",
         "cpu",
         "memory",
         "backlight",
@@ -103,14 +103,26 @@
         "on-click": "~/.config/waybar/scripts/keyhint.py"
     },
 
-    "idle_inhibitor": {
+    // Keep awake: screen stays on and unlocked until a deadline, then the
+    // normal idle policy is back by itself. Click toggles the default 2h;
+    // right-click picks a time (or type one: 45m, 3h). awake.sh only writes
+    // the deadline -- idle.sh acts on it, so a crash here cannot end it.
+    // Not the built-in idle_inhibitor, which holds its inhibitor inside this
+    // process and takes no picked time (PLAYBOOK §9.26). awake.sh pokes signal
+    // 11 on every change; the interval keeps the time left current.
+    "custom/awake": {
+        "exec": "~/.config/sway/scripts/awake.sh status",
+        "return-type": "json",
+        "interval": 30,
+        "signal": 11,
+        "exec-on-event": false,
         "format": "{icon}",
         "format-icons": {
             "activated": "",
             "deactivated": ""
         },
-        "tooltip-format-activated": "Idle Inhibitor Activated",
-        "tooltip-format-deactivated": "Idle Inhibitor Deactivated"
+        "on-click": "~/.config/sway/scripts/awake.sh toggle",
+        "on-click-right": "~/.config/sway/scripts/awake.sh pick"
     },
 
     "cpu": {

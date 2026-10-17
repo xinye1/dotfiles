@@ -173,7 +173,7 @@ isolation.
 | `accent2` | focused-inactive border, calendar weekdays, waybar mode |
 | `indicator` | sway split indicator — where the next window will open |
 | **`critical`** | urgent window, critical CPU/battery, destructive actions |
-| `warning` | warning states, "today" in the calendar, idle inhibitor on |
+| `warning` | warning states, "today" in the calendar, keep-awake on |
 | `success` | battery charging, success states |
 | `desktop` | one shade below `bg`: the fallback behind the wallpaper slot, the letterbox around an image, and the lock colour when there is no usable image (§9.25) |
 
@@ -1265,6 +1265,60 @@ On AC sleep is also blocked outright by `inhibit-sleep-on-ac.service` (§5.2) �
 while plugged in. `before-sleep` calls `lock.sh -f` whatever triggered the sleep, so a sleep that
 beat the lock step, or a lid close, still comes back locked.
 
+**Every trigger, per power source.** The table above is only swayidle's share. The screen, the lock
+and sleep each have more than one trigger, owned by different layers (checked against the live
+machine 2026-10-17):
+
+| trigger | on AC | on battery | owned by |
+|---|---|---|---|
+| no input | screen off 180s, lock 300s, never sleeps | screen off 60s, lock 120s, suspend 900s | `idle.sh` → swayidle |
+| lid closed | internal panel off and locked; **no** suspend | panel off and locked, then suspend | `scripts/lid.sh` (sway `bindswitch`, `config.d/input`) + logind |
+| lid closed, another display on | panel off, **not** locked: the session is in use there | panel off, **no** suspend (logind counts it as docked); lock at 120s | same |
+| keep-awake (bar eye, or System › Keep awake…) | no screen off, no lock, until its deadline | no screen off, no lock, no idle suspend, until its deadline | `scripts/awake.sh` → `idle.sh` |
+| `systemctl suspend` by hand | refused by the `ac-power` block (force with `-i`) | suspends; comes back locked | logind + `inhibit-sleep-on-ac.service` |
+| power key | power off | power off | logind default `HandlePowerKey=poweroff` |
+| fullscreen Firefox/Chrome | every swayidle timeout paused | same | `inhibit_idle fullscreen` (`config.d/application_defaults`) |
+| plug / unplug | udev starts the `ac-power` block at once; `idle.sh` swaps the chain within 15s | udev drops the block at once; same 15s | `99-inhibit-sleep-on-ac.rules` + `idle.sh` |
+
+The lid rows rest on logind's two inhibitor tiers. The `ac-power` lock holds `handle-lid-switch`,
+which logind always honours, so on AC it never acts on the lid at all. The `sleep` half does not
+cover the lid, because `LidSwitchIgnoreInhibited=yes` is the default. On battery logind runs
+`HandleLidSwitch=suspend`, unless the machine counts as docked (`HandleLidSwitchDocked=ignore`), and
+`HandleLidSwitchExternalPower` is unset, so it falls back to `HandleLidSwitch`. None of this is
+tracked: it is logind's stock behaviour, and the only logind drop-in present is the inert
+`suspend.conf` described below. Swapping the chain on a plug/unplug restarts swayidle, so its
+timers start counting again from that moment. A suspend is `s2idle`: `/sys/power/mem_sleep` offers
+`deep` too, but nothing here or on the kernel command line selects it.
+
+**The lid locks, because on AC nothing else would (2026-10-17).** The `handle-lid-switch` block that
+keeps the box serving on AC also means logind never sees a lid close, so until `lid.sh` a closed
+laptop on AC sat unlocked until the 300s idle lock. `lid.sh close` turns the panel off and locks,
+except when another output is still active: lid shut at a desk means the session is in use on that
+screen. An output list it cannot get (sway unreachable, no JSON) locks anyway, and an existing
+swaylock is not doubled (the binding is `--locked`, so it fires under the lock screen too). On
+battery the lock lands a moment before logind's suspend, whose `before-sleep` lock then finds one
+already up.
+
+**Keep-awake is a deadline `idle.sh` reads, not an inhibitor (2026-10-17).** It replaced waybar's
+built-in `idle_inhibitor`, which held a Wayland idle inhibitor on the bar's own surface: it
+stopped all three swayidle steps exactly like keep-awake does, but it could not take a length
+picked at click time, never ended by itself, and died with the waybar process, which aborts
+intermittently (§9.29). `scripts/awake.sh` writes a deadline in epoch seconds to
+`$XDG_RUNTIME_DIR/idle-awake-until`, then sends `USR1` to `idle.sh` (applied at once, not at the
+next 15s poll) and `RTMIN+11` to waybar. While the deadline holds, `idle.sh` runs swayidle with no
+timeouts but keeps `before-sleep`, so the lid, a manual suspend and the power key behave exactly as
+in the table and still come back locked; it keeps the power profile as it was. A passed or garbled
+deadline is deleted and counts as off, so the failure mode is "locks as normal". The runtime dir is
+wiped at logout and reboot, so no override outlives the session.
+
+Using it: click the eye for the default 2h (`DEFAULT` in `awake.sh`), click again to stop;
+right-click, or **System › Keep awake…** in the palette, to pick 30 min to 8 hours or type a time
+(`45`, `90m`, `3h`, up to 24h). The tooltip shows the time left. It is for watching without
+touching: presenting, following a recipe or docs, a long build, a video that is not fullscreen (the
+fullscreen rule already covers Firefox and Chrome). It cannot keep a closed laptop awake on battery,
+because the lid is logind's; that takes `systemd-inhibit --what=sleep:handle-lid-switch <cmd>`. That
+is a logind *sleep* inhibitor, which is fine; never `idle` (below).
+
 **No hibernation, by decision (2026-10-17).** It would need swap about the size of RAM (30 GB)
 on a disk that is 88% full; the machine has no swap at all. And it cannot be a plain timeout
 anyway: once suspended nothing counts idle time, so it would have to be systemd's
@@ -1322,9 +1376,13 @@ while the machine had in fact booted with neither process running (§9.2).
 **Changing the timeouts.** Edit the block at the top of `scripts/idle.sh`, then `swaymsg reload`
 (the `exec_always` restarts it). Not `config.d/autostart_applications`, which only starts the
 wrapper and has no timeout values of its own.
-Run `sh tests/idle_test.sh` after any edit — stubs only, so it never `pkill`s the live swayidle
-or switches the real profile;
-its expected values are the defaults above, so a deliberate change updates both.
+Run `sh tests/idle_test.sh` after any edit to `idle.sh`, `awake.sh` or `lid.sh` — stubs only, so
+it never `pkill`s the live swayidle, switches the real profile, turns the panel off or locks;
+its expected values are the defaults above, so a deliberate change updates both. Point `IDLE_BIN`,
+`AWAKE_BIN` or `LID_BIN` at a copy to check the assertions can still fail: built 2026-10-17 by
+proving each of ten mutations (no keep-awake branch, no `USR1` trap, profile reset on toggle, a
+garbled deadline kept, no docked check, failing open on no output list, a doubled swaylock, no
+24h cap, Esc as a failure, no poke) turns its check red.
 
 ### 9.27 A waybar state class is a *GTK* class, and the GTK theme styles it too
 

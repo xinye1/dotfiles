@@ -30,6 +30,14 @@ label = "Lock"
 icon = "system-lock-screen"
 run = "~/.config/sway/scripts/lock.sh"
 
+# The same picker as right-clicking waybar's keep-awake eye (§9.26).
+[[action]]
+group = "System"
+label = "Keep awake…"
+icon = "preferences-desktop-screensaver"
+keywords = ["caffeine", "inhibit", "idle", "presentation"]
+run = "~/.config/sway/scripts/awake.sh pick"
+
 [[action]]
 group = "System"
 label = "Suspend"
