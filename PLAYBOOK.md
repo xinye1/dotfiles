@@ -1555,7 +1555,9 @@ the bar down with the supervisor; an instantly-exiting bar is backed off rather 
 1Hz; restarts reach the log. Point `WBR_BIN` at another copy to confirm the assertions can still
 fail — a green suite that cannot go red is the `gate-fixtures` trap (§9.25's sibling rule, applied
 in `tp_backup_test.sh`). This one was built by proving **4 of its 6 checks fail** against the
-pre-fix script, two of them with the literal `PPid: 1` signature from the outage.
+pre-fix script, two of them with the literal `PPid: 1` signature from the outage. The crash check
+SIGKILLs the stub rather than ABRTing it: the supervisor treats every exit alike, and an ABRT made
+the stub's `sleep` dump core, so each run raised a crash-watch report for `/usr/bin/sleep`.
 
 By hand, in the live session:
 
