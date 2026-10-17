@@ -161,7 +161,14 @@
         "on-click": "pavucontrol"
     },
 
+    // `bat`/`adapter` are pinned so waybar skips every other power_supply node
+    // by name before touching it. Unpinned, waybar 0.15.0 rescans all of them
+    // on each udev event and aborts when the Wacom pen's transient
+    // wacom_battery_N vanishes mid-scan (uncaught "Could not watch events
+    // for ..."). Fixed upstream after 0.15.0; see PLAYBOOK §9.29.
     "battery": {
+        "bat": "BAT0",
+        "adapter": "AC",
         "states": {
             "warning": 30,
             "critical": 15
