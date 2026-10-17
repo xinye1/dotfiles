@@ -1303,13 +1303,21 @@ already up.
 built-in `idle_inhibitor`, which held a Wayland idle inhibitor on the bar's own surface: it
 stopped all three swayidle steps exactly like keep-awake does, but it could not take a length
 picked at click time, never ended by itself, and died with the waybar process, which aborts
-intermittently (§9.29). `scripts/awake.sh` writes a deadline in epoch seconds to
+intermittently (§9.29). `scripts/awake.sh` writes `<deadline epoch seconds> <$SWAYSOCK>` to
 `$XDG_RUNTIME_DIR/idle-awake-until`, then sends `USR1` to `idle.sh` (applied at once, not at the
 next 15s poll) and `RTMIN+11` to waybar. While the deadline holds, `idle.sh` runs swayidle with no
 timeouts but keeps `before-sleep`, so the lid, a manual suspend and the power key behave exactly as
 in the table and still come back locked; it keeps the power profile as it was. A passed or garbled
-deadline is deleted and counts as off, so the failure mode is "locks as normal". The runtime dir is
-wiped at logout and reboot, so no override outlives the session.
+deadline is deleted and counts as off, so the failure mode is "locks as normal".
+
+**The deadline names its sway session, because the runtime dir outlives a logout here.** The user
+lingers (`loginctl show-user` reads `Linger=yes`), so `/run/user/1000` survives every logout and
+only a reboot clears it. A bare deadline would carry into the next login and keep it from ever
+locking, for up to 24h. So the file carries `$SWAYSOCK`, whose name holds sway's pid and stays the
+same across a `swaymsg reload`, and both scripts honour only a deadline written under the
+`$SWAYSOCK` they themselves run with; `idle.sh` deletes any other. `awake.sh on` refuses to run
+without `$SWAYSOCK` (from SSH, say) rather than write a deadline nothing will honour. Found in
+review before merge (PR #61), not in use.
 
 Using it: click the eye for the default 2h (`DEFAULT` in `awake.sh`), click again to stop;
 right-click, or **System › Keep awake…** in the palette, to pick 30 min to 8 hours or type a time
@@ -1380,9 +1388,10 @@ Run `sh tests/idle_test.sh` after any edit to `idle.sh`, `awake.sh` or `lid.sh` 
 it never `pkill`s the live swayidle, switches the real profile, turns the panel off or locks;
 its expected values are the defaults above, so a deliberate change updates both. Point `IDLE_BIN`,
 `AWAKE_BIN` or `LID_BIN` at a copy to check the assertions can still fail: built 2026-10-17 by
-proving each of ten mutations (no keep-awake branch, no `USR1` trap, profile reset on toggle, a
-garbled deadline kept, no docked check, failing open on no output list, a doubled swaylock, no
-24h cap, Esc as a failure, no poke) turns its check red.
+proving each of thirteen mutations (no keep-awake branch, no `USR1` trap, profile reset on toggle,
+a garbled deadline kept, no docked check, failing open on no output list, a doubled swaylock, no
+24h cap, Esc as a failure, no poke, and the session key dropped from `idle.sh`, from `awake.sh`'s
+reading, or from `awake.sh on`'s refusal) turns its check red.
 
 ### 9.27 A waybar state class is a *GTK* class, and the GTK theme styles it too
 

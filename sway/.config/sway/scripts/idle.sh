@@ -60,9 +60,12 @@ AC_PROFILE=performance; BAT_PROFILE=balanced
 # awake.sh writes it, this loop alone acts on it, so the policy keeps one
 # owner and a waybar crash cannot end it. While it holds, swayidle runs with no
 # timeouts but keeps before-sleep, so a lid close or a manual suspend still
-# comes back locked. The deadline lives in $XDG_RUNTIME_DIR, so logging out or
-# rebooting always ends it; one that has passed or does not parse is deleted
-# and counts as off -- fail toward locking, as above.
+# comes back locked. The deadline names the sway that set it ($SWAYSOCK, which
+# carries sway's pid and survives a reload): $XDG_RUNTIME_DIR outlives a logout
+# here, because the user lingers, so without that a deadline would carry into
+# the next login and keep it from ever locking. One that has passed, does not
+# parse or names another session is deleted and counts as off -- fail toward
+# locking, as above.
 #
 # IDLE_AC_ONLINE, IDLE_POLL and IDLE_AWAKE_FILE exist for tests/idle_test.sh only.
 
@@ -85,9 +88,10 @@ on_ac() {
 }
 
 awake() {
-    local until
-    until=$(cat "$AWAKE" 2>/dev/null) || return 1
-    [[ $until =~ ^[0-9]{1,12}$ ]] && [ "$until" -gt "$(date +%s)" ] && return 0
+    local until key
+    read -r until key 2>/dev/null <"$AWAKE" || return 1
+    [[ $until =~ ^[0-9]{1,12}$ ]] && [ -n "$key" ] && [ "$key" = "${SWAYSOCK:-}" ] &&
+        [ "$until" -gt "$(date +%s)" ] && return 0
     rm -f "$AWAKE"
     return 1
 }

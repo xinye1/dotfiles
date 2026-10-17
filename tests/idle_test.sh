@@ -53,6 +53,9 @@ export IDLE_AC_ONLINE="$sandbox/ac_online" IDLE_POLL=0.1
 # read the live session's deadline and every policy check would see no timeouts.
 export IDLE_AWAKE_FILE="$sandbox/awake-until"
 export LID_LOCK="$sandbox/lock.sh"
+# The sway instance a deadline belongs to. Fake, so no check can mistake the
+# live session's socket for this one.
+export SWAYSOCK="$sandbox/sway-ipc.test.sock"
 
 # One line per call: the tool name, then its arguments joined by `|`, so a
 # quoted command ('swaymsg "output * dpms off"') stays one field. Each line is
@@ -203,11 +206,12 @@ esac
 
 AWAKE=$IDLE_AWAKE_FILE
 now() { date +%s; }
+until_in() { echo "$(( $(now) + $1 )) $SWAYSOCK"; }   # a deadline $1 seconds out, this session's
 awake_want="swayidle|-w|before-sleep|$LOCK"
 
 echo "idle.sh keep-awake"
 
-echo $(( $(now) + 3600 )) >"$AWAKE"
+until_in 3600 >"$AWAKE"
 run 1
 got=$(call 1); prof=$(profile 1); stop
 [ "$got" = "$awake_want" ] && [ "$prof" = "powerprofilesctl|set|performance" ] \
@@ -220,7 +224,7 @@ got=$(call 1); prof=$(profile 1); stop
     && ok "keep-awake on battery: no idle suspend either" \
     || no "keep-awake on battery: no idle suspend either" "got: $got / $prof"
 
-echo $(( $(now) - 1 )) >"$AWAKE"
+until_in -1 >"$AWAKE"
 run 0
 got=$(call 1); stop
 [ "$got" = "$bat_want" ] && [ ! -e "$AWAKE" ] \
@@ -234,11 +238,25 @@ got=$(call 1); stop
 [ "$got" = "$bat_want" ] && ok "a garbled keep-awake deadline is ignored: fail toward locking" \
     || no "a garbled keep-awake deadline is ignored: fail toward locking" "got: $got"
 
+# Linger keeps $XDG_RUNTIME_DIR across logouts, so a deadline outlives the sway
+# that set it. Only that sway may honour it.
+echo "$(( $(now) + 3600 )) $sandbox/sway-ipc.earlier.sock" >"$AWAKE"
+run 0
+got=$(call 1); stop
+[ "$got" = "$bat_want" ] && [ ! -e "$AWAKE" ] \
+    && ok "a deadline set under another sway session is ignored and deleted" \
+    || no "a deadline set under another sway session is ignored and deleted" "got: $got"
+echo $(( $(now) + 3600 )) >"$AWAKE"
+run 0
+got=$(call 1); stop
+[ "$got" = "$bat_want" ] && ok "a deadline naming no session is ignored" \
+    || no "a deadline naming no session is ignored" "got: $got"
+
 # A 30s poll, so only the signal can explain a change inside the 5s wait.
 rm -f "$AWAKE"
 IDLE_POLL=30
 run 0
-echo $(( $(now) + 3600 )) >"$AWAKE"
+until_in 3600 >"$AWAKE"
 kill -USR1 "$pid" 2>/dev/null
 wait_swayidle 2
 got=$(call 2); nprof=$(grep -c '^powerprofilesctl' "$LOG"); stop
@@ -248,7 +266,7 @@ IDLE_POLL=0.1
 [ "$nprof" = 1 ] && ok "switching keep-awake leaves the power profile alone" \
     || no "switching keep-awake leaves the power profile alone" "$nprof profile switches"
 
-echo $(( $(now) + 2 )) >"$AWAKE"
+until_in 2 >"$AWAKE"
 run 0
 wait_swayidle 2
 first=$(call 1); got=$(call 2); stop
@@ -264,8 +282,9 @@ aw() { bash "$AWAKE_BIN" "$@"; }
 # dash, so the stubs' knobs go through env: aw_env <subcommand> VAR=value...
 aw_env() { sub=$1; shift; env "$@" bash "$AWAKE_BIN" "$sub"; }
 deadline_is() {   # the file holds now + $1 minutes, give or take the 5s a slow run costs
-    d=$(cat "$AWAKE" 2>/dev/null) || return 1
+    read -r d key 2>/dev/null <"$AWAKE" || return 1
     case $d in ''|*[!0-9]*) return 1 ;; esac
+    [ "$key" = "$SWAYSOCK" ] || return 1
     off=$(( $(now) + $1 * 60 - d ))
     [ "$off" -ge 0 ] && [ "$off" -le 5 ]
 }
@@ -304,7 +323,7 @@ s=$(aw status)
 aw on 90; s=$(aw status)
 [ "$(field "$s" alt)" = activated ] && case $(field "$s" tooltip) in *"1h 30m left"*) true ;; *) false ;; esac \
     && ok "status: on reads activated, with the time left" || no "status: on reads activated, with the time left" "$s"
-echo $(( $(now) - 1 )) >"$AWAKE"; s=$(aw status)
+until_in -1 >"$AWAKE"; s=$(aw status)
 [ "$(field "$s" alt)" = deactivated ] && ok "status: an expired deadline reads deactivated" \
     || no "status: an expired deadline reads deactivated" "$s"
 
@@ -320,6 +339,13 @@ aw_env pick FUZZEL_OUT='Stop keeping awake' && grep -q '^Stop keeping awake$' "$
 : >"$LOG"
 aw_env pick FUZZEL_OUT=soon && [ ! -e "$AWAKE" ] && grep -q '^notify-send' "$LOG" \
     && ok "pick: a nonsense time says so and changes nothing" || no "pick: a nonsense time says so and changes nothing"
+
+echo "$(( $(now) + 3600 )) $sandbox/sway-ipc.earlier.sock" >"$AWAKE"; s=$(aw status)
+[ "$(field "$s" alt)" = deactivated ] && ok "status: another session's deadline reads deactivated" \
+    || no "status: another session's deadline reads deactivated" "$s"
+rm -f "$AWAKE"
+aw_env on SWAYSOCK= 2>/dev/null && no "on: refused outside a sway session" "exit 0" \
+    || { [ ! -e "$AWAKE" ] && ok "on: refused outside a sway session" || no "on: refused outside a sway session" "file written"; }
 
 echo "lid.sh"
 

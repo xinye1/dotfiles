@@ -20,8 +20,10 @@
 # inhibitor either: swayidle would then arm no timeout at all, ever (§9.26).
 #
 # While it holds, lid close and a manual suspend behave exactly as without it,
-# and both still come back locked. The deadline lives in $XDG_RUNTIME_DIR, so
-# a logout or reboot always ends it.
+# and both still come back locked. The file is "<deadline> <$SWAYSOCK>", and
+# only the sway named there honours it: the user lingers, so $XDG_RUNTIME_DIR
+# survives a logout, and a bare deadline would carry into the next login and
+# keep it from locking. A reboot wipes it either way.
 #
 # IDLE_AWAKE_FILE exists for tests/idle_test.sh only.
 
@@ -33,10 +35,10 @@ MAX=1440      # a day; anything longer is a policy change, not an override
 SIGNAL=11     # waybar custom/awake's "signal"
 STOP='Stop keeping awake'
 
-remaining() {   # seconds left, or fail when it is off
-    local until left
-    until=$(cat "$FILE" 2>/dev/null) || return 1
-    [[ $until =~ ^[0-9]{1,12}$ ]] || return 1
+remaining() {   # seconds left in this session, or fail when it is off
+    local until key left
+    read -r until key 2>/dev/null <"$FILE" || return 1
+    [[ $until =~ ^[0-9]{1,12}$ ]] && [ -n "$key" ] && [ "$key" = "${SWAYSOCK:-}" ] || return 1
     left=$(( until - $(date +%s) ))
     [ "$left" -gt 0 ] || return 1
     echo "$left"
@@ -65,12 +67,16 @@ poke() {        # never fatal: idle.sh's 15s poll catches up, the bar's interval
 
 on() {
     local m
+    [ -n "${SWAYSOCK:-}" ] || {
+        echo "awake: not inside a sway session (no \$SWAYSOCK)" >&2
+        return 2
+    }
     m=$(minutes "${1:-$DEFAULT}") || {
         echo "awake: not a time of 1 minute to $((MAX / 60)) hours: ${1:-}" >&2
         return 2
     }
     mkdir -p "$(dirname "$FILE")" &&
-        printf '%s\n' $(( $(date +%s) + m * 60 )) >"$FILE.tmp" &&
+        printf '%s %s\n' $(( $(date +%s) + m * 60 )) "$SWAYSOCK" >"$FILE.tmp" &&
         mv -f "$FILE.tmp" "$FILE" || return 1
     poke
 }
