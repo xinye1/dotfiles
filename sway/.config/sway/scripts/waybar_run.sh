@@ -11,9 +11,11 @@
 # `bar { swaybar_command ... }` block. waybar crashes intermittently (SIGABRT
 # via an uncaught C++ exception in a background thread -- `coredumpctl list`
 # showed 5 hits across 2026-09-01..13, none correlated with output hotplug,
-# suspend/resume or lock events, so it looks like an internal waybar race
-# rather than anything in this repo's own custom-module scripts, which
-# already guard their JSON output). Sway does not respawn a bar_command that
+# suspend/resume or lock events). The two cores that survived (2026-10-02,
+# 10-14) were the battery module racing the Wacom pen's transient
+# wacom_battery_N node -- mitigated by pinning `bat`/`adapter` in the waybar
+# config -- but the cause of the other 17 is unproven, so the supervisor
+# stays (§9.29). Sway does not respawn a bar_command that
 # exits on its own, so a crash used to leave the bar gone until the next
 # `swaymsg reload` ($mod+Shift+c) -- this loop makes that automatic instead.
 #

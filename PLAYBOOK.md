@@ -1469,6 +1469,15 @@ got fresh PIDs) and never relaunched the bar's process — tried with a plain `w
 `sh -c` loop, and the script, all three zero after 5s of polling. `swaymsg exec waybar` started it
 instantly every time. So the bar became a daemon like the others, and the block went away.
 
+**One cause found, the rest not.** By 2026-10-14 `coredumpctl list waybar` held 19 SIGABRTs. The
+two whose cores survived (2026-10-02, 10-14) were attributed to the battery module: waybar 0.15.0
+rescans every `/sys/class/power_supply` node on each udev event, and aborts with an uncaught
+`Could not watch events for …` when the Wacom pen's transient `wacom_battery_N` node vanishes
+mid-scan (reported fixed upstream after 0.15.0). The battery module now pins `"bat": "BAT0"` and
+`"adapter": "AC"`, so waybar skips every other node by name before touching it. The other 17 have
+no surviving core and no proven cause, so the supervisor stays — this mitigates one crash, it does
+not retire the need for crash recovery.
+
 **The failure that mattered is not the crash — it is the supervisor dying quietly.** On 2026-09-15
 the bar vanished at 08:07:54 and was still gone 13 hours later. The supervisor had been in place
 for two days and had demonstrably worked (it restarted a bar that was deliberately `kill -ABRT`ed
