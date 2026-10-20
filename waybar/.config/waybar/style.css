@@ -83,7 +83,7 @@
 #custom-recording,
 #custom-claude,
 #custom-keyboard-layout,
-#idle_inhibitor,
+#custom-awake,
 #cpu,
 #memory,
 #backlight,
@@ -133,7 +133,7 @@
 #custom-recording,
 #custom-claude,
 #custom-keyboard-layout,
-#idle_inhibitor,
+#custom-awake,
 #cpu,
 #memory,
 #backlight,
@@ -201,7 +201,7 @@
     font-weight: bold;
 }
 
-#idle_inhibitor.activated {
+#custom-awake.activated {
     color: @warning;
 }
 
