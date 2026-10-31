@@ -67,6 +67,14 @@ AC_PROFILE=performance; BAT_PROFILE=balanced
 # parse or names another session is deleted and counts as off -- fail toward
 # locking, as above.
 #
+#
+# Swapping the chain while a screen is off would strand it: only the swayidle
+# that turned it off knows to turn it back on, and the new one has not timed
+# out, so nothing would run `dpms on` at the next input. So a swap that finds
+# an output dark also starts a waker, a second swayidle whose only job is that
+# resume, and the loop kills it once nothing is dark any more. Never `dpms on`
+# at the swap itself: an unattended unplug would light the screen.
+#
 # IDLE_AC_ONLINE, IDLE_POLL and IDLE_AWAKE_FILE exist for tests/idle_test.sh only.
 
 AC=${IDLE_AC_ONLINE:-/sys/class/power_supply/AC/online}
@@ -75,8 +83,10 @@ AWAKE=${IDLE_AWAKE_FILE:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/idle-awake-until
 # The ~ is for swayidle, which runs each command through sh -c.
 # shellcheck disable=SC2088
 LOCK='~/.config/sway/scripts/lock.sh -f'
+DPMS_ON='swaymsg "output * dpms on"'
 state=""
 power=""
+waker=""
 
 # awake.sh sends USR1 after it changes the deadline. The trap only has to
 # exist: it ends the `wait` below early, so the loop re-reads at once. Set
@@ -96,6 +106,14 @@ awake() {
     return 1
 }
 
+# An enabled output is powered off. A disabled one (the panel, lid shut) is
+# not dark: `dpms on` leaves it disabled. An output list it cannot get counts
+# as lit, which is how this behaved before the waker existed.
+dark() {
+    [ "$(swaymsg -t get_outputs 2>/dev/null |
+        jq '[.[] | select(.active and .power == false)] | length' 2>/dev/null)" -gt 0 ] 2>/dev/null
+}
+
 # start <ac|battery> <normal|awake>
 start() {
     local screen_off lock sleep_after profile args=()
@@ -106,12 +124,20 @@ start() {
     fi
     if [ "$2" = normal ]; then
         [ "$screen_off" -gt 0 ] && args+=(timeout "$screen_off" 'swaymsg "output * dpms off"'
-                                          resume 'swaymsg "output * dpms on"')
+                                          resume "$DPMS_ON")
         [ "$lock" -gt 0 ] && args+=(timeout "$lock" "$LOCK")
         [ "$sleep_after" -gt 0 ] && args+=(timeout "$sleep_after" 'systemctl suspend')
     fi
     pkill -x swayidle
     swayidle -w "${args[@]}" before-sleep "$LOCK" &
+    # The pkill took any earlier waker with it. This one's timeout fires a
+    # second after it starts, the user being away, so their next input runs
+    # the resume.
+    waker=""
+    if dark; then
+        swayidle timeout 1 : resume "$DPMS_ON" &
+        waker=$!
+    fi
     # After swayidle, and never fatal: a missing daemon or a refused switch
     # must not cost the lock. Only when the power source changes (or at
     # start), so a profile picked by hand holds until the next plug/unplug or
@@ -123,6 +149,7 @@ while :; do
     if on_ac; then new=ac; else new=battery; fi
     if awake; then mode=awake; else mode=normal; fi
     [ "$new:$mode" = "$state" ] || { start "$new" "$mode"; state=$new:$mode; power=$new; }
+    [ -n "$waker" ] && ! dark && { kill "$waker" 2>/dev/null; waker=""; }
     sleep "$POLL" &
     wait $!
     kill $! 2>/dev/null   # a USR1 ends the wait, not the sleep

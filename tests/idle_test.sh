@@ -5,8 +5,8 @@
 # Never touches the live desktop: `swayidle`, `pkill`, `powerprofilesctl`,
 # `swaymsg`, `pgrep`, `fuzzel` and `notify-send` are logging stubs at the front
 # of PATH, the AC state and the keep-awake deadline are files under the
-# sandbox, lid.sh's lock is a stub, and the only process this file kills is the
-# idle.sh it started, by PID. The `pkill` stub is the important one -- idle.sh
+# sandbox, lid.sh's lock is a stub, and the only processes this file kills are
+# the idle.sh it started and the stub waker that idle.sh started, both by PID. The `pkill` stub is the important one -- idle.sh
 # runs `pkill -x swayidle` on every power switch, and the real one would kill
 # the live session's swayidle (§9.29); the real powerprofilesctl would switch
 # the machine's profile, and a real swaymsg would turn the laptop panel off.
@@ -43,6 +43,8 @@ stop() {
     kill -9 "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null || true
     pid=''
+    [ -s "$sandbox/waker.pid" ] && kill "$(cat "$sandbox/waker.pid")" 2>/dev/null
+    rm -f "$sandbox/waker.pid"
 }
 
 mkdir -p "$sandbox/bin"
@@ -60,10 +62,16 @@ export SWAYSOCK="$sandbox/sway-ipc.test.sock"
 # One line per call: the tool name, then its arguments joined by `|`, so a
 # quoted command ('swaymsg "output * dpms off"') stays one field. Each line is
 # one write: idle.sh backgrounds swayidle, so stubs log concurrently.
+# The one swayidle started without -w is idle.sh's waker. It stays up, as the
+# real one would, so a check can see idle.sh kill it.
 cat >"$sandbox/bin/swayidle" <<'STUB'
 #!/bin/sh
 line=swayidle; for a in "$@"; do line="$line|$a"; done
 printf '%s\n' "$line" >>"$LOG"
+if [ "${1:-}" != -w ]; then
+    echo $$ >"$(dirname "$LOG")/waker.pid"
+    exec sleep 30
+fi
 STUB
 cat >"$sandbox/bin/pkill" <<'STUB'
 #!/bin/sh
@@ -75,14 +83,16 @@ cat >"$sandbox/bin/powerprofilesctl" <<'STUB'
 line=powerprofilesctl; for a in "$@"; do line="$line|$a"; done
 printf '%s\n' "$line" >>"$LOG"
 STUB
-# `swaymsg -t get_outputs` answers $OUTPUTS (and exits $SWAYMSG_RC); anything
-# else is only logged.
+# `swaymsg -t get_outputs` answers $OUTPUTS, else the file `outputs` beside the
+# log, which a check can change under a running idle.sh (and exits
+# $SWAYMSG_RC); anything else is only logged.
 cat >"$sandbox/bin/swaymsg" <<'STUB'
 #!/bin/sh
 line=swaymsg; for a in "$@"; do line="$line|$a"; done
 printf '%s\n' "$line" >>"$LOG"
 if [ "${1:-}" = -t ] && [ "${2:-}" = get_outputs ]; then
-    [ -n "${OUTPUTS:-}" ] && printf '%s\n' "$OUTPUTS"
+    if [ -n "${OUTPUTS:-}" ]; then printf '%s\n' "$OUTPUTS"
+    else cat "$(dirname "$LOG")/outputs" 2>/dev/null; fi
     exit "${SWAYMSG_RC:-0}"
 fi
 STUB
@@ -176,9 +186,9 @@ got=$(call 2); prof=$(profile 2); stop
     && ok "unplugging switches to the battery policy live" \
     || no "unplugging switches to the battery policy live" "got: $got / $prof"
 counts=$(cut -d'|' -f1 "$LOG" | sort | uniq -c | tr -s ' \n' ' ')
-kills_first && [ "$counts" = " 2 pkill 2 powerprofilesctl 2 swayidle " ] \
-    && ok "each switch kills the old swayidle first, and only a switch reapplies" \
-    || no "each switch kills the old swayidle first, and only a switch reapplies" "got:$counts"
+kills_first && [ "$counts" = " 2 pkill 2 powerprofilesctl 2 swayidle 2 swaymsg " ] \
+    && ok "each switch kills the old swayidle first, and only a switch reapplies or asks sway" \
+    || no "each switch kills the old swayidle first, and only a switch reapplies or asks sway" "got:$counts"
 
 sed 's/^AC_SCREEN_OFF=180;   BAT_SCREEN_OFF=60$/AC_SCREEN_OFF=180;   BAT_SCREEN_OFF=0/' \
     "$IDLE_BIN" >"$sandbox/zero.sh"
@@ -203,6 +213,48 @@ case ":$what:" in
     *:sleep:*) ok "inhibit-sleep-on-ac.service holds no idle inhibitor (--what=$what)" ;;
     *) no "inhibit-sleep-on-ac.service still blocks sleep" "--what=$what" ;;
 esac
+
+echo "idle.sh screen left off by a switch"
+
+OUTFILE=$sandbox/outputs
+lit='[{"name":"eDP-1","active":true,"power":true}]'
+off='[{"name":"eDP-1","active":true,"power":false}]'
+shut='[{"name":"eDP-1","active":false,"power":false},{"name":"DP-1","active":true,"power":true}]'
+waker_want='swayidle|timeout|1|:|resume|swaymsg "output * dpms on"'
+wakers() { grep -cxF "$waker_want" "$LOG"; }
+waker_up() { [ -s "$sandbox/waker.pid" ] && kill -0 "$(cat "$sandbox/waker.pid")" 2>/dev/null; }
+# unplug <outputs at the switch>: on AC with the screen on, then unplug
+unplug() {
+    echo "$lit" >"$OUTFILE"
+    run 1
+    echo "$1" >"$OUTFILE"; echo 0 >"$IDLE_AC_ONLINE"
+    wait_lines 2
+}
+
+unplug "$lit"; sleep 0.3
+n=$(wakers); stop
+[ "$n" = 0 ] && ok "a switch with the screen on starts no waker" \
+    || no "a switch with the screen on starts no waker" "$n wakers"
+
+unplug "$off"; wait_swayidle 3; sleep 0.5   # five polls, still dark
+n=$(wakers); chain=$(grep -cxF "$bat_want" "$LOG")
+[ "$n" = 1 ] && [ "$chain" = 1 ] \
+    && ok "a switch while the screen is off: the new chain, plus a waker whose resume turns it on" \
+    || no "a switch while the screen is off: the new chain, plus a waker whose resume turns it on" \
+          "$n wakers, $chain battery chains: $(grep '^swayidle' "$LOG" | tr '\n' ' ')"
+waker_up && ok "the waker stays up while the screen is still off" \
+    || no "the waker stays up while the screen is still off"
+echo "$lit" >"$OUTFILE"
+i=0; while waker_up && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+waker_up && no "once the screen is back on, idle.sh kills the waker" \
+    || ok "once the screen is back on, idle.sh kills the waker"
+stop
+
+unplug "$shut"; sleep 0.3
+n=$(wakers); stop
+[ "$n" = 0 ] && ok "a panel disabled by the lid is not a screen left off" \
+    || no "a panel disabled by the lid is not a screen left off" "$n wakers"
+rm -f "$OUTFILE"
 
 AWAKE=$IDLE_AWAKE_FILE
 now() { date +%s; }

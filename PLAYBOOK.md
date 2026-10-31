@@ -1278,7 +1278,7 @@ machine 2026-10-17):
 | `systemctl suspend` by hand | refused by the `ac-power` block (force with `-i`) | suspends; comes back locked | logind + `inhibit-sleep-on-ac.service` |
 | power key | power off | power off | logind default `HandlePowerKey=poweroff` |
 | fullscreen Firefox/Chrome | every swayidle timeout paused | same | `inhibit_idle fullscreen` (`config.d/application_defaults`) |
-| plug / unplug | udev starts the `ac-power` block at once; `idle.sh` swaps the chain within 15s | udev drops the block at once; same 15s | `99-inhibit-sleep-on-ac.rules` + `idle.sh` |
+| plug / unplug | udev starts the `ac-power` block at once; `idle.sh` swaps the chain within 15s; a screen already off stays off until the next input | udev drops the block at once; same 15s, same screen | `99-inhibit-sleep-on-ac.rules` + `idle.sh` |
 
 The lid rows rest on logind's two inhibitor tiers. The `ac-power` lock holds `handle-lid-switch`,
 which logind always honours, so on AC it never acts on the lid at all. The `sleep` half does not
@@ -1289,6 +1289,19 @@ tracked: it is logind's stock behaviour, and the only logind drop-in present is 
 `suspend.conf` described below. Swapping the chain on a plug/unplug restarts swayidle, so its
 timers start counting again from that moment. A suspend is `s2idle`: `/sys/power/mem_sleep` offers
 `deep` too, but nothing here or on the kernel command line selects it.
+
+**A swap while the screen is off starts a waker (2026-10-31).** Only the swayidle whose screen-off
+step fired runs its `resume` (`dpms on`) at the next input, and a swap kills it. The new one has
+not timed out, and input keeps resetting its timer, so until then the screen stayed dark under a
+user typing at it, lock screen included, until they stopped for a full screen-off period and
+touched it again. The common way in: come back to a dark laptop and plug it in before touching it.
+So `start()` asks sway for an enabled output that is powered off, and if there is one starts a
+second swayidle, `timeout 1 : resume 'dpms on'`. Its timeout fires a second later because nobody
+is touching the machine, and the next input runs the resume. The loop kills it once no enabled
+output is dark. A panel disabled by `lid.sh` is not dark, and an output list `idle.sh` cannot get
+counts as lit (no waker, the old behaviour). It does not just run `dpms on` at the swap, because an
+unattended unplug would then light the screen. Any swap does this, so keep-awake ending and a
+`swaymsg reload` with the screen off are covered too.
 
 **The lid locks, because on AC nothing else would (2026-10-17).** The `handle-lid-switch` block that
 keeps the box serving on AC also means logind never sees a lid close, so until `lid.sh` a closed
@@ -1374,7 +1387,7 @@ the same `sh -c 'pkill -x idle.sh; …'` treatment any `exec_always` daemon does
 
 ```sh
 pgrep -xc idle.sh      # exactly 1
-pgrep -xc swayidle     # exactly 1
+pgrep -xc swayidle     # exactly 1; 2 while a screen left off by a swap is still dark (the waker)
 ```
 
 Check those **after a fresh login**, not only after a `swaymsg reload`. The two take different code
@@ -1391,7 +1404,9 @@ its expected values are the defaults above, so a deliberate change updates both.
 proving each of thirteen mutations (no keep-awake branch, no `USR1` trap, profile reset on toggle,
 a garbled deadline kept, no docked check, failing open on no output list, a doubled swaylock, no
 24h cap, Esc as a failure, no poke, and the session key dropped from `idle.sh`, from `awake.sh`'s
-reading, or from `awake.sh on`'s refusal) turns its check red.
+reading, or from `awake.sh on`'s refusal) turns its check red; and on 2026-10-31 six more for the
+waker (never started, always started, never killed, killed while still dark, a lid-disabled panel
+counted as dark, a resume that does not turn the screen on).
 
 ### 9.27 A waybar state class is a *GTK* class, and the GTK theme styles it too
 
