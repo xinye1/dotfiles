@@ -18,6 +18,24 @@ REPO = Path(__file__).resolve().parent.parent
 STYLES = Path(os.environ.get("OUTPUT_STYLE_DIR", REPO / "claude/.claude/output-styles"))
 
 
+def scalar(path, key, value):
+    """A YAML scalar this flat parser can read the same way YAML does.
+
+    Claude Code loads a style whose frontmatter is invalid YAML without its
+    fields, so `name` falls back to the filename and "outputStyle": "STE"
+    stops matching. An unquoted value holding `: ` (`description: a: b` is
+    invalid YAML) or ` #` (a comment YAML would cut off) is refused rather
+    than read differently from Claude Code.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    if ": " in value or value.endswith(":") or " #" in value:
+        raise AssertionError(f"{path.name}: {key}: quote this value: {value!r}")
+    if value[:1] and value[0] in "[]{}&*!|>'\"%@`#,?-":
+        raise AssertionError(f"{path.name}: {key}: unsupported YAML form: {value!r}")
+    return value
+
+
 def frontmatter(path):
     """Flat `key: value` frontmatter between the leading `---` fences."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -32,7 +50,10 @@ def frontmatter(path):
         key, sep, value = line.partition(":")
         if not sep:
             raise AssertionError(f"{path.name}: not a key: value line: {line!r}")
-        fields[key.strip()] = value.strip()
+        key = key.strip()
+        if key in fields:
+            raise AssertionError(f"{path.name}: duplicate key {key!r}")
+        fields[key] = scalar(path, key, value.strip())
     body = "\n".join(lines[end + 1:]).strip()
     return fields, body
 
