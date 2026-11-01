@@ -18,12 +18,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = Path(os.environ.get("STATUSLINE_BIN", REPO / "claude/.claude/statusline.py"))
+# Importing would write claude/.claude/__pycache__ into the stow package, and
+# the next `stow -R claude` would link it to ~/.claude/__pycache__.
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("statusline", SCRIPT)
 sl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sl)

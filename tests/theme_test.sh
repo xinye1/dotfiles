@@ -276,6 +276,10 @@ quiet_suite crash_test.py
 # including the all-zero one after /compact that once read as 0% context.
 quiet_suite statusline_test.py
 
+# Claude Code output styles: each must keep the built-in coding instructions,
+# or selecting it silently drops them from the system prompt.
+quiet_suite output_style_test.py
+
 # A real-time signal to waybar must name the bar exactly. `pkill -RTMIN+N
 # waybar` is a pattern, and it also matches the supervisor, whose comm is
 # waybar_run.sh; bash has no trap for RT signals and dies of one, and the bar

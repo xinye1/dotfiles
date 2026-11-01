@@ -144,6 +144,7 @@ python3 tests/capture_test.py # focus-safe capture; also run by theme_test.sh
 python3 tests/crash_test.py   # crash → Claude diagnosis; stubs only; also run by theme_test.sh
 python3 tests/claude_tray_test.py # Windows tray; PowerShell half skips without WSL interop
 python3 tests/statusline_test.py  # Claude Code status line; also run by theme_test.sh
+python3 tests/output_style_test.py # Claude Code output styles keep the coding instructions; also run by theme_test.sh
 ```
 
 **Run `theme_test.sh` after any edit to `bin/.local/bin/theme`.** It builds a throwaway repo under
