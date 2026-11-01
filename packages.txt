@@ -25,6 +25,7 @@ polkit-gnome
 poppler
 power-profiles-daemon
 python
+python-yaml
 ripgrep
 satty
 slurp
