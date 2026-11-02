@@ -71,7 +71,7 @@ Each top-level directory is a stow *package* whose contents mirror the layout un
 | `bash` | `~/.bashrc`, `~/.config/dircolors` |
 | `nvim` | `~/.config/nvim/` — `init.lua`, `highlights.lua`, `statusline.lua` |
 | `bin` | `~/.local/bin/theme` — the palette renderer; `herdr-session-backup`; `tp-backup`, `tp-backup-ssd` |
-| `claude` | `~/.claude/statusline.py` — the Claude Code status line |
+| `claude` | `~/.claude/statusline.py` — the Claude Code status line; `~/.claude/output-styles/` — reply styles (`STE`: ASD-STE100 Simplified Technical English), selected by `"outputStyle"` in the untracked `~/.claude/settings.json` |
 | `herdr` | `~/.config/herdr/config.toml`, `local-plugins/attention/` — the agent multiplexer and its blocked-agent alerts |
 | `kitty` | `~/.config/kitty/kitty.conf` — **the terminal**; ported from the retired `foot` package |
 | `tmux` | `~/.config/tmux/` — `tmux.conf`, `colors.gen.conf`, `scripts/` |
