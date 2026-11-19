@@ -1688,6 +1688,24 @@ against `palettes.toml` and measures all four pairs in both palettes; against th
 fails four of them. When herdr is upgraded, re-read `Palette::terminal` and `panel_contrast_fg`
 in the new source — the test copies them.
 
+That re-read was skipped at the 0.9.0 upgrade, and it cost exactly what the note warns of. 0.9.0
+split the focused-row fill out of `surface_dim` into a new `active_row_bg` (plus `sidebar_bg` and
+`selection_bg`), and the terminal theme sets it to ANSI 8 — so the gruvbox sidebar row was back at
+2.68:1, and its grey second line at 1.32:1, while `ThemeTest`, still measuring 0.8.0's
+`surface_dim`, stayed green. `active_row_bg = "black"` restores fg at 7.45 / 8.45:1. The grey
+(`overlay0`, ANSI 7) reaches 8.26:1 under nord but only **4.17:1 under gruvbox**: of the sixteen,
+only `bright_white` — fg itself under gruvbox — and the saturated cyan/green/yellow clear 4.5:1 on
+ANSI 0 in both palettes, and none of them is a quiet secondary. The gap is accepted and pinned:
+the test holds that one pair to 4.15 and every other to 4.5, and it now measures the 0.9.0 pairs
+(focused row, selected workspace number, the grey line on the focused row, the grey labels on the
+sidebar). Against the pre-fix config it fails three of them.
+
+**`DIM` is not measured.** herdr draws secondary text (tab, agent, terminal title, `·`) as
+`overlay0` **plus the DIM attribute**, and how a terminal renders DIM is its own choice: Windows
+Terminal halves the RGB, which on a WSL machine with herdr's `nord` theme put the agent line at
+1.0:1. A sidebar token accepts `dim = false` (`{ token = "agent", dim = false }`) to opt out. Not
+applied here, because what kitty does with DIM has not been measured.
+
 **Agent state comes from the screen, on purpose.** The official Claude integration
 (`herdr integration install claude`) reports only *which conversation* a pane holds, for restore.
 herdr's authors moved Claude off hook-reported state because hooks "can miss permission approval
