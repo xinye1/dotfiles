@@ -416,10 +416,13 @@ class BackupTest(unittest.TestCase):
 CONFIG = REPO / "herdr/.config/herdr/config.toml"
 PALETTES = REPO / "palettes.toml"
 
-# herdr 0.8.0's `terminal` theme (src/app/state.rs, Palette::terminal), the
+# herdr 0.9.0's `terminal` theme (src/app/state.rs, Palette::terminal), the
 # base that [theme.custom] layers over. `reset` is the terminal's own fg or bg.
+# 0.9.0 added sidebar_bg, active_row_bg and selection_bg; active_row_bg took
+# over the focused-row fill that was surface_dim in 0.8.0.
 TERMINAL_THEME = {
-    "accent": "blue", "panel_bg": "reset", "surface0": "reset",
+    "accent": "blue", "panel_bg": "reset", "sidebar_bg": "reset",
+    "active_row_bg": "darkgray", "selection_bg": "reset", "surface0": "reset",
     "surface1": "darkgray", "surface_dim": "darkgray", "overlay0": "gray",
     "overlay1": "white", "text": "reset", "subtext0": "gray", "mauve": "gray",
     "green": "green", "yellow": "yellow", "red": "lightred", "blue": "blue",
@@ -489,16 +492,26 @@ class ThemeTest(unittest.TestCase):
         pairs = {
             "highlight (active tab, menu/dialog selection)":
                 (self.panel_contrast_fg(), "accent"),
-            "active sidebar row": ("text", "surface_dim"),
+            "focused agent/workspace row": ("text", "active_row_bg"),
+            "selected+focused workspace number": ("overlay1", "active_row_bg"),
+            "secondary line on the focused row": ("overlay0", "active_row_bg"),
+            "sidebar labels, secondary text": ("overlay0", "sidebar_bg"),
             "copy-mode match, release-note code": ("text", "surface1"),
             "accent text (pane-border label, key hint)": ("accent", "panel_bg"),
         }
+        # The one known shortfall: gruvbox's grey (ANSI 7) on ANSI 0. No ANSI
+        # colour quieter than fg clears 4.5:1 on any fill that still reads as
+        # a highlight (config.toml, PLAYBOOK §9.30). Pinned at its measured
+        # 4.17:1 so it cannot slide further unnoticed — under the terminal
+        # theme's own ANSI 8 it was 1.32:1.
+        floors = {("gruvbox", "secondary line on the focused row"): 4.15}
         for palette in ("nord", "gruvbox"):
             for what, (fg, bg) in pairs.items():
                 with self.subTest(palette=palette, what=what):
                     ratio = contrast(self.resolve(palette, fg, True),
                                      self.resolve(palette, bg, False))
-                    self.assertGreaterEqual(ratio, 4.5, f"{fg} on {bg}: {ratio:.2f}:1")
+                    floor = floors.get((palette, what), 4.5)
+                    self.assertGreaterEqual(ratio, floor, f"{fg} on {bg}: {ratio:.2f}:1")
 
 
 if __name__ == "__main__":
