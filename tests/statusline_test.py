@@ -111,5 +111,62 @@ class ContextSegmentTest(unittest.TestCase):
         self.assertEqual(self.context(small), f"{sl.ICON_CONTEXT} 0%")
 
 
+class PeerNameTest(unittest.TestCase):
+    """`@name` comes from the session registry of the ancestor Claude process.
+
+    The script is run directly by this test process, so its parent PID is
+    ours: the fake registry file is `<our pid>.json` under a throwaway
+    CLAUDE_CONFIG_DIR. Run inside a live session, the walk would otherwise
+    reach the real registry — the sessionId match is what keeps it out.
+    """
+    SID = "00000000-0000-4000-8000-000000000001"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config = Path(self.tmp.name) / "config"
+        (self.config / "sessions").mkdir(parents=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def register(self, **entry):
+        (self.config / "sessions" / f"{os.getpid()}.json").write_text(
+            json.dumps(entry))
+
+    def line(self, session_id=SID):
+        payload = {"workspace": {"current_dir": self.tmp.name},
+                   "model": {"display_name": "Opus 5.5"}}
+        if session_id:
+            payload["session_id"] = session_id
+        env = {k: v for k, v in os.environ.items()
+               if k != "CLAUDE_CODE_BRIDGE_SESSION_ID"}
+        env.update(COLUMNS="200", CLAUDE_CONFIG_DIR=str(self.config))
+        out = subprocess.run(
+            ["python3", str(SCRIPT)], input=json.dumps(payload),
+            capture_output=True, text=True, env=env, cwd=self.tmp.name,
+            timeout=10, check=True,
+        ).stdout
+        return ANSI.sub("", out).rstrip("\n").split(" | ")
+
+    def test_registered_name_is_shown(self):
+        self.register(sessionId=self.SID, name="dotfiles-c2")
+        self.assertEqual(self.line()[-1], "@dotfiles-c2")
+
+    def test_other_sessions_entry_is_ignored(self):
+        self.register(sessionId="someone-else", name="intruder")
+        self.assertFalse(any("@" in s for s in self.line()))
+
+    def test_no_session_id_shows_nothing(self):
+        self.register(sessionId=self.SID, name="dotfiles-c2")
+        self.assertFalse(any("@" in s for s in self.line(session_id=None)))
+
+    def test_no_registry_shows_nothing(self):
+        self.assertFalse(any("@" in s for s in self.line()))
+
+    def test_control_characters_are_neutralised(self):
+        self.register(sessionId=self.SID, name="a\x1b[2Jb")
+        self.assertEqual(self.line()[-1], "@a?[2Jb")
+
+
 if __name__ == "__main__":
     unittest.main()
