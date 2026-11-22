@@ -49,6 +49,7 @@ VALUE = "37"       # cost value
 BRANCH = "35"      # git branch     (starship git_branch)
 DIRTY = "31"       # dirty count    (starship git_status)
 REMOTE = "1;34"    # /rc — bold, the one segment meant to be noticed
+PEER = "34"        # @name — the address other sessions message this one by
 
 # usage percentages, coloured by how much headroom is left
 GREEN = "32"
@@ -250,6 +251,54 @@ def context_segment(window):
     return usage_segment(ICON_CONTEXT, float(pct), 60, 85)
 
 
+# How far up the process tree to look for the Claude Code process. A render is
+# usually `claude → sh -c → python3`; a couple of spare levels cost nothing.
+PEER_DEPTH = 4
+
+
+def parent_pid(pid):
+    """The parent of `pid` from /proc, or None (gone, or not Linux)."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            # The command name may contain spaces and parens; ppid follows
+            # the *last* `)`.
+            return int(f.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def peer_segment(session_id):
+    """`@name` — the name other sessions use to message this one.
+
+    It is not in the session JSON: that carries `session_name` only for a name
+    set by hand, while the peer name is usually derived (`dotfiles-c2`). Claude
+    Code keeps it in its session registry, `<config>/sessions/<pid>.json`, keyed
+    by its own PID, and rewrites the file when the name changes — so it is read
+    per render. The status line is that process's descendant; walk up to it.
+    The `sessionId` must match the payload's, or a stale file from a recycled
+    PID (or a test run inside a live session) would print someone else's name.
+    """
+    if not session_id:
+        return None
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    pid = os.getppid()
+    for _ in range(PEER_DEPTH):
+        if not pid or pid <= 1:
+            return None
+        try:
+            with open(os.path.join(config, "sessions", f"{pid}.json")) as f:
+                entry = json.load(f)
+        except (OSError, ValueError):
+            entry = None
+        if isinstance(entry, dict) and entry.get("sessionId") == session_id:
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                return None
+            return paint(PEER, "@" + CONTROL_RE.sub("?", name))
+        pid = parent_pid(pid)
+    return None
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -286,6 +335,9 @@ def main():
         rest.append(git)
     if level:
         rest.append(segment(ICON_EFFORT, paint(EFFORT_COLORS.get(level, LABEL), level)))
+    peer = peer_segment(data.get("session_id"))
+    if peer:
+        rest.append(peer)
     # Remote Control. Claude Code's own `/rc` pill leaves the footer under
     # `"tui": "fullscreen"` (from 2.1.280 — it moves to the header, which
     # scrolls away), so the status line carries it. The session JSON has no
